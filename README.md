@@ -62,14 +62,28 @@ The `run` command supports `-v name=value` for variables, `--verbosity`,
 
 ## 📦 Installation
 
-TigerQuery is included with [`tiger-sqlcmd`](https://github.com/rkozlowski/TigerQuery/releases).  
-Build from source or use the prebuilt binaries.
+### NuGet packages
+
+| Package | Purpose |
+|---|---|
+| [`ItTiger.TigerQuery`](https://www.nuget.org/packages/ItTiger.TigerQuery/) | Standalone sqlcmd-compatible SQL script parser and execution engine |
+| [`ItTiger.TigerQuery.Core`](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) | Saved SQL Server connection profiles: storage, validation, resolution |
+| [`ItTiger.TigerQuery.CliCore`](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/) | Reusable TigerCli connection-management commands for CLI apps |
+
+```bash
+dotnet add package ItTiger.TigerQuery
+```
+
+### tiger-sqlcmd CLI
+
+The `tiger-sqlcmd` command-line tool is distributed as prebuilt binaries via
+[GitHub releases](https://github.com/rkozlowski/TigerQuery/releases), or build it from source.
 
 ---
 
 ## 🔧 Status
 
-TigerQuery v0.8.0 is a **snapshot release** — not issue-free, but stable, tested, and ready to use.
+TigerQuery v0.8.1 is a **snapshot release** — not issue-free, but stable, tested, and ready to use.
 
 It is meant as a transparent, inspectable tool — bugs and all.  
 The test suite tracks known issues, documents differences, and protects your upgrade path.
@@ -83,4 +97,5 @@ The test suite tracks known issues, documents differences, and protects your upg
 </p>
 
 TigerQuery is an open-source project by **IT Tiger**  
+🔗 Project page: https://www.ittiger.net/projects/tigerquery/  
 🔗 https://www.ittiger.net/

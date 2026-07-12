@@ -26,6 +26,14 @@
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://www.ittiger.net/projects/tigerquery/</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+
+    <!-- Symbol packages for the packable projects (ItTiger.TigerQuery, .Core, .CliCore).
+         Source Link for GitHub is built into the SDK; embed untracked sources so the
+         snupkg debugging experience is complete. -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
   </PropertyGroup>
 
   <!-- Surface links at runtime so TigerCli app metadata (help footer, version output) can read them. -->

@@ -7,6 +7,25 @@
     <AssemblyName>ItTiger.TigerQuery.Core</AssemblyName>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>ItTiger.TigerQuery.Core</PackageId>
+    <Title>TigerQuery Connection Profiles</Title>
+    <Description>Reusable SQL Server connection-profile support for TigerQuery tools: named connection profiles with JSON file storage, validation, resolution into SqlClient connection strings, pluggable password protection (Windows DPAPI, or non-persisting elsewhere), and database enumeration.</Description>
+    <PackageTags>sqlserver;connection;connection-string;dpapi;ittiger;tigerquery</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>TigerQuery256.png</PackageIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Public API docs are being filled in incrementally; missing-comment warnings
+         would otherwise fail the zero-warning build. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\docs\assets\TigerQuery256.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="ItTiger.Core" Version="0.8.0" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />

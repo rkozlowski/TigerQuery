@@ -8,7 +8,7 @@ namespace ItTiger.TigerQuery.CliCore;
 /// Add treats every value as new input; edit seeds unsupplied values from the
 /// existing profile (TigerCli <c>.AsEdit()</c> merge) so only changed options are
 /// touched. The escape hatch <c>--opt key=value</c> and the non-promptable
-/// first-class options map straight onto <see cref="SqlConnectionStringBuilder"/>.
+/// first-class options map straight onto <see cref="Microsoft.Data.SqlClient.SqlConnectionStringBuilder"/>.
 /// </summary>
 internal sealed class SqlServerConnectionSettings : TigerCliSettings
 {

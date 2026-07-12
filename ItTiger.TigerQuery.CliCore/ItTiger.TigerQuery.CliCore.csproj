@@ -7,6 +7,25 @@
     <AssemblyName>ItTiger.TigerQuery.CliCore</AssemblyName>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>ItTiger.TigerQuery.CliCore</PackageId>
+    <Title>TigerQuery CLI Connection Commands</Title>
+    <Description>Reusable TigerCli command group for SQL Server connection management in TigerQuery-family CLI applications: list/show/add/edit/delete commands with parser-driven prompting, provider-backed selection, validation, and en-US/pl-PL localization, built on ItTiger.TigerQuery.Core. Intended for developers building TigerCli applications.</Description>
+    <PackageTags>tigercli;cli;sqlserver;connections;ittiger;tigerquery</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>TigerQuery256.png</PackageIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Public API docs are being filled in incrementally; missing-comment warnings
+         would otherwise fail the zero-warning build. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\docs\assets\TigerQuery256.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\ItTiger.TigerQuery.Core\ItTiger.TigerQuery.Core.csproj" />
   </ItemGroup>

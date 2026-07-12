@@ -6,6 +6,25 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>ItTiger.TigerQuery</PackageId>
+    <Title>TigerQuery SQL Script Engine</Title>
+    <Description>Standalone SQL Server script parser and execution engine with familiar sqlcmd/SSMS SqlCmd-mode behavior: GO batch separators with repeat counts, sqlcmd variables and :setvar, :on error handling, asynchronous execution from strings or files, and structured execution callbacks and results.</Description>
+    <PackageTags>sqlcmd;sql;sqlserver;script;parser;batch;ittiger;tigerquery</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>TigerQuery256.png</PackageIcon>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Public API docs are being filled in incrementally; missing-comment warnings
+         would otherwise fail the zero-warning build. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\docs\assets\TigerQuery256.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />

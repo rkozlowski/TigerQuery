@@ -2,6 +2,8 @@
   <Import Project="..\Version.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Application, distributed as GitHub release binaries; never a NuGet package. -->
+    <IsPackable>false</IsPackable>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
