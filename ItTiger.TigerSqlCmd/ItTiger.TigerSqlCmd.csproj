@@ -2,7 +2,7 @@
   <Import Project="..\Version.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>tiger-sqlcmd</AssemblyName>
@@ -10,14 +10,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
-    <PackageReference Include="NLog" Version="6.0.1" />
-    <PackageReference Include="NLog.Extensions.Logging" Version="6.0.1" />
-    <PackageReference Include="Spectre.Console" Version="0.50.0" />
-    <PackageReference Include="Spectre.Console.Cli" Version="0.50.0" />
+    <PackageReference Include="ItTiger.TigerCli" Version="0.8.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageReference Include="NLog" Version="6.1.4" />
+    <PackageReference Include="NLog.Extensions.Logging" Version="6.1.4" />
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ItTiger.TigerQuery.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ItTiger.TigerQuery.CliCore\ItTiger.TigerQuery.CliCore.csproj" />
+    <ProjectReference Include="..\ItTiger.TigerQuery.Core\ItTiger.TigerQuery.Core.csproj" />
     <ProjectReference Include="..\ItTiger.TigerQuery\ItTiger.TigerQuery.csproj" />
   </ItemGroup>
 

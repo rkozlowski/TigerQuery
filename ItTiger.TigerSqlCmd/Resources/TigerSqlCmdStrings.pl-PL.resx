@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+
+  <!-- ── App and command metadata (identifier keys) ─────────────────── -->
+  <data name="App_Description" xml:space="preserve"><value>Wykonuje zapytanie [bold underline cyan]SQL Server[/] na zapisanym połączeniu. Użyj [italic cyan]run[/] dla skryptów i zaawansowanych opcji sqlcmd.</value></data>
+  <data name="Grp_Connections_Description" xml:space="preserve"><value>Zarządzanie zapisanymi połączeniami</value></data>
+  <data name="Cmd_Run_Description" xml:space="preserve"><value>Zaawansowane wykonywanie [Bold]sql[Italic]cmd[/][/]: uruchamia plik skryptu lub zapytanie ze zmiennymi, trybem, szczegółowością i logowaniem.</value></data>
+
+  <!-- ── Option metadata (identifier keys) ──────────────────────────── -->
+  <data name="Opt_Connection_Description" xml:space="preserve"><value>Nazwa zapisanego połączenia SQL Server (zarządzanego poleceniem 'connections').</value></data>
+  <data name="Opt_Query_Description" xml:space="preserve"><value>Zapytanie SQL do wykonania.</value></data>
+  <data name="Opt_Run_File_Description" xml:space="preserve"><value>Ścieżka do pliku skryptu SQL do wykonania.</value></data>
+  <data name="Opt_Run_Query_Description" xml:space="preserve"><value>Zapytanie SQL podane w wierszu poleceń.</value></data>
+  <data name="Opt_Run_Mode_Description" xml:space="preserve"><value>Tryb wykonywania.</value></data>
+  <data name="Opt_Run_LogFile_Description" xml:space="preserve"><value>Ścieżka do pliku dziennika.</value></data>
+  <data name="Opt_Run_LogLevel_Description" xml:space="preserve"><value>Minimalny poziom logowania.</value></data>
+  <data name="Opt_Run_Verbosity_Description" xml:space="preserve"><value>Steruje szczegółowością danych wyjściowych.</value></data>
+  <data name="Opt_Run_Var_Description" xml:space="preserve"><value>Zmienna w stylu SQLCMD.</value></data>
+
+  <!-- ── Command output (source-text keys) ──────────────────────────── -->
+  <data name="[gray]Mode:[/] {0}" xml:space="preserve"><value>[gray]Tryb:[/] {0}</value></data>
+  <data name="[gray]Using connection:[/] [blue]{0}[/]" xml:space="preserve"><value>[gray]Połączenie:[/] [blue]{0}[/]</value></data>
+  <data name="[gray]Executing file:[/] [green]{0}[/]" xml:space="preserve"><value>[gray]Wykonywanie pliku:[/] [green]{0}[/]</value></data>
+  <data name="[gray]Executing query:[/] [green]{0}[/]" xml:space="preserve"><value>[gray]Wykonywanie zapytania:[/] [green]{0}[/]</value></data>
+  <data name="[gray]Variables:[/]" xml:space="preserve"><value>[gray]Zmienne:[/]</value></data>
+  <data name="[gray]--&gt; Batch {0} ({1}/{2})[/] executing..." xml:space="preserve"><value>[gray]--&gt; Pakiet {0} ({1}/{2})[/] wykonywanie...</value></data>
+  <data name="[green]completed[/] in {0}ms" xml:space="preserve"><value>[green]ukończono[/] w {0} ms</value></data>
+  <data name="[red]failed[/] in {0}ms" xml:space="preserve"><value>[red]niepowodzenie[/] w {0} ms</value></data>
+  <data name="[DarkGray](No columns returned)[/]" xml:space="preserve"><value>[DarkGray](Nie zwrócono kolumn)[/]</value></data>
+</root>

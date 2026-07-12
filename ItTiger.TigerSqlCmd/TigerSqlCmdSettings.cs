@@ -1,58 +1,50 @@
-﻿using ItTiger.TigerQuery;
-using Spectre.Console;
-using Spectre.Console.Cli;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using ItTiger.TigerCli.Commands;
+using ItTiger.TigerQuery;
 using Microsoft.Extensions.Logging;
 
 namespace ItTiger.TigerSqlCmd;
 
 
-public sealed class TigerSqlCmdSettings : CommandSettings
+[TigerCliExactlyOneOf(nameof(FilePath), nameof(Query))]
+public sealed class TigerSqlCmdSettings : TigerCliSettings
 {
-    [CommandOption("-c|--connection <CONNSTR>")]
-    [Description("SQL Server connection string.")]
-    //[CommandRequired]
-    public string ConnectionString { get; set; } = default!;
+    // Refers to a saved connection profile by name, not a raw connection string. Required so
+    // a missing value fails in non-interactive mode; Promptable so semi-interactive runs prompt
+    // a selection from the saved connections surfaced by the "connections" provider.
+    [TigerCliOption("-c|--connection",
+        ValueName = "name",
+        Required = true,
+        Description = "Name of a saved SQL Server connection (managed via the 'connections' command).",
+        DescriptionResourceKey = "Opt_Connection_Description",
+        Provider = "connections",
+        Promptable = TigerCliPromptable.Normal)]
+    public string Connection { get; set; } = default!;
 
-    [CommandOption("-f|--file <FILEPATH>")]
-    [Description("Path to the SQL script file to execute.")]
+    [TigerCliOption("-f|--file", ValueName = "file", Description = "Path to the SQL script file to execute.",
+        DescriptionResourceKey = "Opt_Run_File_Description")]
     public string? FilePath { get; set; }
 
-    [CommandOption("-q|--query <QUERY>")]
-    [Description("Inline SQL query to execute.")]
+    [TigerCliOption("-q|--query", ValueName = "sql", Description = "Inline SQL query to execute.",
+        DescriptionResourceKey = "Opt_Run_Query_Description")]
     public string? Query { get; set; }
 
-    [CommandOption("-m|--mode <MODE>")]
-    [Description("Execution mode: normal | sqlcmd | sqlcmdex (default: sqlcmd)")]
+    [TigerCliOption("-m|--mode", Description = "Execution mode.",
+        DescriptionResourceKey = "Opt_Run_Mode_Description")]
     public SqlCmdMode Mode { get; set; } = SqlCmdMode.SqlCmd;
 
-    [CommandOption("-l|--log-file <PATH>")]
-    [Description("Optional path to the log file.")]
+    [TigerCliOption("-l|--log-file", ValueName = "file", Description = "Path to the log file.",
+        DescriptionResourceKey = "Opt_Run_LogFile_Description")]
     public string? LogFile { get; init; }
 
-    [CommandOption("--log-level <LEVEL>")]
-    [Description("Minimum log level: Trace, Debug, Information, Warning, Error, Critical (default: Information).")]
+    [TigerCliOption("--log-level", Description = "Minimum log level.",
+        DescriptionResourceKey = "Opt_Run_LogLevel_Description")]
     public LogLevel LogLevel { get; init; } = LogLevel.Information;
 
-    [CommandOption("--verbosity <LEVEL>")]
-    [Description("Controls output verbosity: Silent, Quiet, Normal, Verbose, VeryVerbose")]
+    [TigerCliOption("--verbosity", Description = "Controls output verbosity.",
+        DescriptionResourceKey = "Opt_Run_Verbosity_Description")]
     public Verbosity Verbosity { get; set; } = Verbosity.Normal;
 
-    [CommandOption("-v|--var <VAR>")]
-    [Description("SQLCMD-style variable. Repeatable. Use -v name=value, -v name \"value\", or -v \"name=value\".")]
-    public string[] Variables { get; set; } = Array.Empty<string>();
-
-    public override ValidationResult Validate()
-    {
-        if (string.IsNullOrWhiteSpace(FilePath) && string.IsNullOrWhiteSpace(Query))
-            return ValidationResult.Error("Either --file or --query must be specified.");
-        if (!string.IsNullOrWhiteSpace(FilePath) && !string.IsNullOrWhiteSpace(Query))
-            return ValidationResult.Error("You cannot specify both --file and --query.");
-        return ValidationResult.Success();
-    }
+    [TigerCliOption("-v|--var", ValueName = "name=value", Description = "SQLCMD-style variable.",
+        DescriptionResourceKey = "Opt_Run_Var_Description")]
+    public List<KeyValuePair<string, string>> Variables { get; set; } = new List<KeyValuePair<string, string>>();
 }

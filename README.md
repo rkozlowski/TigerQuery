@@ -51,10 +51,12 @@ See:
 ## 🚀 Quickstart with tiger-sqlcmd
 
 ```bash
-tiger-sqlcmd -c "Server=.;Database=MyDb" -m sqlcmdex -f script.sql
+tiger-sqlcmd run -c local -m sqlcmdex -f script.sql
 ```
 
-Supports `-v name=value` for variables, `--verbosity`, `--log-level`, and more.
+Here, `local` is a saved connection managed with `tiger-sqlcmd connections`.
+The `run` command supports `-v name=value` for variables, `--verbosity`,
+`--log-level`, and more.
 
 ---
 

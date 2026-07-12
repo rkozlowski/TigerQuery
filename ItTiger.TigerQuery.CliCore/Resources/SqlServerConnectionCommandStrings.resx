@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+
+  <!-- ── Command metadata (identifier keys) ─────────────────────────── -->
+  <data name="Cmd_Connections_List_Description" xml:space="preserve"><value>List saved SQL Server connections.</value></data>
+  <data name="Cmd_Connections_Show_Description" xml:space="preserve"><value>Show a saved SQL Server connection.</value></data>
+  <data name="Cmd_Connections_Add_Description" xml:space="preserve"><value>Add a SQL Server connection.</value></data>
+  <data name="Cmd_Connections_Edit_Description" xml:space="preserve"><value>Edit a SQL Server connection.</value></data>
+  <data name="Cmd_Connections_Delete_Description" xml:space="preserve"><value>Delete a saved SQL Server connection.</value></data>
+
+  <!-- ── Connection settings metadata (identifier keys) ─────────────── -->
+  <data name="Arg_Connection_Name_Description" xml:space="preserve"><value>Connection name.</value></data>
+  <data name="Opt_Connection_Server_Description" xml:space="preserve"><value>SQL Server host or instance.</value></data>
+  <data name="Opt_Connection_Authentication_Description" xml:space="preserve"><value>Authentication mode.</value></data>
+  <data name="Opt_Connection_Username_Description" xml:space="preserve"><value>SQL login username.</value></data>
+  <data name="Opt_Connection_Password_Description" xml:space="preserve"><value>SQL login password.</value></data>
+  <data name="Opt_Connection_Encrypt_Description" xml:space="preserve"><value>Encryption mode.</value></data>
+  <data name="Opt_Connection_TrustServerCertificate_Description" xml:space="preserve"><value>Trust the server certificate.</value></data>
+  <data name="Opt_Connection_ApplicationIntent_Description" xml:space="preserve"><value>Application intent.</value></data>
+  <data name="Opt_Connection_Database_Description" xml:space="preserve"><value>Initial database.</value></data>
+  <data name="Opt_Connection_ConnectTimeout_Description" xml:space="preserve"><value>Connection timeout in seconds.</value></data>
+  <data name="Opt_Connection_MultiSubnetFailover_Description" xml:space="preserve"><value>Enable multi-subnet failover.</value></data>
+  <data name="Opt_Connection_PersistSecurityInfo_Description" xml:space="preserve"><value>Persist security info.</value></data>
+  <data name="Opt_Connection_Pooling_Description" xml:space="preserve"><value>Enable connection pooling.</value></data>
+  <data name="Opt_Connection_MinPoolSize_Description" xml:space="preserve"><value>Minimum pool size (requires pooling).</value></data>
+  <data name="Opt_Connection_MaxPoolSize_Description" xml:space="preserve"><value>Maximum pool size (requires pooling).</value></data>
+  <data name="Opt_Connection_Opt_Description" xml:space="preserve"><value>Additional connection-string option, e.g. --opt Pooling=true or --opt PacketSize 16000.</value></data>
+
+  <!-- ── Enum labels and descriptions (source-text keys) ────────────── -->
+  <data name="Integrated" xml:space="preserve"><value>Integrated</value></data>
+  <data name="SqlPassword" xml:space="preserve"><value>SqlPassword</value></data>
+  <data name="Use Windows Integrated Security" xml:space="preserve"><value>Use Windows Integrated Security</value></data>
+  <data name="Use SQL Username and Password" xml:space="preserve"><value>Use SQL Username and Password</value></data>
+  <data name="Optional" xml:space="preserve"><value>Optional</value></data>
+  <data name="Mandatory" xml:space="preserve"><value>Mandatory</value></data>
+  <data name="Strict" xml:space="preserve"><value>Strict</value></data>
+  <data name="Encrypt only if the server supports it" xml:space="preserve"><value>Encrypt only if the server supports it</value></data>
+  <data name="Require encryption (SqlClient default)" xml:space="preserve"><value>Require encryption (SqlClient default)</value></data>
+  <data name="Strict TLS with certificate validation" xml:space="preserve"><value>Strict TLS with certificate validation</value></data>
+  <data name="ReadWrite" xml:space="preserve"><value>ReadWrite</value></data>
+  <data name="ReadOnly" xml:space="preserve"><value>ReadOnly</value></data>
+  <data name="Read-write workload (default)" xml:space="preserve"><value>Read-write workload (default)</value></data>
+  <data name="Read-only workload (routes to a readable secondary)" xml:space="preserve"><value>Read-only workload (routes to a readable secondary)</value></data>
+
+  <!-- ── Command output (source-text keys) ──────────────────────────── -->
+  <data name="SQL Server connection [White]{0}[/] already exists. Use [White]edit[/] to change it." xml:space="preserve"><value>SQL Server connection [White]{0}[/] already exists. Use [White]edit[/] to change it.</value></data>
+  <data name="Added SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Added SQL Server connection [White]{0}[/].</value></data>
+  <data name="Updated SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Updated SQL Server connection [White]{0}[/].</value></data>
+  <data name="Deleted SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Deleted SQL Server connection [White]{0}[/].</value></data>
+  <data name="SQL Server connection [White]{0}[/] was not found." xml:space="preserve"><value>SQL Server connection [White]{0}[/] was not found.</value></data>
+  <data name="No SQL Server connections." xml:space="preserve"><value>No SQL Server connections.</value></data>
+  <data name="SQL Server connections" xml:space="preserve"><value>SQL Server connections</value></data>
+  <data name="SQL Server connection" xml:space="preserve"><value>SQL Server connection</value></data>
+  <data name="Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Server" xml:space="preserve"><value>Server</value></data>
+  <data name="Authentication" xml:space="preserve"><value>Authentication</value></data>
+  <data name="Database" xml:space="preserve"><value>Database</value></data>
+  <data name="Name:" xml:space="preserve"><value>Name:</value></data>
+  <data name="Server:" xml:space="preserve"><value>Server:</value></data>
+  <data name="Authentication:" xml:space="preserve"><value>Authentication:</value></data>
+  <data name="Username:" xml:space="preserve"><value>Username:</value></data>
+  <data name="Encrypt:" xml:space="preserve"><value>Encrypt:</value></data>
+  <data name="Trust Server Certificate:" xml:space="preserve"><value>Trust Server Certificate:</value></data>
+  <data name="Application Intent:" xml:space="preserve"><value>Application Intent:</value></data>
+  <data name="Database:" xml:space="preserve"><value>Database:</value></data>
+  <data name="Connect Timeout:" xml:space="preserve"><value>Connect Timeout:</value></data>
+  <data name="Multi Subnet Failover:" xml:space="preserve"><value>Multi Subnet Failover:</value></data>
+  <data name="Persist Security Info:" xml:space="preserve"><value>Persist Security Info:</value></data>
+  <data name="Pooling:" xml:space="preserve"><value>Pooling:</value></data>
+  <data name="Min Pool Size:" xml:space="preserve"><value>Min Pool Size:</value></data>
+  <data name="Max Pool Size:" xml:space="preserve"><value>Max Pool Size:</value></data>
+
+  <!-- ── Validation messages (source-text keys) ─────────────────────── -->
+  <data name="Username is required for SQL password authentication." xml:space="preserve"><value>Username is required for SQL password authentication.</value></data>
+  <data name="Password is required for SQL password authentication." xml:space="preserve"><value>Password is required for SQL password authentication.</value></data>
+  <data name="--min-pool-size and --max-pool-size cannot be used when pooling is disabled (--pooling false)." xml:space="preserve"><value>--min-pool-size and --max-pool-size cannot be used when pooling is disabled (--pooling false).</value></data>
+</root>

@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
     <RootNamespace>ItTiger.TigerQuery.Tests</RootNamespace>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <!--
     To enable the Microsoft Testing Platform 'dotnet test' experience, add property:
       <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
@@ -33,7 +33,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ItTiger.TigerQuery.Core\ItTiger.TigerQuery.Core.csproj" />
+    <ProjectReference Include="..\ItTiger.TigerQuery.CliCore\ItTiger.TigerQuery.CliCore.csproj" />
     <ProjectReference Include="..\ItTiger.TigerQuery\ItTiger.TigerQuery.csproj" />
+	<ProjectReference Include="..\ItTiger.TigerSqlCmd\ItTiger.TigerSqlCmd.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ItTiger.TigerQuery.CliCore</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ItTiger.TigerQuery.Core\ItTiger.TigerQuery.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ItTiger.TigerQuery.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ItTiger.Core" Version="0.8.0" />
+    <PackageReference Include="ItTiger.TigerCli" Version="0.8.0" />
+  </ItemGroup>
+
+</Project>

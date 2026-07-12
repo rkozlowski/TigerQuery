@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+
+  <!-- ── Command metadata (identifier keys) ─────────────────────────── -->
+  <data name="Cmd_Connections_List_Description" xml:space="preserve"><value>Wyświetla zapisane połączenia SQL Server.</value></data>
+  <data name="Cmd_Connections_Show_Description" xml:space="preserve"><value>Pokazuje zapisane połączenie SQL Server.</value></data>
+  <data name="Cmd_Connections_Add_Description" xml:space="preserve"><value>Dodaje połączenie SQL Server.</value></data>
+  <data name="Cmd_Connections_Edit_Description" xml:space="preserve"><value>Edytuje połączenie SQL Server.</value></data>
+  <data name="Cmd_Connections_Delete_Description" xml:space="preserve"><value>Usuwa zapisane połączenie SQL Server.</value></data>
+
+  <!-- ── Connection settings metadata (identifier keys) ─────────────── -->
+  <data name="Arg_Connection_Name_Description" xml:space="preserve"><value>Nazwa połączenia.</value></data>
+  <data name="Opt_Connection_Server_Description" xml:space="preserve"><value>Host lub instancja SQL Server.</value></data>
+  <data name="Opt_Connection_Authentication_Description" xml:space="preserve"><value>Tryb uwierzytelniania.</value></data>
+  <data name="Opt_Connection_Username_Description" xml:space="preserve"><value>Nazwa użytkownika logowania SQL.</value></data>
+  <data name="Opt_Connection_Password_Description" xml:space="preserve"><value>Hasło logowania SQL.</value></data>
+  <data name="Opt_Connection_Encrypt_Description" xml:space="preserve"><value>Tryb szyfrowania.</value></data>
+  <data name="Opt_Connection_TrustServerCertificate_Description" xml:space="preserve"><value>Ufaj certyfikatowi serwera.</value></data>
+  <data name="Opt_Connection_ApplicationIntent_Description" xml:space="preserve"><value>Intencja aplikacji (rodzaj obciążenia).</value></data>
+  <data name="Opt_Connection_Database_Description" xml:space="preserve"><value>Początkowa baza danych.</value></data>
+  <data name="Opt_Connection_ConnectTimeout_Description" xml:space="preserve"><value>Limit czasu połączenia w sekundach.</value></data>
+  <data name="Opt_Connection_MultiSubnetFailover_Description" xml:space="preserve"><value>Włącz przełączanie awaryjne między podsieciami.</value></data>
+  <data name="Opt_Connection_PersistSecurityInfo_Description" xml:space="preserve"><value>Zachowuj informacje zabezpieczeń.</value></data>
+  <data name="Opt_Connection_Pooling_Description" xml:space="preserve"><value>Włącz pulę połączeń.</value></data>
+  <data name="Opt_Connection_MinPoolSize_Description" xml:space="preserve"><value>Minimalny rozmiar puli (wymaga puli połączeń).</value></data>
+  <data name="Opt_Connection_MaxPoolSize_Description" xml:space="preserve"><value>Maksymalny rozmiar puli (wymaga puli połączeń).</value></data>
+  <data name="Opt_Connection_Opt_Description" xml:space="preserve"><value>Dodatkowa opcja parametrów połączenia, np. --opt Pooling=true albo --opt PacketSize 16000.</value></data>
+
+  <!-- ── Enum labels and descriptions (source-text keys) ────────────── -->
+  <data name="Integrated" xml:space="preserve"><value>Zintegrowane (Windows)</value></data>
+  <data name="SqlPassword" xml:space="preserve"><value>Hasło SQL</value></data>
+  <data name="Use Windows Integrated Security" xml:space="preserve"><value>Użyj zintegrowanego uwierzytelniania systemu Windows</value></data>
+  <data name="Use SQL Username and Password" xml:space="preserve"><value>Użyj nazwy użytkownika i hasła SQL</value></data>
+  <data name="Optional" xml:space="preserve"><value>Opcjonalne</value></data>
+  <data name="Mandatory" xml:space="preserve"><value>Wymagane</value></data>
+  <data name="Strict" xml:space="preserve"><value>Ścisłe</value></data>
+  <data name="Encrypt only if the server supports it" xml:space="preserve"><value>Szyfruj tylko wtedy, gdy serwer to obsługuje</value></data>
+  <data name="Require encryption (SqlClient default)" xml:space="preserve"><value>Wymagaj szyfrowania (domyślne ustawienie SqlClient)</value></data>
+  <data name="Strict TLS with certificate validation" xml:space="preserve"><value>Ścisłe TLS z walidacją certyfikatu</value></data>
+  <data name="ReadWrite" xml:space="preserve"><value>Odczyt i zapis</value></data>
+  <data name="ReadOnly" xml:space="preserve"><value>Tylko odczyt</value></data>
+  <data name="Read-write workload (default)" xml:space="preserve"><value>Obciążenie do odczytu i zapisu (domyślne)</value></data>
+  <data name="Read-only workload (routes to a readable secondary)" xml:space="preserve"><value>Obciążenie tylko do odczytu (kierowane do repliki do odczytu)</value></data>
+
+  <!-- ── Command output (source-text keys) ──────────────────────────── -->
+  <data name="SQL Server connection [White]{0}[/] already exists. Use [White]edit[/] to change it." xml:space="preserve"><value>Połączenie SQL Server [White]{0}[/] już istnieje. Użyj [White]edit[/], aby je zmienić.</value></data>
+  <data name="Added SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Dodano połączenie SQL Server [White]{0}[/].</value></data>
+  <data name="Updated SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Zaktualizowano połączenie SQL Server [White]{0}[/].</value></data>
+  <data name="Deleted SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Usunięto połączenie SQL Server [White]{0}[/].</value></data>
+  <data name="SQL Server connection [White]{0}[/] was not found." xml:space="preserve"><value>Nie znaleziono połączenia SQL Server [White]{0}[/].</value></data>
+  <data name="No SQL Server connections." xml:space="preserve"><value>Brak połączeń SQL Server.</value></data>
+  <data name="SQL Server connections" xml:space="preserve"><value>Połączenia SQL Server</value></data>
+  <data name="SQL Server connection" xml:space="preserve"><value>Połączenie SQL Server</value></data>
+  <data name="Name" xml:space="preserve"><value>Nazwa</value></data>
+  <data name="Server" xml:space="preserve"><value>Serwer</value></data>
+  <data name="Authentication" xml:space="preserve"><value>Uwierzytelnianie</value></data>
+  <data name="Database" xml:space="preserve"><value>Baza danych</value></data>
+  <data name="Name:" xml:space="preserve"><value>Nazwa:</value></data>
+  <data name="Server:" xml:space="preserve"><value>Serwer:</value></data>
+  <data name="Authentication:" xml:space="preserve"><value>Uwierzytelnianie:</value></data>
+  <data name="Username:" xml:space="preserve"><value>Użytkownik:</value></data>
+  <data name="Encrypt:" xml:space="preserve"><value>Szyfrowanie:</value></data>
+  <data name="Trust Server Certificate:" xml:space="preserve"><value>Ufaj certyfikatowi serwera:</value></data>
+  <data name="Application Intent:" xml:space="preserve"><value>Intencja aplikacji:</value></data>
+  <data name="Database:" xml:space="preserve"><value>Baza danych:</value></data>
+  <data name="Connect Timeout:" xml:space="preserve"><value>Limit czasu połączenia:</value></data>
+  <data name="Multi Subnet Failover:" xml:space="preserve"><value>Przełączanie awaryjne między podsieciami:</value></data>
+  <data name="Persist Security Info:" xml:space="preserve"><value>Zachowywanie informacji zabezpieczeń:</value></data>
+  <data name="Pooling:" xml:space="preserve"><value>Pula połączeń:</value></data>
+  <data name="Min Pool Size:" xml:space="preserve"><value>Minimalny rozmiar puli:</value></data>
+  <data name="Max Pool Size:" xml:space="preserve"><value>Maksymalny rozmiar puli:</value></data>
+
+  <!-- ── Validation messages (source-text keys) ─────────────────────── -->
+  <data name="Username is required for SQL password authentication." xml:space="preserve"><value>Nazwa użytkownika jest wymagana przy uwierzytelnianiu hasłem SQL.</value></data>
+  <data name="Password is required for SQL password authentication." xml:space="preserve"><value>Hasło jest wymagane przy uwierzytelnianiu hasłem SQL.</value></data>
+  <data name="--min-pool-size and --max-pool-size cannot be used when pooling is disabled (--pooling false)." xml:space="preserve"><value>Opcje --min-pool-size i --max-pool-size nie mogą być używane, gdy pula połączeń jest wyłączona (--pooling false).</value></data>
+</root>

@@ -1,151 +1,74 @@
-﻿using ItTiger.TigerQuery.Engine;
-using ItTiger.TigerQuery.Events;
+using ItTiger.TigerCli.Commands;
+using ItTiger.TigerCli.Markup;
+using ItTiger.TigerCli.Terminal;
+using ItTiger.TigerQuery.Engine;
 using ItTiger.TigerSqlCmd.Logging;
 using Microsoft.Extensions.Logging;
-using Spectre.Console;
-using Spectre.Console.Cli;
 
 
 namespace ItTiger.TigerSqlCmd;
 
-public sealed class TigerSqlCmdCommand : AsyncCommand<TigerSqlCmdSettings>
+/// <summary>
+/// The advanced <c>run</c> command: full sqlcmd-style script/query execution with
+/// variables, mode, verbosity and logging. Automation-friendly — it never prompts for
+/// the script/query, though it may prompt for a missing connection when interactive.
+/// </summary>
+public sealed class TigerSqlCmdCommand : TigerCliAsyncCommandHandler<TigerSqlCmdSettings>
 {
-    private Verbosity _verbosity = Verbosity.Normal;
-
-    private void WriteMessage(SqlCmdMessage message, bool isException)
-    {
-        var colour = message.Type switch
-        {
-            SqlCmdMessageType.Print => "silver",
-            SqlCmdMessageType.Raiserror => "silver",
-            SqlCmdMessageType.Info => "silver",
-            SqlCmdMessageType.Warning => "orange3",
-            SqlCmdMessageType.Error => "red3",
-            SqlCmdMessageType.Exception => "red3",
-            SqlCmdMessageType.FatalError => "red",
-            SqlCmdMessageType.FatalException => "red",
-            _ => "gray"
-        };
-        var minVerbosity = message.Type switch
-        {
-            SqlCmdMessageType.Print => Verbosity.Normal,
-            SqlCmdMessageType.Raiserror => Verbosity.Normal,
-            SqlCmdMessageType.Info => Verbosity.Normal,
-            SqlCmdMessageType.Warning => Verbosity.Quiet,
-            SqlCmdMessageType.Error => Verbosity.Quiet,
-            SqlCmdMessageType.Exception => Verbosity.Quiet,
-            SqlCmdMessageType.FatalError => Verbosity.Quiet,
-            SqlCmdMessageType.FatalException => Verbosity.Quiet,
-            _ => Verbosity.VeryVerbose
-        };
-        if (_verbosity >= minVerbosity)
-        {
-            AnsiConsole.MarkupLine($"[{colour}]{Markup.Escape(message.Text)}[/]");
-        }        
-    }
-
-    private void WriteBatchStart(BatchStart start)
-    {
-        if (_verbosity >= Verbosity.Verbose)
-        {
-            AnsiConsole.MarkupLine($"[gray]--> Batch {start.BatchNumber} ({start.ExecutionIndex}/{start.ExecutionCount})[/] executing...");
-        }
-    }
-
-    private void WriteBatchEnd(BatchEnd end)
-    {
-        if (_verbosity >= Verbosity.Verbose)
-        {
-            var duration = end.Duration.TotalMilliseconds.ToString("F0");
-            var status = end.Success ? "[green]completed[/]" : "[red]failed[/]";
-            AnsiConsole.MarkupLine($"{status} in {duration}ms");
-        }
-    }
-
-    private void WriteResultSet(ResultSetInfo rsi)
-    {
-        if (rsi.Columns.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[gray](No columns returned)[/]");
-            return;
-        }
-
-        var table = new Table();
-
-        // Add columns
-        foreach (var col in rsi.Columns)
-        {
-            table.AddColumn($"[silver]{Markup.Escape(col.Name)}[/]");
-        }
-
-        // Add rows
-        foreach (var row in rsi.Rows)
-        {
-            var cells = row.Select(value =>
-            {
-                var str = value switch
-                {
-                    null => "[gray](null)[/]",
-                    DateTime dt => dt.ToString("yyyy-MM-dd HH:mm:ss"),
-                    _ => Markup.Escape(value.ToString() ?? "")
-                };
-                return str;
-            }).ToArray();
-
-            table.AddRow(cells);
-        }
-
-        AnsiConsole.Write(table);
-    }
-
-
-    public override async Task<int> ExecuteAsync(CommandContext context, TigerSqlCmdSettings settings)
+    public override async Task<int> ExecuteAsync(TigerSqlCmdSettings settings)
     {
         ILogger? logger = null;
-        _verbosity = settings.Verbosity;
+        var verbosity = settings.Verbosity;
         if (!string.IsNullOrWhiteSpace(settings.LogFile))
-        { 
+        {
             var loggerFactory = NLogSetup.CreateLoggerFactory(settings.LogFile, settings.LogLevel);
             logger = loggerFactory.CreateLogger("TigerSqlCmd");
             logger.LogInformation("Starting tiger-sqlcmd with mode: {Mode}", settings.Mode);
         }
 
-        var variables = SqlCmdVariableParser.Parse(settings.Variables);
-        if (_verbosity >= Verbosity.Normal)
+        var variables = settings.Variables.ToDictionary();
+        if (verbosity >= Verbosity.Normal)
         {
-            AnsiConsole.MarkupLine($"[gray]Mode:[/] {settings.Mode}");
-            if (_verbosity == Verbosity.VeryVerbose)
+            TigerConsole.MarkupLine(settings.E("[gray]Mode:[/] {0}", settings.Mode));
+            if (verbosity == Verbosity.VeryVerbose)
             {
-                AnsiConsole.MarkupLine($"[gray]Connecting to:[/] [blue]{Markup.Escape(settings.ConnectionString)}[/]");
+                // The saved connection name, never the resolved connection string (which may carry a password).
+                TigerConsole.MarkupLine(settings.E("[gray]Using connection:[/] [blue]{0}[/]", settings.Connection));
             }
 
-            if (_verbosity >= Verbosity.Verbose)
+            if (verbosity >= Verbosity.Verbose)
             {
                 if (settings.FilePath != null)
-                    AnsiConsole.MarkupLine($"[gray]Executing file:[/] [green]{Markup.Escape(settings.FilePath)}[/]");
+                    TigerConsole.MarkupLine(settings.E("[gray]Executing file:[/] [green]{0}[/]", settings.FilePath));
                 else
-                    AnsiConsole.MarkupLine($"[gray]Executing query:[/] [green]{Markup.Escape(settings.Query ?? "")}[/]");
+                    TigerConsole.MarkupLine(settings.E("[gray]Executing query:[/] [green]{0}[/]", settings.Query ?? ""));
 
                 if (variables.Any())
                 {
-                    AnsiConsole.MarkupLine("[gray]Variables:[/]");
+                    TigerConsole.MarkupLine(settings.T("[gray]Variables:[/]"));
                     foreach (var (key, value) in variables)
-                        AnsiConsole.MarkupLine($"  [cyan]{Markup.Escape(key)}[/] = [yellow]{Markup.Escape(value)}[/]");
+                        TigerConsole.MarkupLine($"  [cyan]{CliMarkupParser.Escape(key)}[/] = [yellow]{CliMarkupParser.Escape(value)}[/]");
                 }
             }
         }
-        
 
+        // Resolve the saved connection profile to a connection string before building engine
+        // options. The store is reused (no persistence logic duplicated here); the engine only
+        // ever sees a plain connection string.
+        if (!TigerSqlCmdApp.TryResolveConnection(settings.Connection, logger, out var connectionString, out var failureExitCode))
+            return failureExitCode;
+
+        var renderer = new TigerSqlCmdRenderer(verbosity, settings);
         var options = new TigerQueryEngineOptions
         {
-            ConnectionString = settings.ConnectionString,
+            ConnectionString = connectionString,
             Mode = settings.Mode,
             Variables = variables,
             Logger = logger,
-            OnMessage = WriteMessage,
-            OnBatchStart = WriteBatchStart,
-            OnBatchEnd = WriteBatchEnd,
-            OnResultSet = WriteResultSet
+            OnMessage = renderer.WriteMessage,
+            OnBatchStart = renderer.WriteBatchStart,
+            OnBatchEnd = renderer.WriteBatchEnd,
+            OnResultSet = renderer.WriteResultSet
         };
 
         var engine = new TigerQueryEngine(options);
@@ -157,7 +80,7 @@ public sealed class TigerSqlCmdCommand : AsyncCommand<TigerSqlCmdSettings>
         else
         {
             result = await engine.RunFromStringAsync(settings.Query ?? "");
-        }        
+        }
         return (int)result.ResultCode;
     }
 }

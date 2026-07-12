@@ -1,4 +1,5 @@
-﻿using Spectre.Console.Cli;
+using ItTiger.TigerCli.Terminal;
+using ItTiger.TigerCli.Tui.Themes;
 
 namespace ItTiger.TigerSqlCmd
 {
@@ -6,16 +7,10 @@ namespace ItTiger.TigerSqlCmd
     {
         static async Task<int> Main(string[] args)
         {
-            var app = new CommandApp();
-            app.SetDefaultCommand<TigerSqlCmdCommand>();
-            app.Configure(config =>
-            {
-                config.SetApplicationName("tiger-sqlcmd");
-                config.AddCommand<TigerSqlCmdCommand>("run")
-                
-                      .WithDescription("Executes a SQL file or query using TigerQueryEngine.");
-            });
-            
+            TigerConsole.CurrentTheme = new TigerBlueTheme();
+
+            var app = TigerSqlCmdApp.Build(TigerSqlCmdApp.CreateDefaultStore());
+
             return await app.RunAsync(args);
         }
     }
