@@ -1,7 +1,6 @@
 ﻿using ItTiger.TigerQuery.Events;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Data;

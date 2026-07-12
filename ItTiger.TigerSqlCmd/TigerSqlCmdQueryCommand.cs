@@ -9,9 +9,9 @@ namespace ItTiger.TigerSqlCmd;
 /// the connection through the shared resolver, and executes the query with default engine
 /// settings. Advanced behavior (files, variables, mode, logging) lives in <c>run</c>.
 /// </summary>
-public sealed class TigerSqlCmdQueryCommand : TigerCliAsyncCommandHandler<TigerSqlCmdQuerySettings>
+public sealed class TigerSqlCmdQueryCommand : TigerCliAsyncCommandHandler<TigerSqlCmdQuerySettings, TigerSqlCmdExitCode>
 {
-    public override async Task<int> ExecuteAsync(TigerSqlCmdQuerySettings settings)
+    public override async Task<TigerSqlCmdExitCode> ExecuteAsync(TigerSqlCmdQuerySettings settings)
     {
         // The engine only ever receives a plain connection string; saved profiles stay behind
         // the resolver, and the resolved string is never printed.
@@ -29,7 +29,7 @@ public sealed class TigerSqlCmdQueryCommand : TigerCliAsyncCommandHandler<TigerS
         };
 
         var engine = new TigerQueryEngine(options);
-        var result = await engine.RunFromStringAsync(settings.Query);
-        return (int)result.ResultCode;
+        return await TigerSqlCmdEngineRunner.RunAsync(logger: null, token =>
+            engine.RunFromStringAsync(settings.Query, token));
     }
 }

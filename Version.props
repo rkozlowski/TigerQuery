@@ -1,12 +1,43 @@
 <Project>
-  <PropertyGroup>
-    <!-- Core version numbers -->
-    <Version>0.8.0</Version>
-    <AssemblyVersion>0.8.0.0</AssemblyVersion>
-    <FileVersion>0.8.0.0</FileVersion>
 
-    <!-- Dynamically generated UTC timestamp suffix -->
-    <UtcTimestamp>$([System.DateTime]::UtcNow.ToString("yyyyMMdd.HHmmss"))</UtcTimestamp>
-    <InformationalVersion>$(Version)+$(UtcTimestamp)</InformationalVersion>
+  <!--
+    Shared version, company, and repository metadata for the TigerQuery projects:
+    ItTiger.TigerQuery, ItTiger.TigerQuery.Core, ItTiger.TigerQuery.CliCore,
+    ItTiger.TigerSqlCmd, and ItTiger.TigerQuery.Tests. Imported explicitly by each
+    project file. Project-specific metadata (AssemblyName, Product, Description)
+    stays in each project file.
+  -->
+
+  <PropertyGroup>
+    <Version>0.8.1</Version>
+    <AssemblyVersion>0.8.1.0</AssemblyVersion>
+    <FileVersion>0.8.1.0</FileVersion>
+    <UtcBuildTimestamp>$([System.DateTime]::UtcNow.ToString('yyyyMMdd.HHmmss'))</UtcBuildTimestamp>
+    <InformationalVersion>$(Version)+$(UtcBuildTimestamp)</InformationalVersion>
+    <!-- Keep InformationalVersion exactly Version+timestamp; without this the SDK appends the git SHA. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
+    <Company>IT Tiger</Company>
+    <Authors>IT Tiger</Authors>
+    <Copyright>Copyright (c) $([System.DateTime]::UtcNow.Year) IT Tiger</Copyright>
+    <NeutralLanguage>en-US</NeutralLanguage>
+
+    <RepositoryUrl>https://github.com/rkozlowski/TigerQuery</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://www.ittiger.net/projects/tigerquery/</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
+
+  <!-- Surface links at runtime so TigerCli app metadata (help footer, version output) can read them. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>Documentation</_Parameter1>
+      <_Parameter2>$(PackageProjectUrl)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepositoryUrl</_Parameter1>
+      <_Parameter2>$(RepositoryUrl)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

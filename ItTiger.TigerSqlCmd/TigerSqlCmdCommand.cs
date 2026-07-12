@@ -13,9 +13,9 @@ namespace ItTiger.TigerSqlCmd;
 /// variables, mode, verbosity and logging. Automation-friendly — it never prompts for
 /// the script/query, though it may prompt for a missing connection when interactive.
 /// </summary>
-public sealed class TigerSqlCmdCommand : TigerCliAsyncCommandHandler<TigerSqlCmdSettings>
+public sealed class TigerSqlCmdCommand : TigerCliAsyncCommandHandler<TigerSqlCmdSettings, TigerSqlCmdExitCode>
 {
-    public override async Task<int> ExecuteAsync(TigerSqlCmdSettings settings)
+    public override async Task<TigerSqlCmdExitCode> ExecuteAsync(TigerSqlCmdSettings settings)
     {
         ILogger? logger = null;
         var verbosity = settings.Verbosity;
@@ -29,25 +29,25 @@ public sealed class TigerSqlCmdCommand : TigerCliAsyncCommandHandler<TigerSqlCmd
         var variables = settings.Variables.ToDictionary();
         if (verbosity >= Verbosity.Normal)
         {
-            TigerConsole.MarkupLine(settings.E("[gray]Mode:[/] {0}", settings.Mode));
+            TigerConsole.MarkupLine(settings.E("[Muted]Mode:[/] {0}", settings.Mode));
             if (verbosity == Verbosity.VeryVerbose)
             {
                 // The saved connection name, never the resolved connection string (which may carry a password).
-                TigerConsole.MarkupLine(settings.E("[gray]Using connection:[/] [blue]{0}[/]", settings.Connection));
+                TigerConsole.MarkupLine(settings.E("[Muted]Using connection:[/] [Value]{0}[/]", settings.Connection));
             }
 
             if (verbosity >= Verbosity.Verbose)
             {
                 if (settings.FilePath != null)
-                    TigerConsole.MarkupLine(settings.E("[gray]Executing file:[/] [green]{0}[/]", settings.FilePath));
+                    TigerConsole.MarkupLine(settings.E("[Muted]Executing file:[/] [Path]{0}[/]", settings.FilePath));
                 else
-                    TigerConsole.MarkupLine(settings.E("[gray]Executing query:[/] [green]{0}[/]", settings.Query ?? ""));
+                    TigerConsole.MarkupLine(settings.E("[Muted]Executing query:[/] [Value]{0}[/]", settings.Query ?? ""));
 
                 if (variables.Any())
                 {
-                    TigerConsole.MarkupLine(settings.T("[gray]Variables:[/]"));
+                    TigerConsole.MarkupLine(settings.T("[Muted]Variables:[/]"));
                     foreach (var (key, value) in variables)
-                        TigerConsole.MarkupLine($"  [cyan]{CliMarkupParser.Escape(key)}[/] = [yellow]{CliMarkupParser.Escape(value)}[/]");
+                        TigerConsole.MarkupLine($"  [Key]{CliMarkupParser.Escape(key)}[/] = [Value]{CliMarkupParser.Escape(value)}[/]");
                 }
             }
         }
@@ -72,15 +72,9 @@ public sealed class TigerSqlCmdCommand : TigerCliAsyncCommandHandler<TigerSqlCmd
         };
 
         var engine = new TigerQueryEngine(options);
-        ExecutionResult result;
-        if (!string.IsNullOrWhiteSpace(settings.FilePath))
-        {
-            result = await engine.RunFromFileAsync(settings.FilePath);
-        }
-        else
-        {
-            result = await engine.RunFromStringAsync(settings.Query ?? "");
-        }
-        return (int)result.ResultCode;
+        return await TigerSqlCmdEngineRunner.RunAsync(logger, token =>
+            !string.IsNullOrWhiteSpace(settings.FilePath)
+                ? engine.RunFromFileAsync(settings.FilePath, cancellationToken: token)
+                : engine.RunFromStringAsync(settings.Query ?? "", token));
     }
 }

@@ -52,9 +52,9 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
 
   <!-- ── App and command metadata (identifier keys) ─────────────────── -->
-  <data name="App_Description" xml:space="preserve"><value>Wykonuje zapytanie [bold underline cyan]SQL Server[/] na zapisanym połączeniu. Użyj [italic cyan]run[/] dla skryptów i zaawansowanych opcji sqlcmd.</value></data>
+  <data name="App_Description" xml:space="preserve"><value>Wykonuje zapytanie [Accent]SQL Server[/] na zapisanym połączeniu. Użyj [Accent]run[/] dla skryptów i zaawansowanych opcji sqlcmd.</value></data>
   <data name="Grp_Connections_Description" xml:space="preserve"><value>Zarządzanie zapisanymi połączeniami</value></data>
-  <data name="Cmd_Run_Description" xml:space="preserve"><value>Zaawansowane wykonywanie [Bold]sql[Italic]cmd[/][/]: uruchamia plik skryptu lub zapytanie ze zmiennymi, trybem, szczegółowością i logowaniem.</value></data>
+  <data name="Cmd_Run_Description" xml:space="preserve"><value>Zaawansowane wykonywanie sqlcmd: uruchamia plik skryptu lub zapytanie ze zmiennymi, trybem, szczegółowością i logowaniem.</value></data>
 
   <!-- ── Option metadata (identifier keys) ──────────────────────────── -->
   <data name="Opt_Connection_Description" xml:space="preserve"><value>Nazwa zapisanego połączenia SQL Server (zarządzanego poleceniem 'connections').</value></data>
@@ -68,13 +68,13 @@
   <data name="Opt_Run_Var_Description" xml:space="preserve"><value>Zmienna w stylu SQLCMD.</value></data>
 
   <!-- ── Command output (source-text keys) ──────────────────────────── -->
-  <data name="[gray]Mode:[/] {0}" xml:space="preserve"><value>[gray]Tryb:[/] {0}</value></data>
-  <data name="[gray]Using connection:[/] [blue]{0}[/]" xml:space="preserve"><value>[gray]Połączenie:[/] [blue]{0}[/]</value></data>
-  <data name="[gray]Executing file:[/] [green]{0}[/]" xml:space="preserve"><value>[gray]Wykonywanie pliku:[/] [green]{0}[/]</value></data>
-  <data name="[gray]Executing query:[/] [green]{0}[/]" xml:space="preserve"><value>[gray]Wykonywanie zapytania:[/] [green]{0}[/]</value></data>
-  <data name="[gray]Variables:[/]" xml:space="preserve"><value>[gray]Zmienne:[/]</value></data>
-  <data name="[gray]--&gt; Batch {0} ({1}/{2})[/] executing..." xml:space="preserve"><value>[gray]--&gt; Pakiet {0} ({1}/{2})[/] wykonywanie...</value></data>
-  <data name="[green]completed[/] in {0}ms" xml:space="preserve"><value>[green]ukończono[/] w {0} ms</value></data>
-  <data name="[red]failed[/] in {0}ms" xml:space="preserve"><value>[red]niepowodzenie[/] w {0} ms</value></data>
-  <data name="[DarkGray](No columns returned)[/]" xml:space="preserve"><value>[DarkGray](Nie zwrócono kolumn)[/]</value></data>
+  <data name="[Muted]Mode:[/] {0}" xml:space="preserve"><value>[Muted]Tryb:[/] {0}</value></data>
+  <data name="[Muted]Using connection:[/] [Value]{0}[/]" xml:space="preserve"><value>[Muted]Połączenie:[/] [Value]{0}[/]</value></data>
+  <data name="[Muted]Executing file:[/] [Path]{0}[/]" xml:space="preserve"><value>[Muted]Wykonywanie pliku:[/] [Path]{0}[/]</value></data>
+  <data name="[Muted]Executing query:[/] [Value]{0}[/]" xml:space="preserve"><value>[Muted]Wykonywanie zapytania:[/] [Value]{0}[/]</value></data>
+  <data name="[Muted]Variables:[/]" xml:space="preserve"><value>[Muted]Zmienne:[/]</value></data>
+  <data name="[Muted]--&gt; Batch {0} ({1}/{2})[/] executing..." xml:space="preserve"><value>[Muted]--&gt; Pakiet {0} ({1}/{2})[/] wykonywanie...</value></data>
+  <data name="[Success]completed[/] in {0}ms" xml:space="preserve"><value>[Success]ukończono[/] w {0} ms</value></data>
+  <data name="[Error]failed[/] in {0}ms" xml:space="preserve"><value>[Error]niepowodzenie[/] w {0} ms</value></data>
+  <data name="[Muted](No columns returned)[/]" xml:space="preserve"><value>[Muted](Nie zwrócono kolumn)[/]</value></data>
 </root>

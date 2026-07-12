@@ -7,6 +7,10 @@
     <Nullable>enable</Nullable>
     <AssemblyName>tiger-sqlcmd</AssemblyName>
     <ApplicationIcon>TigerQuery.ico</ApplicationIcon>
+    <!-- Read at run time by TigerCli's UseAssemblyMetadata: Product backs the display
+         name, Description the assembly-attribute fallback for the localized help text. -->
+    <Product>TigerSqlCmd</Product>
+    <Description>SQL Server script and query runner built on the TigerQuery engine, with sqlcmd-compatible scripting, saved connections, variables, and logging.</Description>
   </PropertyGroup>
 
   <ItemGroup>

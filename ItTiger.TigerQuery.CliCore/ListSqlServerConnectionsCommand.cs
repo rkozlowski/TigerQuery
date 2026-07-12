@@ -9,15 +9,15 @@ namespace ItTiger.TigerQuery.CliCore;
 internal sealed class ListSqlServerConnectionsSettings : TigerCliSettings;
 
 internal sealed class ListSqlServerConnectionsCommand(SqlServerConnectionCommandContext context)
-    : TigerCliAsyncCommandHandler<ListSqlServerConnectionsSettings>
+    : TigerCliAsyncCommandHandler<ListSqlServerConnectionsSettings, SqlServerConnectionExitCode>
 {
-    public override Task<int> ExecuteAsync(ListSqlServerConnectionsSettings s)
+    public override Task<SqlServerConnectionExitCode> ExecuteAsync(ListSqlServerConnectionsSettings s)
     {
         var profiles = context.Store.Load().OrderBy(profile => profile.Name).ToList();
         if (profiles.Count == 0)
         {
             TigerConsole.MarkupErrorLine(s.T("No SQL Server connections."));
-            return Task.FromResult(SqlServerConnectionCommandExitCodes.Ok);
+            return Task.FromResult(SqlServerConnectionExitCode.Ok);
         }
 
         var table = new CliTable()
@@ -38,6 +38,6 @@ internal sealed class ListSqlServerConnectionsCommand(SqlServerConnectionCommand
                 profile.Database);
         }
         TigerConsole.Render(table);
-        return Task.FromResult(SqlServerConnectionCommandExitCodes.Ok);
+        return Task.FromResult(SqlServerConnectionExitCode.Ok);
     }
 }

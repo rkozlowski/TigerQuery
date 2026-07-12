@@ -93,11 +93,11 @@
   <data name="Read-only workload (routes to a readable secondary)" xml:space="preserve"><value>Obciążenie tylko do odczytu (kierowane do repliki do odczytu)</value></data>
 
   <!-- ── Command output (source-text keys) ──────────────────────────── -->
-  <data name="SQL Server connection [White]{0}[/] already exists. Use [White]edit[/] to change it." xml:space="preserve"><value>Połączenie SQL Server [White]{0}[/] już istnieje. Użyj [White]edit[/], aby je zmienić.</value></data>
-  <data name="Added SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Dodano połączenie SQL Server [White]{0}[/].</value></data>
-  <data name="Updated SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Zaktualizowano połączenie SQL Server [White]{0}[/].</value></data>
-  <data name="Deleted SQL Server connection [White]{0}[/]." xml:space="preserve"><value>Usunięto połączenie SQL Server [White]{0}[/].</value></data>
-  <data name="SQL Server connection [White]{0}[/] was not found." xml:space="preserve"><value>Nie znaleziono połączenia SQL Server [White]{0}[/].</value></data>
+  <data name="SQL Server connection [Value]{0}[/] already exists. Use [Value]edit[/] to change it." xml:space="preserve"><value>Połączenie SQL Server [Value]{0}[/] już istnieje. Użyj [Value]edit[/], aby je zmienić.</value></data>
+  <data name="Added SQL Server connection [Value]{0}[/]." xml:space="preserve"><value>Dodano połączenie SQL Server [Value]{0}[/].</value></data>
+  <data name="Updated SQL Server connection [Value]{0}[/]." xml:space="preserve"><value>Zaktualizowano połączenie SQL Server [Value]{0}[/].</value></data>
+  <data name="Deleted SQL Server connection [Value]{0}[/]." xml:space="preserve"><value>Usunięto połączenie SQL Server [Value]{0}[/].</value></data>
+  <data name="SQL Server connection [Value]{0}[/] was not found." xml:space="preserve"><value>Nie znaleziono połączenia SQL Server [Value]{0}[/].</value></data>
   <data name="No SQL Server connections." xml:space="preserve"><value>Brak połączeń SQL Server.</value></data>
   <data name="SQL Server connections" xml:space="preserve"><value>Połączenia SQL Server</value></data>
   <data name="SQL Server connection" xml:space="preserve"><value>Połączenie SQL Server</value></data>

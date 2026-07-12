@@ -27,17 +27,19 @@ internal sealed class TigerSqlCmdRenderer
 
     public void WriteMessage(SqlCmdMessage message, bool isException)
     {
-        var colour = message.Type switch
+        // Semantic theme roles, not raw colours: SQL messages are payload (plain text),
+        // warnings/errors take the theme's severity styles, anything unknown is muted.
+        var style = message.Type switch
         {
-            SqlCmdMessageType.Print => "silver",
-            SqlCmdMessageType.Raiserror => "silver",
-            SqlCmdMessageType.Info => "silver",
-            SqlCmdMessageType.Warning => "orange",
-            SqlCmdMessageType.Error => "red",
-            SqlCmdMessageType.Exception => "red",
-            SqlCmdMessageType.FatalError => "red",
-            SqlCmdMessageType.FatalException => "red",
-            _ => "gray"
+            SqlCmdMessageType.Print => null,
+            SqlCmdMessageType.Raiserror => null,
+            SqlCmdMessageType.Info => null,
+            SqlCmdMessageType.Warning => "Warning",
+            SqlCmdMessageType.Error => "Error",
+            SqlCmdMessageType.Exception => "Error",
+            SqlCmdMessageType.FatalError => "Error",
+            SqlCmdMessageType.FatalException => "Error",
+            _ => "Muted"
         };
         var minVerbosity = message.Type switch
         {
@@ -53,7 +55,8 @@ internal sealed class TigerSqlCmdRenderer
         };
         if (_verbosity >= minVerbosity)
         {
-            TigerConsole.MarkupLine($"[{colour}]{CliMarkupParser.Escape(message.Text)}[/]");
+            var text = CliMarkupParser.Escape(message.Text);
+            TigerConsole.MarkupLine(style is null ? text : $"[{style}]{text}[/]");
         }
     }
 
@@ -62,7 +65,7 @@ internal sealed class TigerSqlCmdRenderer
         if (_verbosity >= Verbosity.Verbose)
         {
             TigerConsole.MarkupLine(_settings.E(
-                "[gray]--> Batch {0} ({1}/{2})[/] executing...",
+                "[Muted]--> Batch {0} ({1}/{2})[/] executing...",
                 start.BatchNumber, start.ExecutionIndex, start.ExecutionCount));
         }
     }
@@ -73,8 +76,8 @@ internal sealed class TigerSqlCmdRenderer
         {
             var duration = end.Duration.TotalMilliseconds.ToString("F0");
             TigerConsole.MarkupLine(end.Success
-                ? _settings.E("[green]completed[/] in {0}ms", duration)
-                : _settings.E("[red]failed[/] in {0}ms", duration));
+                ? _settings.E("[Success]completed[/] in {0}ms", duration)
+                : _settings.E("[Error]failed[/] in {0}ms", duration));
         }
     }
 
@@ -84,7 +87,7 @@ internal sealed class TigerSqlCmdRenderer
         {
             if (_verbosity >= Verbosity.Verbose)
             {
-                TigerConsole.MarkupLine(_settings.T("[DarkGray](No columns returned)[/]"));
+                TigerConsole.MarkupLine(_settings.T("[Muted](No columns returned)[/]"));
             }
             return;
         }
@@ -92,7 +95,7 @@ internal sealed class TigerSqlCmdRenderer
         var table = new CliTable();
         table.DefaultCellStyle = new CliCellStyle
         {
-            NullDisplayValue = "[DarkGray](null)[/]",
+            NullDisplayValue = "[Muted](null)[/]",
             FormattingMode = CliFormattingMode.Raw
         };
         var headerStyle = new CliCellStyle
