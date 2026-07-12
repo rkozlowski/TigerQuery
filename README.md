@@ -73,6 +73,12 @@ The `run` command supports `-v name=value` for variables, `--verbosity`,
 ```bash
 dotnet add package ItTiger.TigerQuery
 ```
+```bash
+dotnet add package ItTiger.TigerQuery.Core
+```
+```bash
+dotnet add package ItTiger.TigerQuery.CliCore
+```
 
 ### tiger-sqlcmd CLI
 
