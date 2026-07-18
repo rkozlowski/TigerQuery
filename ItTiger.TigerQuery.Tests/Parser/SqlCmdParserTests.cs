@@ -64,6 +64,58 @@ public class SqlCmdParserTests
         Assert.Equal(7, batches[0].ExecCount);
     }
 
+    [Theory]
+    [InlineData("$(one)$(two)")]
+    [InlineData("1$(one)")]
+    [InlineData("$(one)0")]
+    [InlineData("2 trailing")]
+    public async Task FailsWhenGoRepeatCountIsNotASingleTokenOrVariable(string repeatCount)
+    {
+        foreach (var mode in new[] { SqlCmdMode.SqlCmd, SqlCmdMode.SqlCmdEx })
+        {
+            var sql = $"PRINT('Something');\r\nGO {repeatCount}\r\n";
+            var options = new TigerQueryEngineOptions
+            {
+                Mode = mode,
+                Variables = new Dictionary<string, string>
+                {
+                    ["one"] = "1",
+                    ["two"] = "2"
+                }
+            };
+
+            var exception = await Assert.ThrowsAsync<TigerQueryException>(
+                () => TestHelper.ParseBatchesAsync(sql, options));
+
+            Assert.Equal("Incorrect syntax was encountered while parsing GO.", exception.Message);
+            Assert.Null(exception.Line);
+            Assert.Null(exception.Column);
+        }
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r")]
+    [InlineData("\r\n")]
+    public async Task SucceedsWhenGoRepeatCountIsASingleVariable(string lineEnding)
+    {
+        foreach (var mode in new[] { SqlCmdMode.SqlCmd, SqlCmdMode.SqlCmdEx })
+        {
+            var sql = $"PRINT('Something');{lineEnding}\tgO \t $(count) \t-- repeat{lineEnding}";
+            var options = new TigerQueryEngineOptions
+            {
+                Mode = mode,
+                Variables = new Dictionary<string, string> { ["count"] = "3" }
+            };
+
+            var batches = await TestHelper.ParseBatchesAsync(sql, options);
+
+            Assert.Equal(2, batches.Count);
+            Assert.Equal(3, batches[0].ExecCount);
+            Assert.Equal($"-- repeat{lineEnding}", batches[1].Text);
+        }
+    }
+
     [Fact]
     public async Task SucceedsWithOnErrorIgnore()
     {
@@ -167,6 +219,46 @@ public class SqlCmdParserTests
 
         Assert.Equal(4, batches.Count);
         Assert.Equal("PRINT('\r\nGO\r\n\t\"xxx\"    \r\n  /*  \t\r\n');\r\n", batches[2].Text);
+    }
+
+    [Theory]
+    [InlineData(" /* comment */")]
+    [InlineData(" trailing")]
+    [InlineData(" \"another value\"")]
+    public async Task FailsWhenQuotedSetvarHasUnsupportedTrailingContent(string trailingContent)
+    {
+        foreach (var mode in new[] { SqlCmdMode.SqlCmd, SqlCmdMode.SqlCmdEx })
+        {
+            var sql = $":SeTvAr x \"Some value\"{trailingContent}\r\nGO\r\n";
+            var options = new TigerQueryEngineOptions { Mode = mode };
+
+            var exception = await Assert.ThrowsAsync<TigerQueryException>(
+                () => TestHelper.ParseBatchesAsync(sql, options));
+
+            Assert.Equal("Incorrect syntax was encountered while parsing :SeTvAr.", exception.Message);
+            Assert.Null(exception.Line);
+            Assert.Null(exception.Column);
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("\n")]
+    [InlineData("\r")]
+    [InlineData("\r\n")]
+    [InlineData("-- comment\n")]
+    [InlineData(" \t-- comment\r\n")]
+    public async Task SucceedsWhenQuotedSetvarHasSupportedTerminator(string terminator)
+    {
+        foreach (var mode in new[] { SqlCmdMode.SqlCmd, SqlCmdMode.SqlCmdEx })
+        {
+            var sql = $":sEtVaR x \"Some \"\"quoted\"\" value\"{terminator}";
+            var options = new TigerQueryEngineOptions { Mode = mode };
+
+            var (_, context) = await TestHelper.ParseBatchesCtxAsync(sql, options);
+
+            Assert.Equal("Some \"quoted\" value", context.Variables["x"].Value);
+        }
     }
 
     [Fact]

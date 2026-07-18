@@ -1,4 +1,5 @@
 ﻿using ItTiger.TigerQuery.Engine;
+using ItTiger.TigerQuery.Events;
 using ItTiger.TigerQuery.Tests.Helpers;
 using System;
 using System.Collections.Generic;
@@ -30,112 +31,61 @@ public class SqlCmdParserKnownIssues
 
 
     [Fact]
-    // sqlcmd expect :setvar to be ended by end of line, end of stream or single line comment
-    // TigerQuery parser allows for much more when the value is in double quotes, which is dangerous
-    public async Task SucceedsWithSetvarEndedByMultiLineComment()
-    {
-        var sql = ":SETVAR x \"Some value\" /* xxxx */\nGO    --xxxx\r\n PRINT   \t ( '$(x)' )  ;  \r\n\r\nGO ";
-        var options = new TigerQueryEngineOptions
-        {
-            Mode = SqlCmdMode.SqlCmd
-        };
-        var batches = await TestHelper.ParseBatchesAsync(sql, options);
-        
-        Assert.Equal(2, batches.Count);
-    }
-
-    
-    [Fact]
-    // sqlcmd allows the count after go to be either a positive integer or a single variable.
-    // TigerQuery parser allows for more that a single variable being specified, concantenating their value
-    public async Task SucceedsWithGoWithMultipleVars()
-    {
-        var sql = ":SETVAR one \"1\" -- 1\n    \t\t:SetVar\ttwo\t\t2\t-- 2\rgO    \r\n\tPRINT\t('!!!');\r\rGO $(one)$(two)\r\n";
-        var options = new TigerQueryEngineOptions
-        {
-            Mode = SqlCmdMode.SqlCmd
-        };
-        var batches = await TestHelper.ParseBatchesAsync(sql, options);
-
-        Assert.Equal(2, batches.Count);
-        Assert.Equal(12, batches[1].ExecCount);
-    }
-
-    [Fact]
-    // TigerQuery does not substitute undefined variables, matching sqlcmd.exe behavior.
-    // SSMS in SqlCmd mode throws a fatal error, but TigerQuery and sqlcmd.exe continue.
-    public async Task LeavesUndefinedVariableUnsubstituted()
+    // TigerQuery retains an undefined variable expression, as sqlcmd does without its fail-on-error option,
+    // but it does not emit sqlcmd's "scripting variable not defined" diagnostic.
+    // Adding that diagnostic requires a warning path from variable expansion to the parser/engine consumer.
+    public async Task LeavesUndefinedVariableUnsubstitutedWithoutWarning()
     {
         var sql = "SELECT 'Start$(UnsetVar)End' AS [Test];\r\nGO\r\nPRINT('Something');\r\nGO";
+        var messages = new List<SqlCmdMessage>();
         var options = new TigerQueryEngineOptions
         {
-            Mode = SqlCmdMode.SqlCmdEx
+            Mode = SqlCmdMode.SqlCmdEx,
+            OnMessage = (message, _) => messages.Add(message)
         };
 
-        var (batches, context) = await TestHelper.ParseBatchesCtxAsync(sql, options);
+        var (batches, _) = await TestHelper.ParseBatchesCtxAsync(sql, options);
 
         Assert.Equal(2, batches.Count);
         Assert.Contains("$(UnsetVar)", batches[0].Text); // No substitution
         Assert.Equal("PRINT('Something');\r\n", batches[1].Text);
+        Assert.Empty(messages);
     }
 
     [Fact]
-    // Validates TigerQuery behavior when an unset scripting variable is used.
-    // 
-    // In this case, '$(UnsetVar)' is not defined. 
-    // TigerQuery emits no warning, and the string is not substituted — it is left as-is.
-    //
-    // This diverges from both:
-    // - sqlcmd.exe, which emits a warning but continues execution (if :ON ERROR IGNORE is in effect)
-    // - SSMS in SqlCmd mode, which *fails immediately* with a fatal scripting error
-    //
-    // TigerQuery’s behavior is currently more permissive than both, and does not honor :ON ERROR at all.
-    // Once this is corrected (i.e., emitting a warning and respecting the error policy), 
-    // this test should be updated and moved out of SqlCmdParserKnownIssues.
-    //
-    // NOTE: This test is linked with `FailsWhenUnsetVarUsedWithOnErrorExit`. Once one is fixed, both must be updated and moved (likely to SqlCmdParserIntentionalDifferences).
-    public async Task SucceedsWhenUnsetVarUsedWithOnErrorIgnore()
+    // :ON ERROR IGNORE updates execution policy, but unresolved-variable expansion emits no diagnostic.
+    // The expression therefore remains literal and parsing continues. Defining warning severity and its
+    // relationship to execution policy requires coordinated parser/engine behavior.
+    public async Task ContinuesWhenUnsetVarUsedWithOnErrorIgnore()
     {
         var sql = ":ON ERROR IGNORE\r\nGO\r\nSELECT 'Start$(UnsetVar)End' [Test];\r\nGO\r\nPRINT('Something');\r\nGO\r\n";
         var options = new TigerQueryEngineOptions
         {
             Mode = SqlCmdMode.SqlCmd
         };
-        var batches = await TestHelper.ParseBatchesAsync(sql, options);
+        var (batches, context) = await TestHelper.ParseBatchesCtxAsync(sql, options);
 
         Assert.Equal(2, batches.Count);
         Assert.Contains("Start$(UnsetVar)End", batches[0].Text);
+        Assert.True(context.ContinueOnError);
     }
 
     [Fact]
-    // Validates TigerQuery behavior when :ON ERROR EXIT is used and an unset variable is encountered.
-    //
-    // Expected (based on sqlcmd.exe):
-    // - Emit warning: `'UnsetVar' scripting variable not defined.`
-    // - Respect :ON ERROR EXIT and terminate execution after the unresolved variable
-    //
-    // Actual TigerQuery behavior:
-    // - Emits no warning
-    // - Continues execution (second batch is executed)
-    // - Ignores the :ON ERROR directive entirely
-    //
-    // SSMS in SqlCmd mode behaves *differently again*: it treats unresolved variables as fatal errors.
-    //
-    // This test documents current behavior, which is incorrect and must be addressed in the future.
-    //
-    // NOTE: This test is linked with `SucceedsWhenUnsetVarUsedWithOnErrorIgnore`. Once one is fixed, both must be updated and moved (likely to SqlCmdParserIntentionalDifferences).
-    public async Task FailsWhenUnsetVarUsedWithOnErrorExit()
+    // :ON ERROR EXIT updates execution policy, but unresolved-variable expansion emits no diagnostic for
+    // that policy to act on. The expression remains literal and parsing continues. Whether expansion
+    // diagnostics should stop parsing or execution must be designed with the engine warning/error model.
+    public async Task ContinuesWhenUnsetVarUsedWithOnErrorExit()
     {
         var sql = ":ON ERROR EXIT\r\nGO\r\nSELECT 'Start$(UnsetVar)End' [Test];\r\nGO\r\nPRINT('Something');\r\nGO\r\n";
         var options = new TigerQueryEngineOptions
         {
             Mode = SqlCmdMode.SqlCmd
         };
-        var batches = await TestHelper.ParseBatchesAsync(sql, options);
+        var (batches, context) = await TestHelper.ParseBatchesCtxAsync(sql, options);
 
-        // NOTE: TigerQuery should stop at the first batch, but currently continues — so test passes with 2 batches.
         Assert.Equal(2, batches.Count);
         Assert.Contains("Start$(UnsetVar)End", batches[0].Text);
+        Assert.False(context.ContinueOnError);
     }
 
 }

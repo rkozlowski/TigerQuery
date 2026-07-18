@@ -241,6 +241,28 @@ public sealed class SqlCmdParser
         '[' => ']',
         _ => ch
     };
+
+    private static bool IsSingleVariableReference(string value)
+    {
+        return value.Length > 3
+            && value.StartsWith("$(", StringComparison.Ordinal)
+            && value.EndsWith(')')
+            && value.IndexOf(')', 2) == value.Length - 1;
+    }
+
+    private static bool IsValidQuotedSetvarTerminator(SqlElement element)
+    {
+        if (element.Kind == SqlElementKind.SingleLineComment)
+        {
+            return true;
+        }
+
+        return element.Kind == SqlElementKind.Text
+            && string.IsNullOrWhiteSpace(element.Text)
+            && element.EndedBy is SqlElementKind.EndOfLine
+                or SqlElementKind.EndOfStream
+                or SqlElementKind.SingleLineComment;
+    }
     
     private string ReadDelimitedInclusive(char startChar, char endChar, bool allowEscape)
     {
@@ -292,12 +314,22 @@ public sealed class SqlCmdParser
         List<string> currentLines = [];
         int? batchStartLine = null;
         int? batchStartColumn = null;
+        SqlElement? pendingElement = null;
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            SqlElement? element = await Task.Run(ReadElement, cancellationToken);
+            SqlElement? element;
+            if (pendingElement is not null)
+            {
+                element = pendingElement;
+                pendingElement = null;
+            }
+            else
+            {
+                element = await Task.Run(ReadElement, cancellationToken);
+            }
             if (element is null)
                 break;
 
@@ -316,9 +348,19 @@ public sealed class SqlCmdParser
                         int execCount = 1;
                         if (parts.Length > 1)
                         {
+                            if (parts.Length != 2)
+                            {
+                                throw new TigerQueryException("Incorrect syntax was encountered while parsing GO.");
+                            }
+
                             var countStr = parts[1];
                             if (_options.Mode != SqlCmdMode.Normal)
                             {
+                                if (countStr.Contains("$(", StringComparison.Ordinal)
+                                    && !IsSingleVariableReference(countStr))
+                                {
+                                    throw new TigerQueryException("Incorrect syntax was encountered while parsing GO.");
+                                }
                                 countStr = _context.ExpandVariables(countStr);
                             }
                             if (!int.TryParse(countStr, out execCount))
@@ -366,6 +408,21 @@ public sealed class SqlCmdParser
                                     throw new TigerQueryException($"Incorrect syntax was encountered while parsing {command}.");
                                 }
                                 value = nextElement.InnerText;
+
+                                var terminator = await Task.Run(ReadElement, cancellationToken);
+                                if (terminator is not null)
+                                {
+                                    if (!IsValidQuotedSetvarTerminator(terminator))
+                                    {
+                                        _options.Logger?.Log(
+                                            LogLevel.Debug,
+                                            ":SETVAR parsing failed. Quoted value terminator kind: {kind}, ended by: {endedBy}.",
+                                            terminator.Kind,
+                                            terminator.EndedBy);
+                                        throw new TigerQueryException($"Incorrect syntax was encountered while parsing {command}.");
+                                    }
+                                    pendingElement = terminator;
+                                }
                             }
                             else if (parts.Length == 3 
                                 && (endedBy is SqlElementKind.EndOfLine or SqlElementKind.EndOfStream or SqlElementKind.SingleLineComment))
