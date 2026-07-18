@@ -51,22 +51,34 @@ public sealed class TigerSqlCmdAppTests : IDisposable
     }
 
     [Fact]
-    public async Task Version_Reports081()
+    public async Task HelpErrors_DocumentsHostAndConnectionOutcomes()
+    {
+        var result = await RunAsync("--help-errors");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Contains("Invalid connection arguments", result.StdOut);
+        Assert.Contains("Connection not found", result.StdOut);
+        Assert.Contains("Connection already exists", result.StdOut);
+        Assert.DoesNotContain("Validation error", result.StdOut);
+    }
+
+    [Fact]
+    public async Task Version_Reports082()
     {
         var result = await RunAsync("--version");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
-        Assert.Contains("0.8.1", result.StdOut);
+        Assert.Contains("0.8.2", result.StdOut);
     }
 
     [Fact]
-    public async Task VersionFull_Reports081WithBuildTimestamp()
+    public async Task VersionFull_Reports082WithBuildTimestamp()
     {
         var result = await RunAsync("--version-full");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         // InformationalVersion is Version+UtcBuildTimestamp (see Version.props).
-        Assert.Contains("0.8.1+", result.StdOut);
+        Assert.Contains("0.8.2+", result.StdOut);
     }
 
     // ── Interaction modes and framework exit codes ───────────────────
@@ -78,7 +90,7 @@ public sealed class TigerSqlCmdAppTests : IDisposable
 
         // TigerCli reports a required option that could not be prompted for in
         // non-interactive mode through its Validation category.
-        Assert.Equal((int)TigerSqlCmdExitCode.ValidationError, result.ExitCode);
+        Assert.Equal((int)TigerSqlCmdExitCode.ConnectionInvalidArguments, result.ExitCode);
         Assert.False(string.IsNullOrWhiteSpace(result.StdErr));
     }
 
@@ -127,7 +139,7 @@ public sealed class TigerSqlCmdAppTests : IDisposable
         // before the handler runs ("not an available choice").
         var result = await RunAsync("--non-interactive", "-c", "does-not-exist", "-q", "SELECT 1");
 
-        Assert.Equal((int)TigerSqlCmdExitCode.ValidationError, result.ExitCode);
+        Assert.Equal((int)TigerSqlCmdExitCode.ConnectionInvalidArguments, result.ExitCode);
         Assert.False(string.IsNullOrWhiteSpace(result.StdErr));
     }
 
@@ -141,10 +153,12 @@ public sealed class TigerSqlCmdAppTests : IDisposable
     }
 
     [Fact]
-    public void FrameworkExitCodes_UseTheDocumentedBand()
+    public void FrameworkAndConnectionExitCodes_UseTheDocumentedHostValues()
     {
         Assert.Equal(20, (int)TigerSqlCmdExitCode.InvalidArguments);
-        Assert.Equal(21, (int)TigerSqlCmdExitCode.ValidationError);
+        Assert.Equal(2, (int)TigerSqlCmdExitCode.ConnectionInvalidArguments);
+        Assert.Equal(4, (int)TigerSqlCmdExitCode.ConnectionNotFound);
+        Assert.Equal(5, (int)TigerSqlCmdExitCode.ConnectionAlreadyExists);
         Assert.Equal(3, (int)TigerSqlCmdExitCode.Cancelled);
         Assert.Equal(6, (int)TigerSqlCmdExitCode.UnhandledException);
     }

@@ -89,7 +89,7 @@ The `tiger-sqlcmd` command-line tool is distributed as prebuilt binaries via
 
 ## 🔧 Status
 
-TigerQuery v0.8.1 is a **snapshot release** — not issue-free, but stable, tested, and ready to use.
+TigerQuery v0.8.2 is a **snapshot release** — not issue-free, but stable, tested, and ready to use.
 
 It is meant as a transparent, inspectable tool — bugs and all.  
 The test suite tracks known issues, documents differences, and protects your upgrade path.

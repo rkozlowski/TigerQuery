@@ -4,9 +4,9 @@ using ItTiger.TigerCli.Terminal;
 namespace ItTiger.TigerQuery.CliCore;
 
 internal sealed class AddSqlServerConnectionCommand(SqlServerConnectionCommandContext context)
-    : TigerCliAsyncCommandHandler<SqlServerConnectionSettings, SqlServerConnectionExitCode>
+    : TigerCliAsyncCommandHandler<SqlServerConnectionSettings, TigerCliExitKind>
 {
-    public override Task<SqlServerConnectionExitCode> ExecuteAsync(SqlServerConnectionSettings settings)
+    public override Task<TigerCliExitKind> ExecuteAsync(SqlServerConnectionSettings settings)
     {
         if (context.Store.Exists(settings.Name))
         {
@@ -14,20 +14,20 @@ internal sealed class AddSqlServerConnectionCommand(SqlServerConnectionCommandCo
                 "SQL Server connection [Value]{0}[/] already exists. Use [Value]edit[/] to change it.",
                 settings.Name));
 
-            return Task.FromResult(SqlServerConnectionExitCode.AlreadyExists);
+            return Task.FromResult(TigerCliExitKind.AlreadyExists);
         }
 
         var profile = SqlServerConnectionSettingsMapper.ToProfile(settings, existing: null);
 
         var errors = SqlServerConnectionWriter.Validate(profile, context.ValidationPolicy);
         if (SqlServerConnectionWriter.TryReportErrors(settings, errors))
-            return Task.FromResult(SqlServerConnectionExitCode.InvalidArguments);
+            return Task.FromResult(TigerCliExitKind.ValidationError);
 
         context.Store.Add(profile);
         TigerConsole.MarkupLine(settings.E(
             "Added SQL Server connection [Value]{0}[/].",
             profile.Name));
 
-        return Task.FromResult(SqlServerConnectionExitCode.Ok);
+        return Task.FromResult(TigerCliExitKind.Success);
     }
 }

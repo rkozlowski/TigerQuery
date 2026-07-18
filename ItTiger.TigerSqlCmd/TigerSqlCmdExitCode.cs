@@ -6,10 +6,10 @@ namespace ItTiger.TigerSqlCmd;
 /// <summary>
 /// The tiger-sqlcmd process exit-code contract. Values 0–7 mirror the engine's
 /// <see cref="ExecutionResultCode"/> one-to-one so script-visible codes are unchanged;
-/// 20+ are reserved for framework-produced outcomes (usage and validation failures)
-/// mapped through the app's TigerCli exit-code policy in <see cref="TigerSqlCmdApp"/>.
-/// The <c>connections</c> command group keeps its own
-/// <see cref="ItTiger.TigerQuery.CliCore.SqlServerConnectionExitCode"/> contract.
+/// Code 20 is reserved for framework-produced usage failures mapped through the app's
+/// TigerCli exit-code policy in <see cref="TigerSqlCmdApp"/>.
+/// Connection-command outcomes are mapped onto host-owned aliases so their historical
+/// script-visible values remain stable without CliCore owning concrete process codes.
 /// </summary>
 [TigerText("tiger-sqlcmd exit codes")]
 public enum TigerSqlCmdExitCode
@@ -23,14 +23,23 @@ public enum TigerSqlCmdExitCode
     [TigerText("Fatal SQL error", Description = "A fatal SQL error ended execution.")]
     FatalSqlError = 2,
 
+    [TigerText("Invalid connection arguments", Description = "A connection command rejected well-formed settings that failed domain validation.")]
+    ConnectionInvalidArguments = 2,
+
     [TigerText("Cancelled", Description = "Execution was cancelled by the user.")]
     Cancelled = 3,
 
     [TigerText("Connection failed", Description = "The SQL Server connection could not be resolved or opened.")]
     ConnectionFailed = 4,
 
+    [TigerText("Connection not found", Description = "The requested saved SQL Server connection does not exist.")]
+    ConnectionNotFound = 4,
+
     [TigerText("Parse error", Description = "The script could not be parsed.")]
     ParseError = 5,
+
+    [TigerText("Connection already exists", Description = "A saved SQL Server connection with the requested name already exists.")]
+    ConnectionAlreadyExists = 5,
 
     [TigerText("Unhandled exception", Description = "An unexpected error ended execution.")]
     UnhandledException = 6,
@@ -41,8 +50,6 @@ public enum TigerSqlCmdExitCode
     [TigerText("Invalid arguments", Description = "The command line was invalid or incomplete.")]
     InvalidArguments = 20,
 
-    [TigerText("Validation error", Description = "The command-line input failed validation.")]
-    ValidationError = 21,
 }
 
 internal static class TigerSqlCmdExitCodeMapper

@@ -4,7 +4,7 @@ using ItTiger.TigerCli.Terminal;
 namespace ItTiger.TigerQuery.CliCore;
 
 internal sealed class EditSqlServerConnectionCommand(SqlServerConnectionCommandContext context)
-    : TigerCliAsyncCommandHandler<SqlServerConnectionSettings, SqlServerConnectionExitCode>
+    : TigerCliAsyncCommandHandler<SqlServerConnectionSettings, TigerCliExitKind>
 {
     /// <summary>
     /// Edit loader for <c>.AsEdit()</c>. Seeds the command settings from the existing
@@ -21,7 +21,7 @@ internal sealed class EditSqlServerConnectionCommand(SqlServerConnectionCommandC
                 SqlServerConnectionSettingsMapper.FromProfile(existing));
     }
 
-    public override Task<SqlServerConnectionExitCode> ExecuteAsync(SqlServerConnectionSettings settings)
+    public override Task<TigerCliExitKind> ExecuteAsync(SqlServerConnectionSettings settings)
     {
         // The framework only reaches the handler when the loader returned Found, but
         // re-read to carry the stored password metadata forward.
@@ -32,20 +32,20 @@ internal sealed class EditSqlServerConnectionCommand(SqlServerConnectionCommandC
                 "SQL Server connection [Value]{0}[/] was not found.",
                 settings.Name));
 
-            return Task.FromResult(SqlServerConnectionExitCode.NotFound);
+            return Task.FromResult(TigerCliExitKind.NotFound);
         }
 
         var profile = SqlServerConnectionSettingsMapper.ToProfile(settings, existing);
 
         var errors = SqlServerConnectionWriter.Validate(profile, context.ValidationPolicy);
         if (SqlServerConnectionWriter.TryReportErrors(settings, errors))
-            return Task.FromResult(SqlServerConnectionExitCode.InvalidArguments);
+            return Task.FromResult(TigerCliExitKind.ValidationError);
 
         context.Store.AddOrUpdate(profile);
         TigerConsole.MarkupLine(settings.E(
             "Updated SQL Server connection [Value]{0}[/].",
             profile.Name));
 
-        return Task.FromResult(SqlServerConnectionExitCode.Ok);
+        return Task.FromResult(TigerCliExitKind.Success);
     }
 }

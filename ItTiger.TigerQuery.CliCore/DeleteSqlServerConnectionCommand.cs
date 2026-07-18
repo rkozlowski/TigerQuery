@@ -11,22 +11,22 @@ internal sealed class DeleteSqlServerConnectionSettings : TigerCliSettings
 }
 
 internal sealed class DeleteSqlServerConnectionCommand(SqlServerConnectionCommandContext context)
-    : TigerCliAsyncCommandHandler<DeleteSqlServerConnectionSettings, SqlServerConnectionExitCode>
+    : TigerCliAsyncCommandHandler<DeleteSqlServerConnectionSettings, TigerCliExitKind>
 {
-    public override Task<SqlServerConnectionExitCode> ExecuteAsync(DeleteSqlServerConnectionSettings settings)
+    public override Task<TigerCliExitKind> ExecuteAsync(DeleteSqlServerConnectionSettings settings)
     {
         if (!context.Store.Delete(settings.Name))
         {
             TigerConsole.MarkupErrorLine(settings.E(
                 "SQL Server connection [Value]{0}[/] was not found.",
                 settings.Name));
-            return Task.FromResult(SqlServerConnectionExitCode.NotFound);
+            return Task.FromResult(TigerCliExitKind.NotFound);
         }
 
         TigerConsole.MarkupLine(settings.E(
             "Deleted SQL Server connection [Value]{0}[/].",
             settings.Name));
 
-        return Task.FromResult(SqlServerConnectionExitCode.Ok);
+        return Task.FromResult(TigerCliExitKind.Success);
     }
 }

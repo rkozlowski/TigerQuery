@@ -16,7 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ItTiger.TigerCli" Version="0.8.0" />
+    <PackageReference Include="ItTiger.TigerCli" Version="0.8.1" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageReference Include="NLog" Version="6.1.4" />
     <PackageReference Include="NLog.Extensions.Logging" Version="6.1.4" />

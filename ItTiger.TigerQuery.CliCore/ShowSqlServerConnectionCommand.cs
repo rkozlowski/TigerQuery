@@ -14,9 +14,9 @@ internal sealed class ShowSqlServerConnectionSettings : TigerCliSettings
 }
 
 internal sealed class ShowSqlServerConnectionCommand(SqlServerConnectionCommandContext context)
-    : TigerCliAsyncCommandHandler<ShowSqlServerConnectionSettings, SqlServerConnectionExitCode>
+    : TigerCliAsyncCommandHandler<ShowSqlServerConnectionSettings, TigerCliExitKind>
 {
-    public override Task<SqlServerConnectionExitCode> ExecuteAsync(ShowSqlServerConnectionSettings s)
+    public override Task<TigerCliExitKind> ExecuteAsync(ShowSqlServerConnectionSettings s)
     {
         var profile = context.Store.Load()
             .FirstOrDefault(profile => profile.Name == s.Name);
@@ -27,7 +27,7 @@ internal sealed class ShowSqlServerConnectionCommand(SqlServerConnectionCommandC
                 "SQL Server connection [Value]{0}[/] was not found.",
                 s.Name));
 
-            return Task.FromResult(SqlServerConnectionExitCode.NotFound);
+            return Task.FromResult(TigerCliExitKind.NotFound);
         }
 
         var details = new CliDetails()
@@ -57,6 +57,6 @@ internal sealed class ShowSqlServerConnectionCommand(SqlServerConnectionCommandC
 
         TigerConsole.Render(details);
 
-        return Task.FromResult(SqlServerConnectionExitCode.Ok);
+        return Task.FromResult(TigerCliExitKind.Success);
     }
 }

@@ -79,12 +79,17 @@ internal static class TigerSqlCmdApp
             .AddDescription(
                 "Run a [Accent]SQL Server[/] query against a saved connection. Use [Accent]run[/] for scripts and advanced sqlcmd options.",
                 resourceKey: "App_Description")
-            // Engine outcomes keep their historical 0–7 values; framework outcomes map to
-            // the documented 20/21 band (plus Cancelled → 3 to match the engine's meaning).
+            // Engine outcomes keep their historical 0–7 values; usage failures map to
+            // code 20 (plus Cancelled → 3 to match the engine's meaning).
             .UseExitCodes(TigerSqlCmdExitCode.Ok, TigerSqlCmdExitCode.UnhandledException)
             .ExitCategory(TigerCliExitCategory.Usage, TigerSqlCmdExitCode.InvalidArguments)
-            .ExitCategory(TigerCliExitCategory.Validation, TigerSqlCmdExitCode.ValidationError)
             .ExitKind(TigerCliExitKind.Cancelled, TigerSqlCmdExitCode.Cancelled)
+            // Reusable connection handlers return portable semantic kinds. Exact-kind
+            // mappings preserve their historical 0/2/4/5 process contract; the aliases
+            // remain owned and documented by this host.
+            .ExitKind(TigerCliExitKind.ValidationError, TigerSqlCmdExitCode.ConnectionInvalidArguments)
+            .ExitKind(TigerCliExitKind.NotFound, TigerSqlCmdExitCode.ConnectionNotFound)
+            .ExitKind(TigerCliExitKind.AlreadyExists, TigerSqlCmdExitCode.ConnectionAlreadyExists)
             // App-scoped so it backs -c|--connection on every command form: a missing
             // connection is prompted from the saved connections in interactive mode and
             // fails in non-interactive mode.

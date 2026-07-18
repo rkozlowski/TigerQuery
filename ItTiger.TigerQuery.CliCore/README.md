@@ -7,7 +7,7 @@ This package is for **developers building [TigerCli](https://www.nuget.org/packa
 - `list` / `show` — structured table and details output
 - `add` / `edit` — parser-driven prompting, provider-backed selection (including live database enumeration), shared add/edit option surface, TigerCli `.AsEdit()` merge semantics
 - `delete`
-- Domain validation with clear errors and enum-backed exit codes (`SqlServerConnectionExitCode`)
+- Domain validation with clear errors and portable `TigerCliExitKind` outcomes
 - en-US and pl-PL resources, merged behind your app's own resources so you can override any string
 
 Profiles are stored through [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/), which this package depends on (along with `ItTiger.TigerCli` and `ItTiger.Core`).
@@ -20,7 +20,7 @@ dotnet add package ItTiger.TigerQuery.CliCore
 
 ## Quick start
 
-The public composition surface is `SqlServerConnectionCommands` (plus `SqlServerConnectionCommandOptions` and `SqlServerConnectionExitCode`); the individual command and settings types are intentionally internal.
+The public composition surface is `SqlServerConnectionCommands` plus `SqlServerConnectionCommandOptions`; the individual command and settings types are intentionally internal.
 
 ```csharp
 using ItTiger.TigerCli.Commands;
@@ -48,7 +48,7 @@ var app = TigerCliApp.CreateBuilder()
 return await app.RunAsync(args);
 ```
 
-Your application keeps full ownership of everything around the group: overall app composition, themes, cultures, additional commands, and the application-wide exit-code policy (`UseExitCodes(...)`). The connection commands return their own documented `SqlServerConnectionExitCode` values (`Ok = 0`, `InvalidArguments = 2`, `NotFound = 4`, `AlreadyExists = 5`).
+Your application keeps full ownership of everything around the group: overall app composition, themes, cultures, additional commands, and the application-wide exit-code policy (`UseExitCodes(...)`). The connection commands return portable TigerCli outcomes: `Success`, `ValidationError`, `NotFound`, and `AlreadyExists`. Map those kinds to your application's concrete exit-code enum with `ExitKind(...)`.
 
 ## Localization
 
