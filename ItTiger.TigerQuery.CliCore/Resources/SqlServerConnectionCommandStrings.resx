@@ -75,6 +75,11 @@
   <data name="Opt_Connection_MinPoolSize_Description" xml:space="preserve"><value>Minimum pool size (requires pooling).</value></data>
   <data name="Opt_Connection_MaxPoolSize_Description" xml:space="preserve"><value>Maximum pool size (requires pooling).</value></data>
   <data name="Opt_Connection_Opt_Description" xml:space="preserve"><value>Additional connection-string option, e.g. --opt Pooling=true or --opt PacketSize 16000.</value></data>
+  <data name="Opt_Connection_Metadata_Description" xml:space="preserve"><value>Set application metadata using key=value. Repeat for multiple entries.</value></data>
+  <data name="Opt_Connection_RemoveMetadata_Description" xml:space="preserve"><value>Remove an application metadata key. Repeat for multiple keys.</value></data>
+  <data name="Opt_Connection_ListMetadata_Description" xml:space="preserve"><value>Match application metadata using key=value. Repeat to combine filters with AND.</value></data>
+  <data name="Opt_Connection_MetadataSet_Description" xml:space="preserve"><value>Match profiles where an application metadata key is set.</value></data>
+  <data name="Opt_Connection_MetadataNotSet_Description" xml:space="preserve"><value>Match profiles where an application metadata key is not set.</value></data>
 
   <!-- ── Enum labels and descriptions (source-text keys) ────────────── -->
   <data name="Integrated" xml:space="preserve"><value>Integrated</value></data>
@@ -105,6 +110,9 @@
   <data name="Server" xml:space="preserve"><value>Server</value></data>
   <data name="Authentication" xml:space="preserve"><value>Authentication</value></data>
   <data name="Database" xml:space="preserve"><value>Database</value></data>
+  <data name="Metadata" xml:space="preserve"><value>Metadata</value></data>
+  <data name="Key" xml:space="preserve"><value>Key</value></data>
+  <data name="Value" xml:space="preserve"><value>Value</value></data>
   <data name="Name:" xml:space="preserve"><value>Name:</value></data>
   <data name="Server:" xml:space="preserve"><value>Server:</value></data>
   <data name="Authentication:" xml:space="preserve"><value>Authentication:</value></data>
@@ -124,4 +132,8 @@
   <data name="Username is required for SQL password authentication." xml:space="preserve"><value>Username is required for SQL password authentication.</value></data>
   <data name="Password is required for SQL password authentication." xml:space="preserve"><value>Password is required for SQL password authentication.</value></data>
   <data name="--min-pool-size and --max-pool-size cannot be used when pooling is disabled (--pooling false)." xml:space="preserve"><value>--min-pool-size and --max-pool-size cannot be used when pooling is disabled (--pooling false).</value></data>
+  <data name="Metadata entries must use key=value format." xml:space="preserve"><value>Metadata entries must use key=value format.</value></data>
+  <data name="Metadata keys must not be empty." xml:space="preserve"><value>Metadata keys must not be empty.</value></data>
+  <data name="A metadata key cannot be set more than once in the same command." xml:space="preserve"><value>A metadata key cannot be set more than once in the same command.</value></data>
+  <data name="The same metadata key cannot be both set and removed in one command." xml:space="preserve"><value>The same metadata key cannot be both set and removed in one command.</value></data>
 </root>

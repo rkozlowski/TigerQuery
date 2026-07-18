@@ -33,6 +33,28 @@ public sealed class SqlServerConnectionHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task MetadataValidation_ReturnsPortableValidationErrorKind()
+    {
+        var addResult = await new AddSqlServerConnectionCommand(_context)
+            .ExecuteAsync(new SqlServerConnectionSettings
+            {
+                Name = "demo",
+                Server = "srv",
+                Metadata = ["app.role=worker"],
+                RemoveMetadata = ["app.role"]
+            });
+        var listResult = await new ListSqlServerConnectionsCommand(_context)
+            .ExecuteAsync(new ListSqlServerConnectionsSettings
+            {
+                Metadata = ["missing-separator"]
+            });
+
+        Assert.Equal(TigerCliExitKind.ValidationError, addResult);
+        Assert.Equal(TigerCliExitKind.ValidationError, listResult);
+        Assert.Null(_temp.Store.Find("demo"));
+    }
+
+    [Fact]
     public async Task Add_ReturnsSuccess_ValidationError_AndAlreadyExists()
     {
         var handler = new AddSqlServerConnectionCommand(_context);

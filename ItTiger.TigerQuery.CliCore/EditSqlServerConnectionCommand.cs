@@ -23,6 +23,15 @@ internal sealed class EditSqlServerConnectionCommand(SqlServerConnectionCommandC
 
     public override Task<TigerCliExitKind> ExecuteAsync(SqlServerConnectionSettings settings)
     {
+        var metadataError = SqlServerConnectionMetadataOptions.ValidateMutations(
+            settings.Metadata,
+            settings.RemoveMetadata);
+        if (metadataError is not null)
+        {
+            SqlServerConnectionWriter.TryReportErrors(settings, [metadataError]);
+            return Task.FromResult(TigerCliExitKind.ValidationError);
+        }
+
         // The framework only reaches the handler when the loader returned Found, but
         // re-read to carry the stored password metadata forward.
         var existing = context.Store.Find(settings.Name);

@@ -87,6 +87,324 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Add_WithOneMetadataEntry_PersistsIt()
+    {
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "add",
+            "demo",
+            "--server",
+            "srv",
+            "--metadata",
+            "app.role=worker");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Equal("worker", _temp.Store.Find("demo")!.Metadata["app.role"]);
+    }
+
+    [Fact]
+    public async Task Add_WithMultipleMetadataEntries_PersistsAll()
+    {
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "add",
+            "demo",
+            "--server",
+            "srv",
+            "--metadata",
+            "app.role=worker",
+            "--metadata",
+            "app.region=west");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        var metadata = _temp.Store.Find("demo")!.Metadata;
+        Assert.Equal("worker", metadata["app.role"]);
+        Assert.Equal("west", metadata["app.region"]);
+    }
+
+    [Fact]
+    public async Task Add_MetadataValueContainingEquals_SplitsOnlyAtFirstEquals()
+    {
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "add",
+            "demo",
+            "--server",
+            "srv",
+            "--metadata",
+            "app.expression=left=middle=right");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Equal(
+            "left=middle=right",
+            _temp.Store.Find("demo")!.Metadata["app.expression"]);
+    }
+
+    [Fact]
+    public async Task Add_MetadataAllowsEmptyValue()
+    {
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "add",
+            "demo",
+            "--server",
+            "srv",
+            "--metadata",
+            "app.marker=");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Equal("", _temp.Store.Find("demo")!.Metadata["app.marker"]);
+    }
+
+    [Fact]
+    public async Task Edit_MetadataReplacesExistingValue()
+    {
+        AddProfile("demo", ("app.role", "old"));
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "edit",
+            "demo",
+            "--metadata",
+            "app.role=new");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Equal("new", _temp.Store.Find("demo")!.Metadata["app.role"]);
+    }
+
+    [Fact]
+    public async Task Edit_MetadataAddsKeyAndPreservesUnrelatedKeys()
+    {
+        AddProfile("demo", ("app.existing", "preserved"));
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "edit",
+            "demo",
+            "--metadata",
+            "app.added=value");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        var metadata = _temp.Store.Find("demo")!.Metadata;
+        Assert.Equal("value", metadata["app.added"]);
+        Assert.Equal("preserved", metadata["app.existing"]);
+    }
+
+    [Fact]
+    public async Task Edit_RemoveMetadataRemovesOnlyRequestedKey()
+    {
+        AddProfile(
+            "demo",
+            ("app.remove", "value"),
+            ("app.preserve", "value"));
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "edit",
+            "demo",
+            "--remove-metadata",
+            "app.remove");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        var metadata = _temp.Store.Find("demo")!.Metadata;
+        Assert.False(metadata.ContainsKey("app.remove"));
+        Assert.Equal("value", metadata["app.preserve"]);
+    }
+
+    [Fact]
+    public async Task Edit_RemoveMissingMetadataKeySucceeds()
+    {
+        AddProfile("demo", ("app.preserve", "value"));
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "edit",
+            "demo",
+            "--remove-metadata",
+            "app.missing");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Equal("value", _temp.Store.Find("demo")!.Metadata["app.preserve"]);
+    }
+
+    [Fact]
+    public async Task Edit_ConflictingMetadataSetAndRemove_ReturnsMappedValidationExitCode()
+    {
+        AddProfile("demo", ("app.role", "old"));
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "edit",
+            "demo",
+            "--metadata",
+            "app.role=new",
+            "--remove-metadata",
+            "app.role");
+
+        Assert.Equal(
+            (int)TigerSqlCmdExitCode.ConnectionInvalidArguments,
+            result.ExitCode);
+        Assert.False(string.IsNullOrWhiteSpace(result.StdErr));
+        Assert.Equal("old", _temp.Store.Find("demo")!.Metadata["app.role"]);
+    }
+
+    [Fact]
+    public async Task Add_DuplicateMetadataAssignmentFailsValidation()
+    {
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "add",
+            "demo",
+            "--server",
+            "srv",
+            "--metadata",
+            "app.role=first",
+            "--metadata",
+            "app.role=second");
+
+        Assert.Equal(
+            (int)TigerSqlCmdExitCode.ConnectionInvalidArguments,
+            result.ExitCode);
+        Assert.Null(_temp.Store.Find("demo"));
+    }
+
+    [Fact]
+    public async Task Add_MalformedMetadataAssignmentFailsValidation()
+    {
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "add",
+            "demo",
+            "--server",
+            "srv",
+            "--metadata",
+            "missing-separator");
+
+        Assert.Equal(
+            (int)TigerSqlCmdExitCode.ConnectionInvalidArguments,
+            result.ExitCode);
+        Assert.False(string.IsNullOrWhiteSpace(result.StdErr));
+        Assert.Null(_temp.Store.Find("demo"));
+    }
+
+    [Fact]
+    public async Task Show_DisplaysMetadataInOrdinalKeyOrder()
+    {
+        AddProfile(
+            "demo",
+            ("z.key", "last"),
+            ("A.key", "first"),
+            ("a.key", "middle"));
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "show",
+            "demo");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Contains("Metadata", result.StdOut);
+        var upperIndex = result.StdOut.IndexOf("A.key", StringComparison.Ordinal);
+        var lowerIndex = result.StdOut.IndexOf("a.key", StringComparison.Ordinal);
+        var zetaIndex = result.StdOut.IndexOf("z.key", StringComparison.Ordinal);
+        Assert.True(upperIndex >= 0);
+        Assert.True(upperIndex < lowerIndex);
+        Assert.True(lowerIndex < zetaIndex);
+    }
+
+    [Fact]
+    public async Task List_MetadataEqualsFilterUsesStoreQuery()
+    {
+        AddProfile("worker", ("app.role", "worker"));
+        AddProfile("reader", ("app.role", "reader"));
+        AddProfile("missing");
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "list",
+            "--metadata",
+            "app.role=worker");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Contains("worker", result.StdOut);
+        Assert.DoesNotContain("reader", result.StdOut);
+        Assert.DoesNotContain("missing", result.StdOut);
+    }
+
+    [Fact]
+    public async Task List_MetadataSetFilterIncludesEmptyValue()
+    {
+        AddProfile("empty", ("app.marker", ""));
+        AddProfile("missing");
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "list",
+            "--metadata-set",
+            "app.marker");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Contains("empty", result.StdOut);
+        Assert.DoesNotContain("missing", result.StdOut);
+    }
+
+    [Fact]
+    public async Task List_MetadataNotSetFilterMatchesOnlyMissingKey()
+    {
+        AddProfile("set", ("app.marker", ""));
+        AddProfile("missing");
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "list",
+            "--metadata-not-set",
+            "app.marker");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Contains("missing", result.StdOut);
+        Assert.DoesNotContain("set", result.StdOut);
+    }
+
+    [Fact]
+    public async Task List_MultipleMetadataFiltersUseAndSemanticsNonInteractively()
+    {
+        AddProfile(
+            "both",
+            ("app.role", "worker"),
+            ("app.region", "west"));
+        AddProfile("role-only", ("app.role", "worker"));
+        AddProfile("region-only", ("app.region", "west"));
+
+        var result = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "list",
+            "--metadata",
+            "app.role=worker",
+            "--metadata-set",
+            "app.region");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Contains("both", result.StdOut);
+        Assert.DoesNotContain("role-only", result.StdOut);
+        Assert.DoesNotContain("region-only", result.StdOut);
+    }
+
+    [Fact]
     public async Task Add_DuplicateName_ReturnsAlreadyExists()
     {
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, (await AddDemoAsync()).ExitCode);
@@ -164,5 +482,23 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         Assert.Equal(2, (int)TigerSqlCmdExitCode.ConnectionInvalidArguments);
         Assert.Equal(4, (int)TigerSqlCmdExitCode.ConnectionNotFound);
         Assert.Equal(5, (int)TigerSqlCmdExitCode.ConnectionAlreadyExists);
+    }
+
+    private void AddProfile(
+        string name,
+        params (string Key, string Value)[] metadata)
+    {
+        var profile = new SqlServerConnectionProfile
+        {
+            Name = name,
+            Server = $"{name}-server",
+            Authentication = AuthenticationType.Integrated,
+            Encrypt = EncryptOption.Mandatory
+        };
+
+        foreach (var (key, value) in metadata)
+            profile.SetMetadata(key, value);
+
+        _temp.Store.Add(profile);
     }
 }

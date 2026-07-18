@@ -57,6 +57,23 @@ internal sealed class ShowSqlServerConnectionCommand(SqlServerConnectionCommandC
 
         TigerConsole.Render(details);
 
+        if (profile.Metadata.Count > 0)
+        {
+            var metadata = new CliTable()
+                .ApplyPreset(CliTableStylePreset.Milano)
+                .AddTitle(s.T("Metadata"))
+                .AddHeader(s.T("Key"), s.T("Value"));
+
+            foreach (var (key, value) in profile.Metadata.OrderBy(
+                         item => item.Key,
+                         StringComparer.Ordinal))
+            {
+                metadata.AddRecord(key, value);
+            }
+
+            TigerConsole.Render(metadata);
+        }
+
         return Task.FromResult(TigerCliExitKind.Success);
     }
 }

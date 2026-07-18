@@ -8,6 +8,15 @@ internal sealed class AddSqlServerConnectionCommand(SqlServerConnectionCommandCo
 {
     public override Task<TigerCliExitKind> ExecuteAsync(SqlServerConnectionSettings settings)
     {
+        var metadataError = SqlServerConnectionMetadataOptions.ValidateMutations(
+            settings.Metadata,
+            settings.RemoveMetadata);
+        if (metadataError is not null)
+        {
+            SqlServerConnectionWriter.TryReportErrors(settings, [metadataError]);
+            return Task.FromResult(TigerCliExitKind.ValidationError);
+        }
+
         if (context.Store.Exists(settings.Name))
         {
             TigerConsole.MarkupErrorLine(settings.E(

@@ -7,7 +7,7 @@ Intended consumers are tool and application developers: define profiles once (se
 ## Key types
 
 - `SqlServerConnectionProfile` — a named profile with first-class options (server, database, authentication, encryption, trust, application intent, timeouts, pooling), a free-form options escape hatch, and optional namespaced application metadata; builds a `SqlConnectionStringBuilder` / connection string.
-- `SqlServerConnectionStore` / `SqlServerConnectionStoreOptions` — JSON file storage with `Shared(vendor)` (machine-wide per-user store shared across tools) and `AppSpecific(vendor, app)` locations, or any explicit `FilePath`.
+- `SqlServerConnectionStore` / `SqlServerConnectionStoreOptions` — JSON file storage with `Shared(vendor)` (machine-wide per-user store shared across tools) and `AppSpecific(vendor, app)` locations, or any explicit `FilePath`; `QueryByMetadata(...)` applies reusable metadata filters.
 - `SqlServerConnectionResolver` / `SqlServerConnectionResolution` — name → connection string with clean failure messages.
 - `SqlServerConnectionValidator` / `SqlServerConnectionValidationPolicy` — profile validation (e.g. database required vs. optional).
 - `IConnectionPasswordProtector` — password-at-rest strategy: `DpapiConnectionPasswordProtector`, `NonPersistingConnectionPasswordProtector`, `NoOpConnectionPasswordProtector`, and `ConnectionPasswordProtector.CreateDefault()`.
@@ -57,6 +57,26 @@ store.AddOrUpdate(profile);
 
 Metadata is opaque to TigerQuery, uses ordinal key comparison, and can be removed with
 `profile.RemoveMetadata(key)`. Do not use it for passwords, tokens, or other secrets.
+
+Profiles can be queried with ordinal, case-sensitive metadata predicates. Filters use
+AND semantics and results retain their order in the store:
+
+```csharp
+var automationProfiles = store.QueryByMetadata(
+[
+    new SqlServerConnectionMetadataFilter
+    {
+        Key = "yourvendor.yourapp.role",
+        Operator = SqlServerConnectionMetadataFilterOperator.Equals,
+        Value = "automation-host"
+    },
+    new SqlServerConnectionMetadataFilter
+    {
+        Key = "yourvendor.yourapp.enabled",
+        Operator = SqlServerConnectionMetadataFilterOperator.IsSet
+    }
+]);
+```
 
 For a real shared store, prefer `SqlServerConnectionStoreOptions.Shared("YourVendor")` (per-user application-data location on Windows, `~/.config` elsewhere) so multiple tools see the same connections.
 

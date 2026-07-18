@@ -137,8 +137,30 @@ internal sealed class SqlServerConnectionSettings : TigerCliSettings
         ValueName = "key=value")]
     public List<KeyValuePair<string, string>> Opt { get; set; } = [];
 
+    // ── Application metadata ─────────────────────────────────────────
+
+    [TigerCliOption("--metadata",
+        Description = "Set application metadata using key=value. Repeat for multiple entries.",
+        DescriptionResourceKey = "Opt_Connection_Metadata_Description",
+        ValueName = "key=value",
+        Promptable = TigerCliPromptable.No)]
+    public List<string> Metadata { get; set; } = [];
+
+    [TigerCliOption("--remove-metadata",
+        Description = "Remove an application metadata key. Repeat for multiple keys.",
+        DescriptionResourceKey = "Opt_Connection_RemoveMetadata_Description",
+        ValueName = "key",
+        Promptable = TigerCliPromptable.No)]
+    public List<string> RemoveMetadata { get; set; } = [];
+
     public override TigerCliValidationResult Validate()
     {
+        var metadataError = SqlServerConnectionMetadataOptions.ValidateMutations(
+            Metadata,
+            RemoveMetadata);
+        if (metadataError is not null)
+            return TigerCliValidationResult.Error(T(metadataError));
+
         if (Pooling == false && (MinPoolSize.HasValue || MaxPoolSize.HasValue))
         {
             return TigerCliValidationResult.Error(T(

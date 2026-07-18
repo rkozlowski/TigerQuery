@@ -75,6 +75,11 @@
   <data name="Opt_Connection_MinPoolSize_Description" xml:space="preserve"><value>Minimalny rozmiar puli (wymaga puli połączeń).</value></data>
   <data name="Opt_Connection_MaxPoolSize_Description" xml:space="preserve"><value>Maksymalny rozmiar puli (wymaga puli połączeń).</value></data>
   <data name="Opt_Connection_Opt_Description" xml:space="preserve"><value>Dodatkowa opcja parametrów połączenia, np. --opt Pooling=true albo --opt PacketSize 16000.</value></data>
+  <data name="Opt_Connection_Metadata_Description" xml:space="preserve"><value>Ustaw metadane aplikacji w formacie klucz=wartość. Powtórz dla wielu wpisów.</value></data>
+  <data name="Opt_Connection_RemoveMetadata_Description" xml:space="preserve"><value>Usuń klucz metadanych aplikacji. Powtórz dla wielu kluczy.</value></data>
+  <data name="Opt_Connection_ListMetadata_Description" xml:space="preserve"><value>Dopasuj metadane aplikacji w formacie klucz=wartość. Powtórzone filtry są łączone operatorem ORAZ.</value></data>
+  <data name="Opt_Connection_MetadataSet_Description" xml:space="preserve"><value>Dopasuj profile, w których ustawiono klucz metadanych aplikacji.</value></data>
+  <data name="Opt_Connection_MetadataNotSet_Description" xml:space="preserve"><value>Dopasuj profile, w których nie ustawiono klucza metadanych aplikacji.</value></data>
 
   <!-- ── Enum labels and descriptions (source-text keys) ────────────── -->
   <data name="Integrated" xml:space="preserve"><value>Zintegrowane (Windows)</value></data>
@@ -105,6 +110,9 @@
   <data name="Server" xml:space="preserve"><value>Serwer</value></data>
   <data name="Authentication" xml:space="preserve"><value>Uwierzytelnianie</value></data>
   <data name="Database" xml:space="preserve"><value>Baza danych</value></data>
+  <data name="Metadata" xml:space="preserve"><value>Metadane</value></data>
+  <data name="Key" xml:space="preserve"><value>Klucz</value></data>
+  <data name="Value" xml:space="preserve"><value>Wartość</value></data>
   <data name="Name:" xml:space="preserve"><value>Nazwa:</value></data>
   <data name="Server:" xml:space="preserve"><value>Serwer:</value></data>
   <data name="Authentication:" xml:space="preserve"><value>Uwierzytelnianie:</value></data>
@@ -124,4 +132,8 @@
   <data name="Username is required for SQL password authentication." xml:space="preserve"><value>Nazwa użytkownika jest wymagana przy uwierzytelnianiu hasłem SQL.</value></data>
   <data name="Password is required for SQL password authentication." xml:space="preserve"><value>Hasło jest wymagane przy uwierzytelnianiu hasłem SQL.</value></data>
   <data name="--min-pool-size and --max-pool-size cannot be used when pooling is disabled (--pooling false)." xml:space="preserve"><value>Opcje --min-pool-size i --max-pool-size nie mogą być używane, gdy pula połączeń jest wyłączona (--pooling false).</value></data>
+  <data name="Metadata entries must use key=value format." xml:space="preserve"><value>Wpisy metadanych muszą mieć format klucz=wartość.</value></data>
+  <data name="Metadata keys must not be empty." xml:space="preserve"><value>Klucze metadanych nie mogą być puste.</value></data>
+  <data name="A metadata key cannot be set more than once in the same command." xml:space="preserve"><value>Klucz metadanych nie może być ustawiony więcej niż raz w tym samym poleceniu.</value></data>
+  <data name="The same metadata key cannot be both set and removed in one command." xml:space="preserve"><value>Ten sam klucz metadanych nie może być jednocześnie ustawiony i usunięty w jednym poleceniu.</value></data>
 </root>

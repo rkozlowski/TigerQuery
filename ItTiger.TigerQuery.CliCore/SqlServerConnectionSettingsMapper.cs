@@ -51,6 +51,11 @@ internal static class SqlServerConnectionSettingsMapper
                 profile.SetMetadata(key, value);
         }
 
+        SqlServerConnectionMetadataOptions.ApplyMutations(
+            profile,
+            settings.Metadata,
+            settings.RemoveMetadata);
+
         return profile;
     }
 
