@@ -1,4 +1,5 @@
 using ItTiger.TigerSqlCmd;
+using ItTiger.TigerQuery.Core;
 
 namespace ItTiger.TigerQuery.Tests.Cli;
 
@@ -42,6 +43,47 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
 
         var delete = await RunAsync("--non-interactive", "connections", "delete", "demo");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, delete.ExitCode);
+    }
+
+    [Fact]
+    public async Task Edit_PreservesMetadataOnServerLevelProfileThroughResolveAndResave()
+    {
+        var profile = new SqlServerConnectionProfile
+        {
+            Name = "automation-host",
+            Server = "original-server",
+            Database = null,
+            Authentication = AuthenticationType.Integrated,
+            Encrypt = EncryptOption.Mandatory
+        };
+        profile.SetMetadata("ittiger.tigerwrap.role", "automated-test-host");
+        _temp.Store.Add(profile);
+
+        var edit = await RunAsync(
+            "--non-interactive",
+            "connections",
+            "edit",
+            "automation-host",
+            "--server",
+            "updated-server");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, edit.ExitCode);
+        var edited = _temp.Store.Find("automation-host")!;
+        Assert.Null(edited.Database);
+        Assert.Equal(
+            "automated-test-host",
+            edited.Metadata["ittiger.tigerwrap.role"]);
+
+        var resolution = SqlServerConnectionResolver.Resolve(_temp.Store, "automation-host");
+        Assert.True(resolution.IsSuccess, resolution.ErrorMessage);
+        Assert.DoesNotContain("Initial Catalog", resolution.ConnectionString);
+        Assert.DoesNotContain("ittiger.tigerwrap.role", resolution.ConnectionString);
+
+        _temp.Store.AddOrUpdate(edited);
+        var resaved = _temp.Store.Find("automation-host")!;
+        Assert.Equal(
+            "automated-test-host",
+            resaved.Metadata["ittiger.tigerwrap.role"]);
     }
 
     [Fact]

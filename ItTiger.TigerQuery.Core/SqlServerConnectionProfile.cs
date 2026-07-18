@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
 using Microsoft.Data.SqlClient;
 
@@ -5,6 +6,14 @@ namespace ItTiger.TigerQuery.Core;
 
 public sealed class SqlServerConnectionProfile
 {
+    private readonly Dictionary<string, string> metadata = new(StringComparer.Ordinal);
+    private readonly IReadOnlyDictionary<string, string> readOnlyMetadata;
+
+    public SqlServerConnectionProfile()
+    {
+        readOnlyMetadata = new ReadOnlyDictionary<string, string>(metadata);
+    }
+
     public string Name { get; set; } = string.Empty;
     public string Server { get; set; } = string.Empty;
     public string? Database { get; set; }
@@ -53,6 +62,65 @@ public sealed class SqlServerConnectionProfile
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? Options { get; set; }
+
+    /// <summary>
+    /// Opaque, application-owned string metadata. Keys are compared ordinally and are
+    /// not normalized or interpreted by the shared connection library. Do not store
+    /// secrets in metadata.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, string> Metadata => readOnlyMetadata;
+
+    /// <summary>Adds or replaces one application-owned metadata value.</summary>
+    public void SetMetadata(string key, string value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentNullException.ThrowIfNull(value);
+
+        metadata[key] = value;
+    }
+
+    /// <summary>Removes one application-owned metadata value, if present.</summary>
+    public bool RemoveMetadata(string key)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        return metadata.Remove(key);
+    }
+
+    // The serialization proxy keeps the public view read-only, omits empty metadata,
+    // and writes keys in ordinal order for stable, reviewable store files.
+    [JsonInclude]
+    [JsonPropertyName(nameof(Metadata))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    private Dictionary<string, string>? SerializedMetadata
+    {
+        get
+        {
+            if (metadata.Count == 0)
+                return null;
+
+            var sorted = new Dictionary<string, string>(metadata.Count, StringComparer.Ordinal);
+            foreach (var (key, value) in metadata.OrderBy(item => item.Key, StringComparer.Ordinal))
+                sorted.Add(key, value);
+
+            return sorted;
+        }
+        set
+        {
+            metadata.Clear();
+            if (value is null)
+                return;
+
+            foreach (var (key, metadataValue) in value)
+            {
+                if (key.Length == 0 || metadataValue is null)
+                    throw new System.Text.Json.JsonException(
+                        "Metadata keys must be non-empty and metadata values must be strings.");
+
+                metadata.Add(key, metadataValue);
+            }
+        }
+    }
 
     public SqlConnectionStringBuilder BuildConnectionStringBuilder()
     {

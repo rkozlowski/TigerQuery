@@ -9,8 +9,8 @@ internal static class SqlServerConnectionSettingsMapper
 {
     /// <summary>
     /// Builds the profile to save. When <paramref name="existing"/> is provided (edit),
-    /// the encrypted password and its metadata are preserved unless a new password was
-    /// explicitly supplied.
+    /// the encrypted password fields are preserved unless a new password was explicitly
+    /// supplied, and opaque application metadata is always carried forward.
     /// </summary>
     public static SqlServerConnectionProfile ToProfile(
         SqlServerConnectionSettings settings,
@@ -44,6 +44,12 @@ internal static class SqlServerConnectionSettingsMapper
         // When authentication is not SqlPassword (e.g. switched to Integrated), Username is already
         // null and the SQL credential metadata above is left at its defaults (PlainPassword null,
         // EncryptedPassword null, PasswordEncryption NotApplicable), clearing the stored credentials.
+
+        if (existing is not null)
+        {
+            foreach (var (key, value) in existing.Metadata)
+                profile.SetMetadata(key, value);
+        }
 
         return profile;
     }

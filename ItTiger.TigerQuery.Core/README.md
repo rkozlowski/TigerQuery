@@ -6,7 +6,7 @@ Intended consumers are tool and application developers: define profiles once (se
 
 ## Key types
 
-- `SqlServerConnectionProfile` — a named profile with first-class options (server, database, authentication, encryption, trust, application intent, timeouts, pooling) plus a free-form options escape hatch; builds a `SqlConnectionStringBuilder` / connection string.
+- `SqlServerConnectionProfile` — a named profile with first-class options (server, database, authentication, encryption, trust, application intent, timeouts, pooling), a free-form options escape hatch, and optional namespaced application metadata; builds a `SqlConnectionStringBuilder` / connection string.
 - `SqlServerConnectionStore` / `SqlServerConnectionStoreOptions` — JSON file storage with `Shared(vendor)` (machine-wide per-user store shared across tools) and `AppSpecific(vendor, app)` locations, or any explicit `FilePath`.
 - `SqlServerConnectionResolver` / `SqlServerConnectionResolution` — name → connection string with clean failure messages.
 - `SqlServerConnectionValidator` / `SqlServerConnectionValidationPolicy` — profile validation (e.g. database required vs. optional).
@@ -45,6 +45,18 @@ if (resolution.IsSuccess)
 else
     Console.WriteLine($"Failed: {resolution.ErrorMessage}");
 ```
+
+Applications can attach namespaced, non-secret string metadata without affecting the
+generated SQL connection string:
+
+```csharp
+var profile = store.Find("local")!;
+profile.SetMetadata("yourvendor.yourapp.role", "automation-host");
+store.AddOrUpdate(profile);
+```
+
+Metadata is opaque to TigerQuery, uses ordinal key comparison, and can be removed with
+`profile.RemoveMetadata(key)`. Do not use it for passwords, tokens, or other secrets.
 
 For a real shared store, prefer `SqlServerConnectionStoreOptions.Shared("YourVendor")` (per-user application-data location on Windows, `~/.config` elsewhere) so multiple tools see the same connections.
 
