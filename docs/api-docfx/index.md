@@ -3,12 +3,20 @@
 <img src="../assets/TigerQuery256.png" alt="TigerQuery logo" width="96">
 
 TigerQuery is a lightweight SQL script engine and parser with familiar
-`sqlcmd` and SSMS SqlCmd-mode behavior. Its companion packages add named SQL
-Server connection profiles and reusable connection-management commands for
-TigerCli applications.
+`sqlcmd` and SSMS SqlCmd-mode behavior. Its defining **`SqlCmdEx`** mode adds
+protected application-provided variables for automation and embedded tooling.
+Companion packages add named SQL Server connection profiles and reusable
+connection-management commands for TigerCli applications.
 
 This site combines a short guide with API documentation generated from the
 libraries' C# source and XML documentation comments.
+
+> [!TIP]
+> **`SqlCmdEx` is controlled scripting for applications.** It keeps familiar
+> sqlcmd syntax, but a script cannot replace host-provided variables with
+> `:setvar`. Non-conflicting script-local variables continue to work. See
+> [SqlCmd and SqlCmdEx](engine.md#sqlcmd-and-sqlcmdex) for the comparison and
+> a complete example.
 
 > [!IMPORTANT]
 > TigerQuery supports two execution modes. **Streaming** execution is the

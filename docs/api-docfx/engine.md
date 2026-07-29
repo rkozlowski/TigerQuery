@@ -3,13 +3,83 @@
 The [ItTiger.TigerQuery](https://www.nuget.org/packages/ItTiger.TigerQuery/)
 package parses SQL scripts and coordinates asynchronous execution against SQL
 Server. It recognizes `GO` separators and repeat counts, sqlcmd variables and
-`:setvar`, `:on error`, and plain, `sqlcmd`, and extended `sqlcmdex` modes.
+`:setvar`, `:on error`, and plain, `SqlCmd`, and extended `SqlCmdEx` modes.
 
 The main composition types are
 [TigerQueryEngine](xref:ItTiger.TigerQuery.Engine.TigerQueryEngine) and
 [TigerQueryEngineOptions](xref:ItTiger.TigerQuery.Engine.TigerQueryEngineOptions).
 Lower-level parsing is available through
 [SqlCmdParser](xref:ItTiger.TigerQuery.SqlCmdParser).
+
+## SqlCmd and SqlCmdEx
+
+`SqlCmdEx` is TigerQuery's extended scripting mode for applications and
+automation. It keeps familiar sqlcmd script syntax while allowing the host
+application to provide protected variables that scripts cannot override with
+`:setvar`.
+
+Select the mode with
+[TigerQueryEngineOptions.Mode](xref:ItTiger.TigerQuery.Engine.TigerQueryEngineOptions.Mode):
+
+| Mode | Application-provided variables | Script-local variables | Typical use |
+| --- | --- | --- | --- |
+| `SqlCmd` | Seed the variable table; a matching `:setvar` replaces the host value | Created and updated by `:setvar` | Conventional sqlcmd-style scripts |
+| `SqlCmdEx` | Take precedence; a matching `:setvar` is ignored | Created and updated when the name does not conflict with a protected host value | Embedded applications, automation, and controlled workflows |
+
+Variables supplied through
+[TigerQueryEngineOptions.Variables](xref:ItTiger.TigerQuery.Engine.TigerQueryEngineOptions.Variables)
+are loaded before parsing and matched case-insensitively. In `SqlCmd`, they are
+ordinary initial values. In `SqlCmdEx`, each host-provided value is protected
+for the run. A script can still create its own variables with `:setvar`, and
+later `:setvar` commands can update those script-local values.
+
+For example, the script attempts to choose its own target:
+
+```sql
+:setvar TargetDatabase ScriptDatabase
+PRINT 'Deploying $(TargetDatabase)';
+GO
+```
+
+The application retains control by supplying `TargetDatabase` in `SqlCmdEx`:
+
+```csharp
+using System;
+using System.Collections.Generic;
+using ItTiger.TigerQuery;
+using ItTiger.TigerQuery.Engine;
+
+const string script = """
+    :setvar TargetDatabase ScriptDatabase
+    PRINT 'Deploying $(TargetDatabase)';
+    GO
+    """;
+
+var options = new TigerQueryEngineOptions
+{
+    ConnectionString =
+        "Server=localhost;Database=master;Integrated Security=true;TrustServerCertificate=true",
+    Mode = SqlCmdMode.SqlCmdEx,
+    Variables = new Dictionary<string, string>
+    {
+        ["TargetDatabase"] = "HostDatabase"
+    },
+    OnMessage = (message, _) => Console.WriteLine(message.Text)
+};
+
+await new TigerQueryEngine(options).RunFromStringAsync(script);
+// PRINT reports: Deploying HostDatabase
+```
+
+Practical uses include deployment automation, test orchestration, code
+generation, database provisioning, and applications that inject environment
+or project values into reusable scripts. Protection prevents a script from
+accidentally changing an application-owned target or workflow value.
+
+`SqlCmdEx` and prepared execution solve separate problems. `SqlCmdEx` controls
+variable precedence; [prepared versus streaming execution](#prepared-versus-streaming-execution)
+controls when parsing occurs relative to connection opening and batch
+execution. Either execution mode can be combined with `SqlCmd` or `SqlCmdEx`.
 
 ## Prepared versus streaming execution
 
@@ -78,6 +148,7 @@ normalized into an execution result. An optional
 ## Parsing modes
 
 [SqlCmdMode](xref:ItTiger.TigerQuery.SqlCmdMode) selects normal SQL parsing,
-sqlcmd-compatible behavior, or TigerQuery's extended `sqlcmdex` behavior.
+ordinary TigerQuery sqlcmd-style behavior, or TigerQuery's extended `SqlCmdEx`
+behavior.
 Parsed batches include one-based source positions, batch text, and repeat
 metadata for tooling that needs lower-level control.

@@ -48,8 +48,10 @@ public sealed class TigerQueryEngineOptions
     /// </summary>
     /// <remarks>
     /// Names are matched case-insensitively. In <see cref="SqlCmdMode.SqlCmd"/>,
-    /// <c>:setvar</c> may replace these values; in <see cref="SqlCmdMode.SqlCmdEx"/>
-    /// they take precedence and cannot be replaced. They are ignored in
+    /// these values seed the variable table and <c>:setvar</c> may replace them.
+    /// In <see cref="SqlCmdMode.SqlCmdEx"/>, they take precedence and assignments
+    /// to matching names are ignored; non-conflicting script-local variables can
+    /// still be created and updated. Programmatic variables are ignored in
     /// <see cref="SqlCmdMode.Normal"/>.
     /// </remarks>
     public IDictionary<string, string>? Variables { get; init; }

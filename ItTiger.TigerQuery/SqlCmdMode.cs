@@ -16,13 +16,18 @@ public enum SqlCmdMode
 
     /// <summary>
     /// Enables <c>:setvar</c>, <c>:ON ERROR</c>, and <c>$(name)</c> expansion;
-    /// script assignments may replace variables supplied programmatically.
+    /// variables supplied programmatically seed the variable table and may be
+    /// replaced by script assignments.
     /// </summary>
     SqlCmd = 1,
 
     /// <summary>
-    /// Enables sqlcmd features while preventing <c>:setvar</c> from replacing
-    /// variables supplied through <see cref="Engine.TigerQueryEngineOptions.Variables"/>.
+    /// Enables sqlcmd features for applications and automation while preventing
+    /// <c>:setvar</c> from replacing variables supplied through
+    /// <see cref="Engine.TigerQueryEngineOptions.Variables"/>.
+    /// Script-local variables can still be created and updated when their names
+    /// do not conflict with protected programmatic variables. Names are matched
+    /// case-insensitively.
     /// </summary>
     SqlCmdEx = 2
 }
