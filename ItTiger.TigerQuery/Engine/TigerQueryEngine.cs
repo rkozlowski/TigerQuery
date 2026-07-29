@@ -167,9 +167,12 @@ public sealed class TigerQueryEngine
     private async Task<ExecutionResult> ExecuteBatchesAsync(
         IAsyncEnumerable<ExecutionBatch> executionBatches,
         QueryExecutionContext context,
+        int? totalLogicalBatchCount,
+        long? totalExecutionCount,
         CancellationToken cancellationToken)
     {
         var batchIndex = 0;
+        long overallExecutionNumber = 0;
 
         var totalSw = Stopwatch.StartNew();
         Exception? ex = null;
@@ -191,12 +194,16 @@ public sealed class TigerQueryEngine
             {
                 ex = null;
                 cancellationToken.ThrowIfCancellationRequested();
+                overallExecutionNumber = checked(overallExecutionNumber + 1);
 
                 _options.OnBatchStart?.Invoke(new BatchStart
                 {
                     BatchNumber = batchIndex,
+                    TotalLogicalBatchCount = totalLogicalBatchCount,
                     ExecutionIndex = executionIndex,
                     ExecutionCount = executionCount,
+                    OverallExecutionNumber = overallExecutionNumber,
+                    TotalExecutionCount = totalExecutionCount,
                     SqlText = batch.Text
                 });
 
@@ -269,8 +276,11 @@ public sealed class TigerQueryEngine
                 _options.OnBatchEnd?.Invoke(new BatchEnd
                 {
                     BatchNumber = batchIndex,
+                    TotalLogicalBatchCount = totalLogicalBatchCount,
                     ExecutionIndex = executionIndex,
                     ExecutionCount = executionCount,
+                    OverallExecutionNumber = overallExecutionNumber,
+                    TotalExecutionCount = totalExecutionCount,
                     Success = success,
                     Exception = ex,
                     Duration = sw.Elapsed
@@ -319,6 +329,8 @@ public sealed class TigerQueryEngine
         return await ExecuteBatchesAsync(
             ReadStreamingBatchesAsync(parser, context, cancellationToken),
             context,
+            totalLogicalBatchCount: null,
+            totalExecutionCount: null,
             cancellationToken);
     }
 
@@ -349,6 +361,8 @@ public sealed class TigerQueryEngine
         return await ExecuteBatchesAsync(
             ReadPreparedBatchesAsync(plan, cancellationToken),
             context,
+            plan.LogicalBatchCount,
+            plan.TotalExecutionCount,
             cancellationToken);
     }
 

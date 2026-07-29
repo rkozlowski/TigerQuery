@@ -121,6 +121,35 @@ connection opens and before batch callbacks. Its execution total includes
 positive `GO n` repeat counts. `GO 0` and negative repeat counts still count as
 logical batches but schedule no executions.
 
+### Bounded batch progress
+
+In prepared mode, `BatchStart` and `BatchEnd` include the same
+`TotalLogicalBatchCount` and `TotalExecutionCount` values reported by
+`OnExecutionPlanReady`. `OverallExecutionNumber` advances from one as each
+execution attempt begins, so an end callback can report bounded progress:
+
+```csharp
+var options = new TigerQueryEngineOptions
+{
+    ExecutionMode = TigerQueryExecutionMode.Prepared,
+    OnBatchEnd = batch =>
+    {
+        if (batch.TotalExecutionCount is long total)
+        {
+            var percent = 100d * batch.OverallExecutionNumber / total;
+            Console.WriteLine(
+                $"{batch.OverallExecutionNumber}/{total} attempts ended "
+                + $"({percent:F0}%)");
+        }
+    }
+};
+```
+
+These totals continue to describe the complete prepared plan if execution
+stops early. In streaming mode they are `null` because the remaining script is
+not known; `OverallExecutionNumber` is still populated. The values measure
+scheduled batch execution attempts, not progress within a SQL batch.
+
 Prepared mode does not prevalidate the connection, permissions, T-SQL syntax,
 compilation, or runtime behavior. Those failures still occur during execution.
 It retains each expanded logical batch until execution finishes, although
