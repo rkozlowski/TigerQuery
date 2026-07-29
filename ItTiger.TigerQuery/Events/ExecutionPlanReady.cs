@@ -4,6 +4,10 @@ namespace ItTiger.TigerQuery.Events;
 /// Describes a successfully prepared script immediately before connection
 /// opening and SQL execution.
 /// </summary>
+/// <remarks>
+/// This is a count-only notification. The prepared plan is internal, belongs to
+/// one run, and cannot be inspected, retained, or executed through the public API.
+/// </remarks>
 public sealed class ExecutionPlanReady
 {
     /// <summary>

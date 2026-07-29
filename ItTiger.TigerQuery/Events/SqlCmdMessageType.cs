@@ -6,14 +6,30 @@ using System.Threading.Tasks;
 
 namespace ItTiger.TigerQuery.Events;
 
+/// <summary>Categorizes SQL Server messages and engine-observed exceptions.</summary>
 public enum SqlCmdMessageType
 {
-    Print,          // PRINT and RAISERROR with severity 0
-    Info,           // Optional: For general info from the server
-    Raiserror,      // RAISERROR with severity 1–10 (non-fatal, e.g. user messaging)
-    Warning,        // RAISERROR with severity 11–16
-    Exception,      // Non-SQL Exception
-    Error,          // RAISERROR with severity 17–19
-    FatalError,     // RAISERROR with severity 20–25
-    FatalException  // Non-SQL Fatal Exception
+    /// <summary>A <c>PRINT</c> message or SQL message with severity zero.</summary>
+    Print,
+
+    /// <summary>A general informational message not classified by SQL severity.</summary>
+    Info,
+
+    /// <summary>A nonfatal <c>RAISERROR</c> or SQL message with severity 1 through 10.</summary>
+    Raiserror,
+
+    /// <summary>A SQL message with severity 11 through 16.</summary>
+    Warning,
+
+    /// <summary>A non-SQL exception represented by the engine's synthetic severity.</summary>
+    Exception,
+
+    /// <summary>A SQL message with severity 17 through 19.</summary>
+    Error,
+
+    /// <summary>A fatal SQL message with severity 20 or greater.</summary>
+    FatalError,
+
+    /// <summary>A <see cref="TigerQueryException"/> represented as a fatal exception message.</summary>
+    FatalException
 }

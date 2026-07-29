@@ -1,8 +1,29 @@
 ﻿namespace ItTiger.TigerQuery;
+/// <summary>
+/// Selects which sqlcmd language features the parser recognizes.
+/// </summary>
+/// <remarks>
+/// All modes recognize <c>GO</c> batch separators and literal repeat counts.
+/// Sqlcmd directives and variable expansion are enabled only in
+/// <see cref="SqlCmd"/> and <see cref="SqlCmdEx"/>.
+/// </remarks>
 public enum SqlCmdMode
 {
-    Normal = 0,     // Plain SQL, no sqlcmd commands or variable substitution
-    SqlCmd = 1,     // Standard sqlcmd behavior
-    SqlCmdEx = 2    // Extended: programmatic variables take precedence over :setvar
+    /// <summary>
+    /// Parses SQL batches without interpreting sqlcmd directives or expanding variables.
+    /// </summary>
+    Normal = 0,
+
+    /// <summary>
+    /// Enables <c>:setvar</c>, <c>:ON ERROR</c>, and <c>$(name)</c> expansion;
+    /// script assignments may replace variables supplied programmatically.
+    /// </summary>
+    SqlCmd = 1,
+
+    /// <summary>
+    /// Enables sqlcmd features while preventing <c>:setvar</c> from replacing
+    /// variables supplied through <see cref="Engine.TigerQueryEngineOptions.Variables"/>.
+    /// </summary>
+    SqlCmdEx = 2
 }
 

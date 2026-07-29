@@ -7,6 +7,21 @@ namespace ItTiger.TigerQuery.Core;
 /// </summary>
 public static class SqlServerConnectionResolver
 {
+    /// <summary>Resolves a saved profile name to a normalized SqlClient connection string.</summary>
+    /// <param name="store">The profile store to search.</param>
+    /// <param name="name">The case-sensitive saved name, or null when unspecified.</param>
+    /// <returns>
+    /// A success containing the connection string, or a failure containing a clean
+    /// reason for missing input, an absent profile, or connection-string conversion.
+    /// </returns>
+    /// <remarks>
+    /// Profile loading, file I/O, and JSON errors are not converted to failure
+    /// results. Errors thrown while building a found profile's connection string are.
+    /// A profile with no database produces a valid server-level connection string.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="store"/> is <see langword="null"/>.
+    /// </exception>
     public static SqlServerConnectionResolution Resolve(SqlServerConnectionStore store, string? name)
     {
         ArgumentNullException.ThrowIfNull(store);

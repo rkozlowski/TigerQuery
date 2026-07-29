@@ -16,9 +16,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>TigerQuery256.png</PackageIcon>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- Public API docs are being filled in incrementally; missing-comment warnings
-         would otherwise fail the zero-warning build. -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <WarningsAsErrors>$(WarningsAsErrors);CS0419;CS1570;CS1572;CS1573;CS1574;CS1580;CS1581;CS1584;CS1587;CS1591;CS1658;CS1711;CS1734;CS1735</WarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

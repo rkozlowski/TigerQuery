@@ -7,12 +7,34 @@ using System.Text;
 
 namespace ItTiger.TigerQuery.Engine;
 
+/// <summary>
+/// Parses sqlcmd-style scripts and executes their logical batches sequentially
+/// against SQL Server.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The engine has no console output. Messages, result sets, and batch lifecycle
+/// information are delivered through <see cref="TigerQueryEngineOptions"/> callbacks.
+/// A single engine should not be used for concurrent runs because its options and
+/// callback destinations are shared.
+/// </para>
+/// <para>
+/// Callbacks are synchronous. In prepared mode the order is plan-ready, then
+/// batch-start, any messages/result sets, and batch-end for each scheduled
+/// execution. Streaming mode omits plan-ready and preserves the same per-batch order.
+/// </para>
+/// </remarks>
 public sealed class TigerQueryEngine
 {
     private readonly TigerQueryEngineOptions _options;
     private readonly Func<SqlConnection, CancellationToken, Task> _openConnectionAsync;
     private readonly Func<QueryExecutionContext, SqlBatch, int, int, CancellationToken, Task> _executeBatchAsync;
 
+    /// <summary>Initializes an engine with fixed run options.</summary>
+    /// <param name="options">The parsing, execution, and callback configuration.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="options"/> is <see langword="null"/>.
+    /// </exception>
     public TigerQueryEngine(TigerQueryEngineOptions options)
         : this(options, OpenSqlConnectionAsync, ExecuteContextBatchAsync)
     {
@@ -335,12 +357,38 @@ public sealed class TigerQueryEngine
     /// <see cref="TigerQueryEngineOptions.ExecutionMode"/>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Streaming mode opens the SQL connection before parsing batches
-    /// incrementally. Prepared mode parses the complete TigerQuery/sqlcmd
-    /// structure before opening the connection, but T-SQL validation and all
-    /// connection, permission, compilation, and runtime failures still occur
-    /// during execution.
+    /// incrementally, so earlier batches can execute before a later parser error.
+    /// Prepared mode parses the complete TigerQuery/sqlcmd structure before opening
+    /// the connection; parser failure therefore prevents SQL execution. Prepared
+    /// mode retains every expanded logical batch for the duration of the run.
+    /// </para>
+    /// <para>
+    /// Preparation does not validate T-SQL. Connection, permission, T-SQL syntax,
+    /// compilation, and runtime failures remain execution-time behavior. Parser
+    /// and connection-opening exceptions escape this method.
+    /// </para>
+    /// <para>
+    /// Cancellation observed while an active provider batch operation is in the
+    /// engine's batch catch path produces <see cref="ExecutionResultCode.UserCancelled"/>.
+    /// Cancellation during parsing, preparation, connection opening, between
+    /// executions, or in callbacks is propagated as <see cref="OperationCanceledException"/>.
+    /// </para>
     /// </remarks>
+    /// <param name="input">The script reader. The engine does not dispose it.</param>
+    /// <param name="cancellationToken">A token observed during parsing and execution.</param>
+    /// <returns>A result when execution reaches the coordinator's normal result path.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="input"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="TigerQueryException">TigerQuery/sqlcmd structure is malformed.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// Cancellation is observed outside an active batch provider operation.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// The configured <see cref="TigerQueryEngineOptions.ExecutionMode"/> is unsupported.
+    /// </exception>
     public async Task<ExecutionResult> RunAsync(
         TextReader input,
         CancellationToken cancellationToken = default)
@@ -359,8 +407,22 @@ public sealed class TigerQueryEngine
     }
 
     /// <summary>
-    /// Runs a script file using the configured execution mode.
+    /// Opens and runs a script file using the configured execution mode.
     /// </summary>
+    /// <param name="path">The script file path.</param>
+    /// <param name="encoding">
+    /// The fallback encoding when no byte-order mark is detected; UTF-8 by default.
+    /// </param>
+    /// <param name="cancellationToken">A token observed during parsing and execution.</param>
+    /// <returns>A result when execution reaches the coordinator's normal result path.</returns>
+    /// <remarks>
+    /// Byte-order marks override <paramref name="encoding"/>. The file reader is
+    /// disposed after the run.
+    /// </remarks>
+    /// <exception cref="TigerQueryException">TigerQuery/sqlcmd structure is malformed.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// Cancellation is observed outside an active batch provider operation.
+    /// </exception>
     public async Task<ExecutionResult> RunFromFileAsync(string path, Encoding? encoding = null, CancellationToken cancellationToken = default)
     {
         using var reader = new StreamReader(path, encoding ?? Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
@@ -370,6 +432,13 @@ public sealed class TigerQueryEngine
     /// <summary>
     /// Runs a script string using the configured execution mode.
     /// </summary>
+    /// <param name="script">The complete script text.</param>
+    /// <param name="cancellationToken">A token observed during parsing and execution.</param>
+    /// <returns>A result when execution reaches the coordinator's normal result path.</returns>
+    /// <exception cref="TigerQueryException">TigerQuery/sqlcmd structure is malformed.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// Cancellation is observed outside an active batch provider operation.
+    /// </exception>
     public async Task<ExecutionResult> RunFromStringAsync(string script, CancellationToken cancellationToken = default)
     {
         using var reader = new StringReader(script);

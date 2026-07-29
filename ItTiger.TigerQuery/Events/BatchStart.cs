@@ -6,10 +6,18 @@ using System.Threading.Tasks;
 
 namespace ItTiger.TigerQuery.Events;
 
+/// <summary>Describes a batch execution immediately before it starts.</summary>
 public sealed class BatchStart
 {
-    public int BatchNumber { get; init; }          // 1-based batch ID in script
-    public int ExecutionIndex { get; init; }       // 1-based loop index (1..GO n)
-    public int ExecutionCount { get; init; }       // Always >= 1
-    public string SqlText { get; init; } = "";     // Raw batch text
+    /// <summary>Gets the one-based logical batch number in parser order.</summary>
+    public int BatchNumber { get; init; }
+
+    /// <summary>Gets the one-based repeat iteration for this execution.</summary>
+    public int ExecutionIndex { get; init; }
+
+    /// <summary>Gets the batch's positive <c>GO n</c> repeat count.</summary>
+    public int ExecutionCount { get; init; }
+
+    /// <summary>Gets the variable-expanded SQL text sent for this execution.</summary>
+    public string SqlText { get; init; } = "";
 }

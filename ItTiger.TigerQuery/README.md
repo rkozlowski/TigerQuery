@@ -52,7 +52,7 @@ var result = await engine.RunFromStringAsync(
 Console.WriteLine($"{result.ResultCode}: {result.ExecutedBatches} batch(es) in {result.TotalDuration.TotalMilliseconds:F0} ms");
 ```
 
-Use `RunFromFileAsync(path)` for script files and `RunAsync(TextReader)` for anything else. All run methods accept a `CancellationToken`; cancellation maps to `ExecutionResultCode.UserCancelled`.
+Use `RunFromFileAsync(path)` for script files and `RunAsync(TextReader)` for anything else. All run methods accept a `CancellationToken`. Cancellation raised during an active SQL batch maps to `ExecutionResultCode.UserCancelled`; cancellation during parsing, preparation, connection opening, or between executions propagates as `OperationCanceledException`.
 
 ## Streaming and prepared execution
 
@@ -102,7 +102,7 @@ The engine never writes to the console. Everything flows through the callbacks o
 - `OnBatchStart` / `OnBatchEnd` — batch progress, success, and duration
 - `OnResultSet` — column metadata (`ColumnInfo`) and rows (`object?[]`)
 
-Each run returns an `ExecutionResult` with an `ExecutionResultCode` (success, batch failure, fatal error, cancellation, connection failure, parse error, …), executed/failed batch counts, and total duration. An optional `Microsoft.Extensions.Logging.ILogger` receives structured logs.
+Runs that reach the execution coordinator's result path return an `ExecutionResult` with an `ExecutionResultCode`, successful/failed execution counts (including `GO n` iterations), and total execution duration. Parser and connection-opening failures currently escape the run method rather than being normalized into a result. An optional `Microsoft.Extensions.Logging.ILogger` receives structured logs.
 
 ## Related packages
 

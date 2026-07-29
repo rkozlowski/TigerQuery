@@ -8,6 +8,16 @@ using ItTiger.TigerQuery.Core;
 
 namespace ItTiger.TigerQuery.CliCore;
 
+/// <summary>
+/// Composes reusable SQL Server connection-management commands into a TigerCli
+/// command group.
+/// </summary>
+/// <remarks>
+/// Host applications provide a <see cref="SqlServerConnectionStore"/>, register
+/// resources, and own final numeric exit-code mapping. The mounted commands return
+/// semantic <see cref="TigerCliExitKind"/> outcomes such as success, validation
+/// error, not found, and already exists.
+/// </remarks>
 public static class SqlServerConnectionCommands
 {
     /// <summary>
@@ -16,6 +26,15 @@ public static class SqlServerConnectionCommands
     /// the app can override library strings; the connection-command strings (en-US and
     /// pl-PL) act as the fallback for the metadata, enum text, and output owned here.
     /// </summary>
+    /// <param name="appResources">
+    /// Zero or more host resource managers, in lookup precedence order.
+    /// </param>
+    /// <returns>
+    /// A chained manager ending with the connection-command resources.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="appResources"/> is <see langword="null"/>.
+    /// </exception>
     public static ResourceManager CreateAppResources(params ResourceManager[] appResources)
     {
         ArgumentNullException.ThrowIfNull(appResources);
@@ -23,6 +42,36 @@ public static class SqlServerConnectionCommands
             [.. appResources, SqlServerConnectionCommandStrings.ResourceManager]);
     }
 
+    /// <summary>Mounts the connection providers and list/show/add/edit/delete commands.</summary>
+    /// <param name="group">The TigerCli command group to configure.</param>
+    /// <param name="configure">
+    /// A callback that supplies the required store and optional validation policy.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Configuration enables prompting for the group, registers saved-connection
+    /// and live-database providers, and adds the five command handlers. Add and edit
+    /// expose repeatable metadata mutations; list exposes ordinal, case-sensitive
+    /// metadata filters combined with AND semantics.
+    /// </para>
+    /// <para>
+    /// Edit begins with the existing profile and preserves application-owned
+    /// metadata unless explicit metadata set/remove options change it. Built-in
+    /// output and command metadata are localized through the resource manager
+    /// returned by <see cref="CreateAppResources"/>.
+    /// </para>
+    /// <para>
+    /// The handlers return semantic <see cref="TigerCliExitKind"/> values. The host
+    /// must map those values to its own numeric exit-code policy.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="group"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// The configured <see cref="SqlServerConnectionCommandOptions.Store"/> or
+    /// <see cref="SqlServerConnectionCommandOptions.ValidationPolicy"/> is null.
+    /// </exception>
     public static void Configure(
         TigerCliCommandGroupBuilder group,
         Action<SqlServerConnectionCommandOptions>? configure = null)

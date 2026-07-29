@@ -10,6 +10,21 @@ using System.Threading.Tasks;
 
 namespace ItTiger.TigerQuery;
 
+/// <summary>
+/// Incrementally tokenizes and parses SQL scripts with optional sqlcmd directives.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <see cref="ReadBatchesAsync"/> recognizes <c>GO</c> separators in every
+/// <see cref="SqlCmdMode"/>. In sqlcmd modes it also expands <c>$(name)</c>,
+/// processes <c>:setvar</c>, and applies <c>:ON ERROR EXIT</c> or
+/// <c>:ON ERROR IGNORE</c> to the shared execution context.
+/// </para>
+/// <para>
+/// Parsing validates TigerQuery/sqlcmd structure only. It does not validate T-SQL.
+/// The parser consumes its <see cref="TextReader"/> and is not thread-safe.
+/// </para>
+/// </remarks>
 public sealed class SqlCmdParser
 {
     private readonly TextReader _reader;
@@ -21,6 +36,16 @@ public sealed class SqlCmdParser
 
 
 
+    /// <summary>Initializes a parser over a text reader and execution context.</summary>
+    /// <param name="reader">The script source. The parser does not dispose it.</param>
+    /// <param name="options">The parsing and variable options.</param>
+    /// <param name="context">
+    /// The mutable context that receives variable and <c>:ON ERROR</c> state.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="reader"/>, <paramref name="options"/>, or
+    /// <paramref name="context"/> is <see langword="null"/>.
+    /// </exception>
     public SqlCmdParser(TextReader reader, TigerQueryEngineOptions options, QueryExecutionContext context)
     {
         _reader = reader ?? throw new ArgumentNullException(nameof(reader));
@@ -66,6 +91,11 @@ public sealed class SqlCmdParser
         return _reader.Peek();
     }
 
+    /// <summary>Reads the next lexical element from the script.</summary>
+    /// <returns>The next element, or <see langword="null"/> at end of input.</returns>
+    /// <exception cref="TigerQueryException">
+    /// A quoted section or multiline comment is unterminated, or parser state is invalid.
+    /// </exception>
     public SqlElement? ReadElement()
     {
         var sb = new StringBuilder();
@@ -308,6 +338,27 @@ public sealed class SqlCmdParser
 
 
 
+    /// <summary>Asynchronously yields logical SQL batches in source order.</summary>
+    /// <param name="cancellationToken">A token observed throughout parser enumeration.</param>
+    /// <returns>An asynchronous stream of parser-produced batches.</returns>
+    /// <remarks>
+    /// <para>
+    /// Variables are expanded as text is parsed. Undefined ordinary variables
+    /// remain as their literal <c>$(name)</c> references. A variable used as a
+    /// <c>GO</c> count must expand to one valid <see cref="int"/> value.
+    /// </para>
+    /// <para>
+    /// A directive after buffered SQL and before its terminating <c>GO</c> updates
+    /// the context before that batch is yielded. Consumers that defer execution
+    /// must therefore snapshot relevant context state for each yielded batch.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> is cancelled during enumeration.
+    /// </exception>
+    /// <exception cref="TigerQueryException">
+    /// A sqlcmd directive, <c>GO</c> count, quoted section, or comment is malformed.
+    /// </exception>
     public async IAsyncEnumerable<SqlBatch> ReadBatchesAsync(
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {

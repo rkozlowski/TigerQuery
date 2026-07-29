@@ -12,6 +12,25 @@ public static class SqlServerDatabaseLister
 {
     private const int DefaultProbeTimeoutSeconds = 5;
 
+    /// <summary>Lists accessible online databases for a profile's server and credentials.</summary>
+    /// <param name="profile">
+    /// The connection profile. Its initial database is ignored for the probe.
+    /// </param>
+    /// <param name="cancellationToken">A token passed to connection and query operations.</param>
+    /// <returns>
+    /// Accessible database names ordered by SQL Server, or an empty list for any
+    /// non-cancellation connection, credential, permission, or query failure.
+    /// </returns>
+    /// <remarks>
+    /// A five-second connection timeout is used when the profile does not specify
+    /// one. The profile itself is not modified.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="profile"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="cancellationToken"/> is cancelled.
+    /// </exception>
     public static async Task<IReadOnlyList<string>> ListAsync(
         SqlServerConnectionProfile profile,
         CancellationToken cancellationToken = default)
