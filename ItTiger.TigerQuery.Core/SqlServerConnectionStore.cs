@@ -103,9 +103,10 @@ public sealed class SqlServerConnectionStore
         foreach (var filter in filterList)
             ValidateMetadataFilter(filter);
 
-        return Load()
+        var matches = Load()
             .Where(profile => filterList.All(filter => MatchesMetadataFilter(profile, filter)))
             .ToList();
+        return matches;
     }
 
     public void AddOrUpdate(SqlServerConnectionProfile connection)
@@ -139,24 +140,24 @@ public sealed class SqlServerConnectionStore
     private static void ValidateMetadataFilter(SqlServerConnectionMetadataFilter? filter)
     {
         if (filter is null)
-            throw new ArgumentException("Metadata filters must not contain null entries.", "filters");
+            throw new ArgumentException("Metadata filters must not contain null entries.", nameof(filter));
 
         if (string.IsNullOrEmpty(filter.Key))
-            throw new ArgumentException("A metadata filter key must not be empty.", "filters");
+            throw new ArgumentException("A metadata filter key must not be empty.", nameof(filter));
 
         switch (filter.Operator)
         {
             case SqlServerConnectionMetadataFilterOperator.Equals when filter.Value is null:
                 throw new ArgumentException(
                     "An Equals metadata filter requires a value.",
-                    "filters");
+                    nameof(filter));
 
             case SqlServerConnectionMetadataFilterOperator.IsSet
                 or SqlServerConnectionMetadataFilterOperator.IsNotSet
                 when filter.Value is not null:
                 throw new ArgumentException(
                     "IsSet and IsNotSet metadata filters must not have a value.",
-                    "filters");
+                    nameof(filter));
 
             case SqlServerConnectionMetadataFilterOperator.Equals
                 or SqlServerConnectionMetadataFilterOperator.IsSet
@@ -166,7 +167,7 @@ public sealed class SqlServerConnectionStore
             default:
                 throw new ArgumentException(
                     $"Unsupported metadata filter operator: {filter.Operator}.",
-                    "filters");
+                    nameof(filter));
         }
     }
 

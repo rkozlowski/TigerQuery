@@ -56,7 +56,8 @@ public static class SqlServerConnectionCommands
                 var probe = SqlServerConnectionSettingsMapper.ToProbeProfile(settings);
                 var names = await SqlServerDatabaseLister.ListAsync(probe, ctx.CancellationToken)
                     .ConfigureAwait(false);
-                return names.Select(name => new OptionItem<string>(name, name)).ToList();
+                var items = names.Select(name => new OptionItem<string>(name, name)).ToList();
+                return items;
             },
             dependsOn:
             [

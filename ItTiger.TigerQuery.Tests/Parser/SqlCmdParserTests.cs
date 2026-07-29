@@ -37,8 +37,10 @@ public class SqlCmdParserTests
     [Fact]
     public async Task SucceedsWithGoWithVarInSqlCmdMode()
     {
-        var variables = new Dictionary<string, string>();
-        variables["cnt"] = "+7";
+        var variables = new Dictionary<string, string>
+        {
+            ["cnt"] = "+7"
+        };
         var options = new TigerQueryEngineOptions
         {
             Mode = SqlCmdMode.SqlCmd,
@@ -52,8 +54,10 @@ public class SqlCmdParserTests
     [Fact]
     public async Task SucceedsWithGoWithVarInSqlCmdExMode()
     {
-        var variables = new Dictionary<string, string>();
-        variables["cnt"] = "+7";
+        var variables = new Dictionary<string, string>
+        {
+            ["cnt"] = "+7"
+        };
         var options = new TigerQueryEngineOptions
         {
             Mode = SqlCmdMode.SqlCmdEx,

@@ -132,7 +132,7 @@ internal static class SqlServerConnectionSettingsMapper
             MaxPoolSize = profile.MaxPoolSize,
             Opt = profile.Options is null
                 ? []
-                : profile.Options.Select(o => new KeyValuePair<string, string>(o.Key, o.Value)).ToList()
+                : [.. profile.Options.Select(o => new KeyValuePair<string, string>(o.Key, o.Value))]
         };
     }
 

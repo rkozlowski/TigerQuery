@@ -125,7 +125,7 @@ public sealed class TigerQueryEngine
         }
 
         return new PreparedExecutionPlan(
-            batches.ToArray(),
+            [.. batches],
             totalExecutionCount);
     }
 
@@ -353,10 +353,8 @@ public sealed class TigerQueryEngine
                 await RunStreamingAsync(input, cancellationToken),
             TigerQueryExecutionMode.Prepared =>
                 await RunPreparedAsync(input, cancellationToken),
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(_options.ExecutionMode),
-                _options.ExecutionMode,
-                "Unsupported TigerQuery execution mode.")
+            _ => throw new InvalidOperationException(
+                $"Unsupported TigerQuery execution mode: {_options.ExecutionMode}.")
         };
     }
 

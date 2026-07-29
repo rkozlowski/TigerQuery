@@ -128,44 +128,38 @@ public sealed class SqlServerConnectionStoreMetadataQueryTests
     {
         using var temp = new TempStore();
 
-        Assert.Throws<ArgumentException>(() => temp.Store.QueryByMetadata(
-        [
-            EqualsFilter("", "value")
-        ]));
-        Assert.Throws<ArgumentException>(() => temp.Store.QueryByMetadata(
-        [
+        AssertInvalidFilterHasExpectedParamName(temp, null);
+        AssertInvalidFilterHasExpectedParamName(temp, EqualsFilter("", "value"));
+        AssertInvalidFilterHasExpectedParamName(
+            temp,
             new SqlServerConnectionMetadataFilter
             {
                 Key = "app.role",
                 Operator = SqlServerConnectionMetadataFilterOperator.Equals
-            }
-        ]));
-        Assert.Throws<ArgumentException>(() => temp.Store.QueryByMetadata(
-        [
+            });
+        AssertInvalidFilterHasExpectedParamName(
+            temp,
             new SqlServerConnectionMetadataFilter
             {
                 Key = "app.role",
                 Operator = SqlServerConnectionMetadataFilterOperator.IsSet,
                 Value = ""
-            }
-        ]));
-        Assert.Throws<ArgumentException>(() => temp.Store.QueryByMetadata(
-        [
+            });
+        AssertInvalidFilterHasExpectedParamName(
+            temp,
             new SqlServerConnectionMetadataFilter
             {
                 Key = "app.role",
                 Operator = SqlServerConnectionMetadataFilterOperator.IsNotSet,
                 Value = "value"
-            }
-        ]));
-        Assert.Throws<ArgumentException>(() => temp.Store.QueryByMetadata(
-        [
+            });
+        AssertInvalidFilterHasExpectedParamName(
+            temp,
             new SqlServerConnectionMetadataFilter
             {
                 Key = "app.role",
                 Operator = (SqlServerConnectionMetadataFilterOperator)999
-            }
-        ]));
+            });
     }
 
     [Fact]
@@ -214,6 +208,16 @@ public sealed class SqlServerConnectionStoreMetadataQueryTests
         Operator = SqlServerConnectionMetadataFilterOperator.Equals,
         Value = value
     };
+
+    private static void AssertInvalidFilterHasExpectedParamName(
+        TempStore temp,
+        SqlServerConnectionMetadataFilter? filter)
+    {
+        var exception = Assert.Throws<ArgumentException>(
+            () => temp.Store.QueryByMetadata([filter!]));
+
+        Assert.Equal(nameof(filter), exception.ParamName);
+    }
 
     private sealed class TempStore : IDisposable
     {

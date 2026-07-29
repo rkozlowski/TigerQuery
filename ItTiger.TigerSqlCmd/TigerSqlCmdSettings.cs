@@ -46,5 +46,5 @@ public sealed class TigerSqlCmdSettings : TigerCliSettings
 
     [TigerCliOption("-v|--var", ValueName = "name=value", Description = "SQLCMD-style variable.",
         DescriptionResourceKey = "Opt_Run_Var_Description")]
-    public List<KeyValuePair<string, string>> Variables { get; set; } = new List<KeyValuePair<string, string>>();
+    public List<KeyValuePair<string, string>> Variables { get; set; } = [];
 }

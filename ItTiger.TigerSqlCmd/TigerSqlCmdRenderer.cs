@@ -128,7 +128,7 @@ internal sealed class TigerSqlCmdRenderer
         // Add rows - values processed by column formatters and null display
         foreach (var row in rsi.Rows)
         {
-            table.Records.Add(row.ToList());
+            table.Records.Add([.. row]);
         }
         TigerConsole.Render(table);
     }
