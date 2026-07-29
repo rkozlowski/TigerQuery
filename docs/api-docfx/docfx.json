@@ -1,0 +1,61 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../..",
+          "files": [
+            "ItTiger.TigerQuery/ItTiger.TigerQuery.csproj",
+            "ItTiger.TigerQuery.Core/ItTiger.TigerQuery.Core.csproj",
+            "ItTiger.TigerQuery.CliCore/ItTiger.TigerQuery.CliCore.csproj"
+          ]
+        }
+      ],
+      "dest": "api",
+      "shouldSkipMarkup": true
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [
+          "api/**.yml",
+          "toc.yml",
+          "index.md",
+          "api-reference.md",
+          "getting-started.md",
+          "engine.md",
+          "connection-profiles.md",
+          "cli-integration.md"
+        ]
+      },
+      {
+        "src": "api-root",
+        "files": [
+          "ItTiger.md"
+        ],
+        "dest": "api"
+      }
+    ],
+    "resource": [
+      {
+        "src": "..",
+        "files": [
+          "assets/TigerQuery256.png"
+        ]
+      }
+    ],
+    "output": "_site",
+    "template": [
+      "default",
+      "modern"
+    ],
+    "globalMetadata": {
+      "_appName": "TigerQuery",
+      "_appTitle": "TigerQuery documentation",
+      "_enableSearch": true,
+      "_appFooter": "TigerQuery is an open-source project by IT Tiger."
+    }
+  }
+}

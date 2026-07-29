@@ -397,6 +397,9 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
+# DocFX generated metadata and site output
+docs/api-docfx/api/
+docs/api-docfx/_site/
 
 # Ignore installer build folders
 ItTiger.TigerWrap.Installer/WorkingDir/
