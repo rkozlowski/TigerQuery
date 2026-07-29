@@ -12,6 +12,19 @@ public sealed class TigerQueryEngineOptions
 {
 
     public string ConnectionString { get; init; } = String.Empty; // for unit testing the parser
+
+    /// <summary>
+    /// Controls whether parsing is interleaved with SQL execution or completed
+    /// before the SQL connection is opened.
+    /// </summary>
+    /// <remarks>
+    /// Streaming is the default and retains only the current logical batch.
+    /// Prepared mode retains all expanded logical batches until execution
+    /// completes.
+    /// </remarks>
+    public TigerQueryExecutionMode ExecutionMode { get; init; }
+        = TigerQueryExecutionMode.Streaming;
+
     /// <summary>
     /// Input mode: plain SQL or sqlcmd-style with variable support.
     /// </summary>
@@ -43,5 +56,15 @@ public sealed class TigerQueryEngineOptions
     
     public Action<BatchStart>? OnBatchStart { get; init; }
     public Action<BatchEnd>? OnBatchEnd { get; init; }
+
+    /// <summary>
+    /// Called once in prepared mode after the complete TigerQuery/sqlcmd structure
+    /// has been parsed successfully and before the SQL connection is opened.
+    /// </summary>
+    /// <remarks>
+    /// This callback is not raised in streaming mode or when preparation fails or
+    /// is cancelled. An empty prepared script raises it with zero counts.
+    /// </remarks>
+    public Action<ExecutionPlanReady>? OnExecutionPlanReady { get; init; }
 
 }

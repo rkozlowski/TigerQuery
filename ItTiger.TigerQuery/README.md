@@ -54,11 +54,51 @@ Console.WriteLine($"{result.ResultCode}: {result.ExecutedBatches} batch(es) in {
 
 Use `RunFromFileAsync(path)` for script files and `RunAsync(TextReader)` for anything else. All run methods accept a `CancellationToken`; cancellation maps to `ExecutionResultCode.UserCancelled`.
 
+## Streaming and prepared execution
+
+`TigerQueryExecutionMode.Streaming` is the default. It matches the traditional
+sqlcmd-like incremental flow: TigerQuery parses one logical batch, executes it,
+and then continues parsing. This minimizes retained script text, but a malformed
+TigerQuery/sqlcmd directive late in the script can be discovered after earlier
+batches have executed.
+
+Set `ExecutionMode = TigerQueryExecutionMode.Prepared` to parse the complete
+TigerQuery/sqlcmd structure before the SQL connection is opened:
+
+```csharp
+var options = new TigerQueryEngineOptions
+{
+    ConnectionString = connectionString,
+    ExecutionMode = TigerQueryExecutionMode.Prepared,
+    OnExecutionPlanReady = plan => Console.WriteLine(
+        $"{plan.LogicalBatchCount} logical batch(es), "
+        + $"{plan.TotalExecutionCount} scheduled execution(s)")
+};
+```
+
+After successful preparation, `OnExecutionPlanReady` fires once before
+connection opening and before any batch callbacks. Its execution total includes
+positive `GO n` repeat counts. Batches with `GO 0` or a negative repeat count
+still count as logical batches but contribute zero scheduled executions. These
+counts describe batch scheduling only; they are not a percentage and do not
+estimate work within a SQL batch.
+
+Prepared mode prevents SQL execution when full parsing finds a TigerQuery/sqlcmd
+structure error. It does not parse or validate T-SQL. Connection, permission,
+T-SQL syntax and compilation, and runtime failures still occur during execution.
+Parser exceptions retain their existing behavior and escape the run call.
+
+Prepared mode retains every expanded logical batch until execution finishes, so
+its memory use grows with the complete expanded script. `GO n` does not duplicate
+the SQL text in memory. Prefer streaming mode for very large scripts when
+full-script validation and totals are not required.
+
 ## How output is delivered
 
 The engine never writes to the console. Everything flows through the callbacks on `TigerQueryEngineOptions`:
 
 - `OnMessage` — `PRINT`, `RAISERROR`, info messages, and errors as `SqlCmdMessage` (severity, type, line number)
+- `OnExecutionPlanReady` — prepared-mode logical batch and scheduled execution totals
 - `OnBatchStart` / `OnBatchEnd` — batch progress, success, and duration
 - `OnResultSet` — column metadata (`ColumnInfo`) and rows (`object?[]`)
 

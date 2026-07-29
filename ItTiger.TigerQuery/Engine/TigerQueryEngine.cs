@@ -2,6 +2,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace ItTiger.TigerQuery.Engine;
@@ -9,15 +10,48 @@ namespace ItTiger.TigerQuery.Engine;
 public sealed class TigerQueryEngine
 {
     private readonly TigerQueryEngineOptions _options;
+    private readonly Func<SqlConnection, CancellationToken, Task> _openConnectionAsync;
+    private readonly Func<QueryExecutionContext, SqlBatch, int, int, CancellationToken, Task> _executeBatchAsync;
 
     public TigerQueryEngine(TigerQueryEngineOptions options)
+        : this(options, OpenSqlConnectionAsync, ExecuteContextBatchAsync)
     {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
-    private async Task<SqlConnection> OpenConnectionAsync(CancellationToken cancellationToken)
+    internal TigerQueryEngine(
+        TigerQueryEngineOptions options,
+        Func<SqlConnection, CancellationToken, Task> openConnectionAsync,
+        Func<QueryExecutionContext, SqlBatch, int, int, CancellationToken, Task> executeBatchAsync)
     {
-        var connection = new SqlConnection(_options.ConnectionString);
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _openConnectionAsync = openConnectionAsync ?? throw new ArgumentNullException(nameof(openConnectionAsync));
+        _executeBatchAsync = executeBatchAsync ?? throw new ArgumentNullException(nameof(executeBatchAsync));
+    }
+
+    private static async Task OpenSqlConnectionAsync(
+        SqlConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await connection.OpenAsync(cancellationToken);
+    }
+
+    private static async Task ExecuteContextBatchAsync(
+        QueryExecutionContext context,
+        SqlBatch batch,
+        int batchNumber,
+        int executionIndex,
+        CancellationToken cancellationToken)
+    {
+        await context.ExecuteBatchAsync(
+            batch,
+            batchNumber,
+            executionIndex,
+            cancellationToken);
+    }
+
+    private void ConfigureConnection(SqlConnection connection)
+    {
+        connection.ConnectionString = _options.ConnectionString;
         connection.InfoMessage += (s, e) =>
         {
             foreach (SqlError error in e.Errors)
@@ -29,8 +63,6 @@ public sealed class TigerQueryEngine
         };
 
         connection.FireInfoMessageEventOnUserErrors = true;
-        await connection.OpenAsync(cancellationToken);
-        return connection;
     }
 
     private void LogAndRaise(SqlCmdMessage msg, bool isException = false)
@@ -64,7 +96,56 @@ public sealed class TigerQueryEngine
         _options.OnMessage?.Invoke(msg, isException);        
     }
 
-    private async Task<ExecutionResult> ExecuteBatchesAsync(SqlCmdParser parser, QueryExecutionContext context, CancellationToken cancellationToken)
+    internal static async IAsyncEnumerable<ExecutionBatch> ReadStreamingBatchesAsync(
+        SqlCmdParser parser,
+        QueryExecutionContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var batch in parser.ReadBatchesAsync(cancellationToken))
+        {
+            yield return new ExecutionBatch(batch, context.ContinueOnError);
+        }
+    }
+
+    internal static async Task<PreparedExecutionPlan> PrepareExecutionPlanAsync(
+        SqlCmdParser parser,
+        QueryExecutionContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var batches = new List<ExecutionBatch>();
+        long totalExecutionCount = 0;
+
+        await foreach (var executionBatch in ReadStreamingBatchesAsync(
+            parser,
+            context,
+            cancellationToken))
+        {
+            batches.Add(executionBatch);
+            totalExecutionCount += Math.Max(0L, executionBatch.Batch.ExecCount);
+        }
+
+        return new PreparedExecutionPlan(
+            batches.ToArray(),
+            totalExecutionCount);
+    }
+
+    private static async IAsyncEnumerable<ExecutionBatch> ReadPreparedBatchesAsync(
+        PreparedExecutionPlan plan,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.CompletedTask;
+
+        foreach (var executionBatch in plan.Batches)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return executionBatch;
+        }
+    }
+
+    private async Task<ExecutionResult> ExecuteBatchesAsync(
+        IAsyncEnumerable<ExecutionBatch> executionBatches,
+        QueryExecutionContext context,
+        CancellationToken cancellationToken)
     {
         var batchIndex = 0;
 
@@ -75,10 +156,16 @@ public sealed class TigerQueryEngine
         int failed = 0;
         bool stop = false;
 
-        await foreach (var batch in parser.ReadBatchesAsync(cancellationToken))
+        await foreach (var executionBatch in executionBatches.WithCancellation(cancellationToken))
         {
+            var batch = executionBatch.Batch;
+            context.ContinueOnError = executionBatch.ContinueOnError;
             batchIndex++;
-            for (int i = 1; i <= batch.ExecCount; i++)
+
+            var executionCount = batch.ExecCount;
+            for (var index = 0;
+                TryGetExecutionIndex(executionCount, index, out var executionIndex);
+                index++)
             {
                 ex = null;
                 cancellationToken.ThrowIfCancellationRequested();
@@ -86,8 +173,8 @@ public sealed class TigerQueryEngine
                 _options.OnBatchStart?.Invoke(new BatchStart
                 {
                     BatchNumber = batchIndex,
-                    ExecutionIndex = i,
-                    ExecutionCount = batch.ExecCount,
+                    ExecutionIndex = executionIndex,
+                    ExecutionCount = executionCount,
                     SqlText = batch.Text
                 });
 
@@ -97,8 +184,17 @@ public sealed class TigerQueryEngine
 
                 try
                 {
-                    _options.Logger?.LogInformation("Executing batch {Batch} ({Index}/{Count})", batchIndex, i, batch.ExecCount);
-                    await context.ExecuteBatchAsync(batch, batchIndex, i, cancellationToken);
+                    _options.Logger?.LogInformation(
+                        "Executing batch {Batch} ({Index}/{Count})",
+                        batchIndex,
+                        executionIndex,
+                        executionCount);
+                    await _executeBatchAsync(
+                        context,
+                        batch,
+                        batchIndex,
+                        executionIndex,
+                        cancellationToken);
                     executed++;
                 }
                 catch (OperationCanceledException oce)
@@ -151,8 +247,8 @@ public sealed class TigerQueryEngine
                 _options.OnBatchEnd?.Invoke(new BatchEnd
                 {
                     BatchNumber = batchIndex,
-                    ExecutionIndex = i,
-                    ExecutionCount = batch.ExecCount,
+                    ExecutionIndex = executionIndex,
+                    ExecutionCount = executionCount,
                     Success = success,
                     Exception = ex,
                     Duration = sw.Elapsed
@@ -173,24 +269,109 @@ public sealed class TigerQueryEngine
         };
     }
 
+    internal static bool TryGetExecutionIndex(
+        int executionCount,
+        int zeroBasedIndex,
+        out int executionIndex)
+    {
+        if (zeroBasedIndex < 0 || zeroBasedIndex >= executionCount)
+        {
+            executionIndex = 0;
+            return false;
+        }
 
-    public async Task<ExecutionResult> RunAsync(TextReader input, CancellationToken cancellationToken = default)
+        executionIndex = zeroBasedIndex + 1;
+        return true;
+    }
+
+    private async Task<ExecutionResult> RunStreamingAsync(
+        TextReader input,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection();
+        ConfigureConnection(connection);
+        await _openConnectionAsync(connection, cancellationToken);
+        var context = new QueryExecutionContext(_options, connection);
+        var parser = new SqlCmdParser(input, _options, context);
+
+        return await ExecuteBatchesAsync(
+            ReadStreamingBatchesAsync(parser, context, cancellationToken),
+            context,
+            cancellationToken);
+    }
+
+    private async Task<ExecutionResult> RunPreparedAsync(
+        TextReader input,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection();
+        var context = new QueryExecutionContext(_options, connection);
+        var parser = new SqlCmdParser(input, _options, context);
+        var plan = await PrepareExecutionPlanAsync(
+            parser,
+            context,
+            cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _options.OnExecutionPlanReady?.Invoke(new ExecutionPlanReady
+        {
+            LogicalBatchCount = plan.LogicalBatchCount,
+            TotalExecutionCount = plan.TotalExecutionCount
+        });
+        cancellationToken.ThrowIfCancellationRequested();
+
+        ConfigureConnection(connection);
+        cancellationToken.ThrowIfCancellationRequested();
+        await _openConnectionAsync(connection, cancellationToken);
+
+        return await ExecuteBatchesAsync(
+            ReadPreparedBatchesAsync(plan, cancellationToken),
+            context,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs SQL read from <paramref name="input"/> using the configured
+    /// <see cref="TigerQueryEngineOptions.ExecutionMode"/>.
+    /// </summary>
+    /// <remarks>
+    /// Streaming mode opens the SQL connection before parsing batches
+    /// incrementally. Prepared mode parses the complete TigerQuery/sqlcmd
+    /// structure before opening the connection, but T-SQL validation and all
+    /// connection, permission, compilation, and runtime failures still occur
+    /// during execution.
+    /// </remarks>
+    public async Task<ExecutionResult> RunAsync(
+        TextReader input,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        await using var connection = await OpenConnectionAsync(cancellationToken);
-        var context = new QueryExecutionContext(_options, connection);
-        var parser = new SqlCmdParser(input, _options, context);
-        
-        return await ExecuteBatchesAsync(parser, context, cancellationToken);        
+        return _options.ExecutionMode switch
+        {
+            TigerQueryExecutionMode.Streaming =>
+                await RunStreamingAsync(input, cancellationToken),
+            TigerQueryExecutionMode.Prepared =>
+                await RunPreparedAsync(input, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(_options.ExecutionMode),
+                _options.ExecutionMode,
+                "Unsupported TigerQuery execution mode.")
+        };
     }
 
+    /// <summary>
+    /// Runs a script file using the configured execution mode.
+    /// </summary>
     public async Task<ExecutionResult> RunFromFileAsync(string path, Encoding? encoding = null, CancellationToken cancellationToken = default)
     {
         using var reader = new StreamReader(path, encoding ?? Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         return await RunAsync(reader, cancellationToken);
     }
 
+    /// <summary>
+    /// Runs a script string using the configured execution mode.
+    /// </summary>
     public async Task<ExecutionResult> RunFromStringAsync(string script, CancellationToken cancellationToken = default)
     {
         using var reader = new StringReader(script);
