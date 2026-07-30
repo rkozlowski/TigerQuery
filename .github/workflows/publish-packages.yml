@@ -1,0 +1,412 @@
+name: Publish NuGet packages
+run-name: Publish NuGet packages ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version already recorded in Version.props
+        required: true
+        default: "0.8.2"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-packages-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Build, test, pack, and inspect
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Validate requested version
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ($env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid release version '$env:RELEASE_VERSION'."
+          }
+
+          [xml]$versionProps = Get-Content -Raw Version.props
+          $configuredVersion = [string]$versionProps.Project.PropertyGroup.Version
+          if ($configuredVersion -ne $env:RELEASE_VERSION) {
+            throw "Workflow input '$env:RELEASE_VERSION' does not match Version.props '$configuredVersion'."
+          }
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Restore dependencies
+        run: dotnet restore TigerQuery.sln
+
+      - name: Build Release
+        run: dotnet build TigerQuery.sln -c Release --no-restore
+
+      - name: Test Release
+        run: dotnet test TigerQuery.sln -c Release --no-build
+
+      - name: Build DocFX site
+        run: dotnet docfx docs/api-docfx/docfx.json
+
+      - name: Pack ItTiger.TigerQuery.Core
+        run: >-
+          dotnet pack ItTiger.TigerQuery.Core/ItTiger.TigerQuery.Core.csproj
+          -c Release
+          --no-build
+          --no-restore
+          --output artifacts/packages
+
+      - name: Pack ItTiger.TigerQuery
+        run: >-
+          dotnet pack ItTiger.TigerQuery/ItTiger.TigerQuery.csproj
+          -c Release
+          --no-build
+          --no-restore
+          --output artifacts/packages
+
+      - name: Pack ItTiger.TigerQuery.CliCore
+        run: >-
+          dotnet pack ItTiger.TigerQuery.CliCore/ItTiger.TigerQuery.CliCore.csproj
+          -c Release
+          --no-build
+          --no-restore
+          --output artifacts/packages
+
+      - name: Inspect packages
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          function Get-PackageReferences {
+            param(
+              [Parameter(Mandatory)]
+              [string]$ProjectPath
+            )
+
+            [xml]$project = Get-Content -Raw -LiteralPath $ProjectPath
+            $references = @{}
+            foreach ($reference in @($project.Project.ItemGroup.PackageReference)) {
+              if ($null -eq $reference) {
+                continue
+              }
+
+              $id = [string]$reference.Include
+              $version = [string]$reference.Version
+              if ([string]::IsNullOrWhiteSpace($version)) {
+                $version = [string]$reference.Version.'#text'
+              }
+
+              if ([string]::IsNullOrWhiteSpace($id) -or [string]::IsNullOrWhiteSpace($version)) {
+                throw "Could not read a package reference from $ProjectPath."
+              }
+
+              $references[$id] = $version
+            }
+
+            return $references
+          }
+
+          $packages = @(
+            @{
+              Id = "ItTiger.TigerQuery.Core"
+              Project = "ItTiger.TigerQuery.Core/ItTiger.TigerQuery.Core.csproj"
+              Icon = "TigerQuery256.png"
+            },
+            @{
+              Id = "ItTiger.TigerQuery"
+              Project = "ItTiger.TigerQuery/ItTiger.TigerQuery.csproj"
+              Icon = "TigerQuery256.png"
+            },
+            @{
+              Id = "ItTiger.TigerQuery.CliCore"
+              Project = "ItTiger.TigerQuery.CliCore/ItTiger.TigerQuery.CliCore.csproj"
+              Icon = "TigerQuery256.png"
+            }
+          )
+
+          foreach ($package in $packages) {
+            $id = $package.Id
+            $packagePath = "artifacts/packages/$id.$env:RELEASE_VERSION.nupkg"
+            $symbolsPath = "artifacts/packages/$id.$env:RELEASE_VERSION.snupkg"
+
+            if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) {
+              throw "Missing package: $packagePath"
+            }
+            if (-not (Test-Path -LiteralPath $symbolsPath -PathType Leaf)) {
+              throw "Missing symbol package: $symbolsPath"
+            }
+
+            $archive = [System.IO.Compression.ZipFile]::OpenRead(
+              (Resolve-Path -LiteralPath $packagePath)
+            )
+            try {
+              $nuspecEntry = $archive.GetEntry("$id.nuspec")
+              if ($null -eq $nuspecEntry) {
+                throw "$packagePath does not contain $id.nuspec."
+              }
+
+              $reader = [System.IO.StreamReader]::new($nuspecEntry.Open())
+              try {
+                [xml]$nuspec = $reader.ReadToEnd()
+              }
+              finally {
+                $reader.Dispose()
+              }
+
+              $metadata = $nuspec.SelectSingleNode(
+                "/*[local-name()='package']/*[local-name()='metadata']"
+              )
+              if ([string]$metadata.id -ne $id) {
+                throw "$packagePath has package ID '$($metadata.id)', expected '$id'."
+              }
+              if ([string]$metadata.version -ne $env:RELEASE_VERSION) {
+                throw "$packagePath has version '$($metadata.version)', expected '$env:RELEASE_VERSION'."
+              }
+              if ([string]$metadata.readme -ne "README.md" -or $null -eq $archive.GetEntry("README.md")) {
+                throw "$packagePath does not contain the configured root README.md."
+              }
+              if ([string]$metadata.icon -ne $package.Icon -or $null -eq $archive.GetEntry($package.Icon)) {
+                throw "$packagePath does not contain the configured root icon '$($package.Icon)'."
+              }
+              if ($null -eq $archive.GetEntry("lib/net10.0/$id.dll")) {
+                throw "$packagePath does not contain lib/net10.0/$id.dll."
+              }
+              if ($null -eq $archive.GetEntry("lib/net10.0/$id.xml")) {
+                throw "$packagePath does not contain XML documentation at lib/net10.0/$id.xml."
+              }
+
+              $repository = $nuspec.SelectSingleNode(
+                "/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='repository']"
+              )
+              if ($null -eq $repository) {
+                throw "$packagePath does not contain repository metadata."
+              }
+              if ($repository.GetAttribute("url") -ne "https://github.com/rkozlowski/TigerQuery") {
+                throw "$packagePath has unexpected repository URL '$($repository.GetAttribute("url"))'."
+              }
+              $repositoryCommit = $repository.GetAttribute("commit")
+              if ([string]::IsNullOrWhiteSpace($repositoryCommit)) {
+                throw "$packagePath does not contain repository commit metadata."
+              }
+              if (
+                -not [string]::IsNullOrWhiteSpace($env:GITHUB_SHA) -and
+                $repositoryCommit -ne $env:GITHUB_SHA
+              ) {
+                throw "$packagePath has repository commit '$repositoryCommit', expected '$env:GITHUB_SHA'."
+              }
+
+              $forbiddenAssemblies = @(
+                $archive.Entries |
+                  Where-Object {
+                    $_.FullName -match '(?i)(TigerSqlCmd|TigerQuery\.Tests).*\.dll$'
+                  }
+              )
+              if ($forbiddenAssemblies.Count -ne 0) {
+                throw "$packagePath contains a TigerSqlCmd or test assembly: $($forbiddenAssemblies.FullName -join ', ')."
+              }
+
+              $dependencies = @(
+                $nuspec.SelectNodes("//*[local-name()='dependency']")
+              )
+              $forbiddenDependencies = @(
+                $dependencies |
+                  Where-Object {
+                    $_.GetAttribute("id") -match '(?i)NLog|Spectre'
+                  }
+              )
+              if ($forbiddenDependencies.Count -ne 0) {
+                throw "$packagePath contains an unexpected NLog or Spectre dependency: $($forbiddenDependencies.id -join ', ')."
+              }
+
+              if ($id -eq "ItTiger.TigerQuery") {
+                $tigerQueryForbidden = @(
+                  $dependencies |
+                    Where-Object {
+                      $_.GetAttribute("id") -match '(?i)TigerCli|TigerQuery\.Core|TigerQuery\.CliCore|NLog|Spectre'
+                    }
+                )
+                if ($tigerQueryForbidden.Count -ne 0) {
+                  throw "$packagePath contains a forbidden dependency: $($tigerQueryForbidden.id -join ', ')."
+                }
+              }
+
+              $expectedDependencies = Get-PackageReferences -ProjectPath $package.Project
+              if ($id -eq "ItTiger.TigerQuery.CliCore") {
+                $expectedDependencies["ItTiger.TigerQuery.Core"] = $env:RELEASE_VERSION
+              }
+
+              if ($dependencies.Count -ne $expectedDependencies.Count) {
+                throw "$packagePath has $($dependencies.Count) dependencies; expected $($expectedDependencies.Count)."
+              }
+
+              foreach ($expectedDependency in $expectedDependencies.GetEnumerator()) {
+                $matches = @(
+                  $dependencies |
+                    Where-Object {
+                      $_.GetAttribute("id") -eq $expectedDependency.Key
+                    }
+                )
+                if ($matches.Count -ne 1) {
+                  throw "$packagePath must contain exactly one '$($expectedDependency.Key)' dependency."
+                }
+                if ($matches[0].GetAttribute("version") -ne $expectedDependency.Value) {
+                  throw "$packagePath depends on '$($expectedDependency.Key)' version '$($matches[0].GetAttribute("version"))', expected '$($expectedDependency.Value)'."
+                }
+              }
+
+              if ($id -eq "ItTiger.TigerQuery.CliCore") {
+                $coreDependency = @(
+                  $dependencies |
+                    Where-Object {
+                      $_.GetAttribute("id") -eq "ItTiger.TigerQuery.Core"
+                    }
+                )
+                if ($coreDependency.Count -ne 1) {
+                  throw "$packagePath must contain exactly one ItTiger.TigerQuery.Core dependency."
+                }
+                if ($coreDependency[0].GetAttribute("version") -ne $env:RELEASE_VERSION) {
+                  throw "$packagePath depends on ItTiger.TigerQuery.Core '$($coreDependency[0].GetAttribute("version"))', expected '$env:RELEASE_VERSION'."
+                }
+
+                $tigerCliDependency = @(
+                  $dependencies |
+                    Where-Object {
+                      $_.GetAttribute("id") -eq "ItTiger.TigerCli"
+                    }
+                )
+                $configuredTigerCliVersion = $expectedDependencies["ItTiger.TigerCli"]
+                if ($tigerCliDependency.Count -ne 1) {
+                  throw "$packagePath must contain exactly one ItTiger.TigerCli dependency."
+                }
+                if ($tigerCliDependency[0].GetAttribute("version") -ne $configuredTigerCliVersion) {
+                  throw "$packagePath depends on ItTiger.TigerCli '$($tigerCliDependency[0].GetAttribute("version"))', expected configured version '$configuredTigerCliVersion'."
+                }
+              }
+            }
+            finally {
+              $archive.Dispose()
+            }
+
+            Write-Host "Validated $packagePath and $symbolsPath"
+          }
+
+      - name: Upload validated packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: NuGet-packages-${{ inputs.version }}
+          path: |
+            artifacts/packages/ItTiger.TigerQuery.Core.${{ inputs.version }}.nupkg
+            artifacts/packages/ItTiger.TigerQuery.Core.${{ inputs.version }}.snupkg
+            artifacts/packages/ItTiger.TigerQuery.${{ inputs.version }}.nupkg
+            artifacts/packages/ItTiger.TigerQuery.${{ inputs.version }}.snupkg
+            artifacts/packages/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.nupkg
+            artifacts/packages/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.snupkg
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Approve and publish
+    needs: validate
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Download validated packages
+        uses: actions/download-artifact@v7
+        with:
+          name: NuGet-packages-${{ inputs.version }}
+          path: artifacts/packages
+
+      - name: Verify NuGet.org Trusted Publishing configuration
+        shell: pwsh
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_USER)) {
+            Write-Error "Set the NUGET_USER repository variable to the nuget.org profile username used by the Trusted Publishing policy."
+            exit 1
+          }
+          # NuGet.org Trusted Publishing is configured for package owner ItTiger,
+          # repository owner rkozlowski, repository TigerQuery, workflow
+          # publish-packages.yml, and environment release.
+
+      - name: Get short-lived NuGet.org API key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish ItTiger.TigerQuery.Core to NuGet.org
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.Core.$env:RELEASE_VERSION.nupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate `
+            --no-symbols
+          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.Core.$env:RELEASE_VERSION.snupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate
+
+      - name: Publish ItTiger.TigerQuery to NuGet.org
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.$env:RELEASE_VERSION.nupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate `
+            --no-symbols
+          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.$env:RELEASE_VERSION.snupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate
+
+      - name: Publish ItTiger.TigerQuery.CliCore to NuGet.org
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.CliCore.$env:RELEASE_VERSION.nupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate `
+            --no-symbols
+          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.CliCore.$env:RELEASE_VERSION.snupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate
