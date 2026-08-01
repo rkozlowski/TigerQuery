@@ -168,6 +168,10 @@ The engine reports work through callbacks:
 - `OnResultSet` receives column metadata and rows.
 - `OnExecutionPlanReady` reports prepared-mode scheduling totals.
 
+The message and result-set callbacks are the default destinations. They can be
+redirected to files by `OutputRouting`, `:Out`, and `:Error`, as described in
+[Output routing and CSV files](#output-routing-and-csv-files).
+
 A run that reaches the execution coordinator's result path returns an
 [ExecutionResult](xref:ItTiger.TigerQuery.Engine.ExecutionResult). Parser and
 connection-opening failures can escape the run method instead of being
@@ -225,10 +229,6 @@ followed by a single-line comment. `$(name)` references in the filename are
 expanded at the directive's source position, and undefined references stay
 literal. In `SqlCmdMode.Normal` the text is still sent to SQL Server unchanged.
 
-Both directives are currently accepted and ordered but not yet acted upon:
-result sets and messages continue to reach `OnResultSet` and `OnMessage`, and no
-files are created. Output routing itself arrives in a later release.
-
 Internally the engine consumes an ordered step stream in which each directive
 keeps its source position relative to the batches around it, so repeated routes
 to the same path and a directive placed between buffered SQL and its terminating
@@ -236,9 +236,140 @@ to the same path and a directive placed between buffered SQL and its terminating
 an implementation detail; there is no public script-step API.
 [SqlCmdParser.ReadBatchesAsync](xref:ItTiger.TigerQuery.SqlCmdParser.ReadBatchesAsync*)
 remains batch-only and unchanged for direct consumers: it validates the
-directives and then projects them away. Applications that will need routing
-should execute through
+directives and then projects them away. Applications that need routing must
+execute through
 [TigerQueryEngine](xref:ItTiger.TigerQuery.Engine.TigerQueryEngine).
+
+A host can refuse script-directed routing entirely with
+`OutputRouting.AllowScriptOutputDirectives = false`, which turns an encountered
+directive into a parser error rather than silently ignoring a script command.
+Initial paths supplied by the host still apply.
+
+## Output routing and CSV files
+
+[OutputRoutingOptions](xref:ItTiger.TigerQuery.Engine.OutputRoutingOptions)
+configures where output goes. Routing is entirely opt-in: with no initial path
+and no directive, result sets and messages reach `OnResultSet` and `OnMessage`
+exactly as before and no file is created.
+
+TigerQuery models three routable channels:
+
+| Channel | Payload | Application destination | File destination |
+| --- | --- | --- | --- |
+| Result sets | `ResultSetInfo` | `OnResultSet` | Built-in CSV |
+| Normal messages | Severity 0-10, including `PRINT` | `OnMessage` | Plain UTF-8 text |
+| Error messages | SQL Server diagnostics with `IsError` | `OnMessage` | Plain UTF-8 text |
+
+Redirecting a channel **replaces** its callback; it does not mirror to both.
+Batch lifecycle, plan readiness, and progress are never redirected, and the
+configured `ILogger` keeps receiving every message whatever the routes are.
+
+Only SQL Server diagnostics can enter a routed message file. Parser failures,
+connection failures, configuration and encoding failures, output failures, and
+unrelated application exceptions are surfaced through `OnMessage`, the logger,
+and `ExecutionResult` — never written to an `:Error` file — so the file cannot
+accumulate connection strings or unstable framework text.
+
+Precedence is: callbacks by default, then `InitialOutPath`/`InitialErrorPath` at
+run start, then each script directive from its position onward, latest wins.
+`:Out` never changes the error route, and `:Error` never changes the result-set
+or normal-message routes.
+
+[OutDirectiveBehavior](xref:ItTiger.TigerQuery.Engine.OutDirectiveBehavior)
+selects what `:Out` moves. Under `ResultSetsAndNormalMessages`, result sets use
+the requested path and normal messages use a companion file named by appending
+`.messages.log` to the complete resolved result path, because CSV cannot safely
+hold both rows and arbitrary prose.
+
+### Files and naming
+
+Relative paths resolve against `OutputRouting.BaseDirectory`, captured once at
+run start; without it the process's current directory is captured. The same rule
+applies to `RunFromFileAsync`, so a host that wants script-relative paths must
+pass the script directory explicitly.
+
+The parent directory must already exist — TigerQuery never creates directories.
+Files are created lazily on the first payload, truncated on first use in a run,
+never appended across runs, and kept open until the run ends so a script can
+leave a path and return to it without a second byte-order mark or header. Every
+destination is flushed and closed on success, failure, and cancellation alike.
+
+A resolved path belongs to exactly one channel for the whole run. Pointing two
+channels at the same file is a configuration error, not permission to mix
+payloads.
+
+[ResultSetFileMode](xref:ItTiger.TigerQuery.Engine.ResultSetFileMode) chooses the
+file layout. `SingleFile` uses the requested path exactly as supplied — no
+extension is inferred, so `:Out report` writes a CSV file named `report`.
+`FilePerResultSet` treats the path as a base name and generates
+`<stem>_b<batch>_e<execution>_r<result><extension>` from the engine's stable
+coordinates, each component one-based, invariant, and padded to at least four
+digits and never truncated. `:Out report.csv` therefore gives
+`report_b0001_e0001_r0001.csv`. Coordinates are the original engine coordinates,
+so route changes and skipped zero-column results never renumber later files, and
+names are identical in streaming and prepared mode. An `:Error` file never
+receives a result-set suffix.
+
+### CSV behavior
+
+Version one is fixed: UTF-8 with a byte-order mark, comma delimiter, CRLF
+records, a header, minimal RFC 4180 quoting, and invariant formatting. A field is
+quoted when it contains a comma, a double quote, CR, or LF, and inner quotes are
+doubled; header names use the same rules as data.
+
+`DateTime` and `DateTimeOffset` use ISO 8601 round-trip form, `TimeSpan` the
+constant `c` form, `Guid` the `D` form, `byte[]` uppercase hex with a `0x`
+prefix, floating-point values a round-trip form, and other `IFormattable` values
+invariant culture.
+
+> [!IMPORTANT]
+> SQL `NULL` and the empty string both produce an empty field and are therefore
+> indistinguishable in version one.
+
+A zero-column result is not a CSV result set: it writes nothing and creates no
+file, though its coordinate is still consumed. A result with columns and no rows
+writes its header.
+
+In `SingleFile` mode the first result set establishes the header and the required
+schema. A later result set is compatible when it has the same column count and
+the same column names in the same ordinal positions, compared ordinally; it then
+appends rows only and its header is never rewritten. Differing SQL or CLR types
+are fine, because CSV has no type schema. An incompatible result set is validated
+before any of its bytes are written, so the file keeps only complete earlier
+content.
+
+The encoding is always configured with exception fallbacks, so an unencodable
+character fails the run instead of producing a replacement character. Supplying
+`FileEncoding` keeps that encoding's byte-order-mark preference but strengthens
+its fallbacks; interoperability then depends on that encoding.
+
+### Output failures
+
+Path, permission, sharing, directory, encoding, schema, flush, and close failures
+become [OutputRoutingException](xref:ItTiger.TigerQuery.OutputRoutingException),
+which carries the target `Path` and derives from `TigerQueryException`.
+
+An output failure is fatal regardless of `:ON ERROR IGNORE` and
+`ContinueOnErrorForUnhandledExceptions`, because continuing would execute later
+SQL while losing its requested output. During a batch it becomes the primary
+exception on a failed `BatchEnd`, counts as a failed batch, stops the run
+immediately, and produces
+[ExecutionResultCode.OutputFailed](xref:ItTiger.TigerQuery.Engine.ExecutionResultCode)
+with the same exception on the result. A route change that fails between batches
+uses the same classification and stops before the next batch. SQL Server may
+already have completed the command, and may have committed side effects, before
+the failure was discovered; the batch is still counted as failed, and the log
+says so when it is known.
+
+Because version one writes directly to destination files, a failed or cancelled
+run can leave valid partial CSV containing every result set completed before the
+failure.
+
+Prepared mode resolves routes and detects statically known collisions before
+plan readiness and before the connection opens, so a prepared script that cannot
+route creates no file at all. Streaming mode reaches the same failure when it
+gets there, after any earlier batches and files — the established difference
+between the two modes.
 
 ## Parsing modes
 

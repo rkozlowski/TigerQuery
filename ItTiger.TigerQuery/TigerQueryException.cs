@@ -10,9 +10,12 @@ namespace ItTiger.TigerQuery;
 /// This exception does not represent SQL Server T-SQL syntax, compilation,
 /// permission, connection, or runtime errors. Source coordinates are nullable
 /// because not every parser failure currently supplies them.
+/// <see cref="OutputRoutingException"/> derives from this type, so a caller that
+/// needs to distinguish an output failure from a structural parse failure must
+/// test for the derived type first.
 /// </remarks>
 [Serializable]
-public sealed class TigerQueryException : Exception
+public class TigerQueryException : Exception
 {
     /// <summary>Gets the one-based source line, or <see langword="null"/> when unavailable.</summary>
     public int? Line { get; }

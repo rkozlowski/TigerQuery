@@ -9,6 +9,9 @@ It is a library: it renders nothing and owns no console. Embed it in your own to
 - `GO` batch separators, including repeat counts (`GO 5`)
 - sqlcmd variables (`$(name)`) and `:setvar`
 - `:on error` handling
+- `:Out` and `:Error` output routing with built-in RFC 4180 CSV files, single-file or
+  one-file-per-result-set naming, and strict UTF-8 output (SQL `NULL` and the empty
+  string are indistinguishable in CSV)
 - Plain, `sqlcmd`, and extended `sqlcmdex` parsing modes
 - Fully asynchronous parsing and execution, from strings or files, with cancellation support
 - Exact line/column metadata per batch

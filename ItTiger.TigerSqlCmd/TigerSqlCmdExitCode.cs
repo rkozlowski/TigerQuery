@@ -4,7 +4,7 @@ using ItTiger.TigerQuery.Engine;
 namespace ItTiger.TigerSqlCmd;
 
 /// <summary>
-/// The tiger-sqlcmd process exit-code contract. Values 0–7 mirror the engine's
+/// The tiger-sqlcmd process exit-code contract. Values 0–8 mirror the engine's
 /// <see cref="ExecutionResultCode"/> one-to-one so script-visible codes are unchanged;
 /// Code 20 is reserved for framework-produced usage failures mapped through the app's
 /// TigerCli exit-code policy in <see cref="TigerSqlCmdApp"/>.
@@ -47,6 +47,9 @@ public enum TigerSqlCmdExitCode
     [TigerText("Fatal exception", Description = "A fatal engine exception ended execution.")]
     FatalException = 7,
 
+    [TigerText("Output failed", Description = "Script output could not be routed, serialized, or written.")]
+    OutputFailed = 8,
+
     [TigerText("Invalid arguments", Description = "The command line was invalid or incomplete.")]
     InvalidArguments = 20,
 
@@ -69,6 +72,7 @@ internal static class TigerSqlCmdExitCodeMapper
         ExecutionResultCode.ParseError => TigerSqlCmdExitCode.ParseError,
         ExecutionResultCode.UnhandledException => TigerSqlCmdExitCode.UnhandledException,
         ExecutionResultCode.FatalException => TigerSqlCmdExitCode.FatalException,
+        ExecutionResultCode.OutputFailed => TigerSqlCmdExitCode.OutputFailed,
         _ => TigerSqlCmdExitCode.UnhandledException,
     };
 }

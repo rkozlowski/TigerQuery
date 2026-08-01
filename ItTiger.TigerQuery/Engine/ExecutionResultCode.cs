@@ -51,5 +51,24 @@ public enum ExecutionResultCode
     UnhandledException = 6,
 
     /// <summary>A <see cref="TigerQueryException"/> stopped batch execution.</summary>
-    FatalException = 7
+    FatalException = 7,
+
+    /// <summary>
+    /// Routing, serialization, or writing of script output failed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ExecutionResult.Exception"/> is the
+    /// <see cref="OutputRoutingException"/> that caused the failure. An output
+    /// failure stops the run immediately whatever the effective <c>:ON ERROR</c>
+    /// policy is, because continuing would execute later SQL while losing or
+    /// corrupting its requested output.
+    /// </para>
+    /// <para>
+    /// SQL Server may already have completed the command, and may have committed
+    /// side effects, before the failure was discovered. The batch is nevertheless
+    /// counted as failed.
+    /// </para>
+    /// </remarks>
+    OutputFailed = 8
 }

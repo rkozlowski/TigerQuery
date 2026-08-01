@@ -101,6 +101,16 @@ public sealed class TigerQueryEngineOptions
     public ILogger? Logger { get; init; }
 
     /// <summary>
+    /// Gets the script-directed output routing and file-output configuration.
+    /// </summary>
+    /// <remarks>
+    /// The default routes every channel to the callbacks below and creates no files.
+    /// Invalid routing configuration fails at run start, before parsing, connection
+    /// opening, or output-file creation.
+    /// </remarks>
+    public OutputRoutingOptions OutputRouting { get; init; } = new();
+
+    /// <summary>
     /// Gets a callback for SQL Server messages and exceptions observed during execution.
     /// </summary>
     /// <remarks>

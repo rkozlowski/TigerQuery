@@ -615,6 +615,16 @@ public sealed class SqlCmdParser
                         }
                         else if (IsOutputDirective(command))
                         {
+                            if (_options.OutputRouting?.AllowScriptOutputDirectives == false)
+                            {
+                                _options.Logger?.Log(
+                                    LogLevel.Debug,
+                                    "{Command} rejected because script output directives are disabled.",
+                                    command);
+                                throw new TigerQueryException(
+                                    $"Script output directives are disabled; {command} is not permitted.");
+                            }
+
                             var (path, terminator) = await ReadOutputDirectivePathAsync(
                                 command,
                                 element,

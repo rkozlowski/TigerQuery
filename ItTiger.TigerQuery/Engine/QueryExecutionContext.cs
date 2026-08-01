@@ -68,6 +68,17 @@ public sealed class QueryExecutionContext
     public SqlCmdMode Mode => _options.Mode;
 
     /// <summary>
+    /// Gets or sets the run's output router.
+    /// </summary>
+    /// <remarks>
+    /// The engine assigns this before executing batches. When it is
+    /// <see langword="null"/> — as it is for a context created directly for parsing —
+    /// result sets go straight to
+    /// <see cref="TigerQueryEngineOptions.OnResultSet"/>.
+    /// </remarks>
+    internal Output.OutputRouter? OutputRouter { get; set; }
+
+    /// <summary>
     /// Gets the case-insensitive variable table for this run.
     /// </summary>
     /// <remarks>
@@ -132,6 +143,23 @@ public sealed class QueryExecutionContext
         return VariableExpansionHelper.Expand(input, GetVariableValue);
     }
 
+    /// <summary>
+    /// Sends one materialized result set to the run's current result-set destination.
+    /// </summary>
+    /// <exception cref="OutputRoutingException">
+    /// The destination is a file and the result set could not be serialized or written.
+    /// </exception>
+    internal void DeliverResultSet(ResultSetInfo result)
+    {
+        if (OutputRouter is null)
+        {
+            _options.OnResultSet?.Invoke(result);
+            return;
+        }
+
+        OutputRouter.RouteResultSet(result);
+    }
+
     private static List<ColumnInfo> GetColumnInfo(SqlDataReader reader)
     {
         var schemaTable = reader.GetSchemaTable();
@@ -172,12 +200,17 @@ public sealed class QueryExecutionContext
     /// <returns>Zero after execution, including for an empty batch.</returns>
     /// <remarks>
     /// A null or whitespace-only batch is skipped. The supplied connection must
-    /// already be open. Result sets are fully read before callbacks are invoked.
+    /// already be open. Result sets are fully read before they are delivered. When
+    /// the engine has redirected the result-set channel to a file, the result set is
+    /// written there and the callback is not invoked.
     /// </remarks>
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> is cancelled during provider work.
     /// </exception>
     /// <exception cref="SqlException">SQL Server rejects or fails the batch.</exception>
+    /// <exception cref="OutputRoutingException">
+    /// A redirected result set could not be serialized or written.
+    /// </exception>
     public async Task<int> ExecuteBatchAsync(
         SqlBatch batch,
         int batchNumber,
@@ -213,7 +246,7 @@ public sealed class QueryExecutionContext
                 result.Rows.Add(values);
             }
 
-            _options.OnResultSet?.Invoke(result);
+            DeliverResultSet(result);
         }
         while (await reader.NextResultAsync(cancellationToken));
 

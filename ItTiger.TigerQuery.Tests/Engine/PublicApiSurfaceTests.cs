@@ -96,6 +96,73 @@ public sealed class PublicApiSurfaceTests
         Assert.Empty(offenders);
     }
 
+    [Theory]
+    [InlineData("ItTiger.TigerQuery.Output.OutputRouter")]
+    [InlineData("ItTiger.TigerQuery.Output.OutputDestination")]
+    [InlineData("ItTiger.TigerQuery.Output.ResultSetOutputDestination")]
+    [InlineData("ItTiger.TigerQuery.Output.TextOutputDestination")]
+    [InlineData("ItTiger.TigerQuery.Output.OutputDestinationRegistry")]
+    [InlineData("ItTiger.TigerQuery.Output.CsvFormatter")]
+    [InlineData("ItTiger.TigerQuery.Output.ResultSetFileNaming")]
+    [InlineData("ItTiger.TigerQuery.Output.OutputPathResolver")]
+    [InlineData("ItTiger.TigerQuery.Output.OutputRoutingConfiguration")]
+    [InlineData("ItTiger.TigerQuery.Output.OutputRoutePlanValidator")]
+    [InlineData("ItTiger.TigerQuery.Output.OutputChannel")]
+    [InlineData("ItTiger.TigerQuery.Output.MessageOrigin")]
+    public void WriterAndRoutingImplementationTypesStayInternal(string typeName)
+    {
+        var type = TigerQueryAssembly.GetType(typeName, throwOnError: true)!;
+
+        Assert.False(type.IsVisible, $"{typeName} must not be part of the public API surface.");
+    }
+
+    [Fact]
+    public void NoPublicWriterOrFormatterContractIsExposed()
+    {
+        var offenders = TigerQueryAssembly
+            .GetExportedTypes()
+            .Where(type =>
+                type.Name.Contains("Writer", StringComparison.Ordinal)
+                || type.Name.Contains("Formatter", StringComparison.Ordinal)
+                || type.Name.Contains("Serializer", StringComparison.Ordinal)
+                || type.Name.Contains("Destination", StringComparison.Ordinal)
+                || type.Name.Contains("Router", StringComparison.Ordinal))
+            .Select(type => type.FullName)
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void TheRoutingApiExposesOnlyConfigurationAndTheFailureType()
+    {
+        var exported = TigerQueryAssembly
+            .GetExportedTypes()
+            .Where(type => type.Name.StartsWith("Out", StringComparison.Ordinal)
+                || type.Name.Contains("ResultSetFile", StringComparison.Ordinal)
+                || type.Name.Contains("ResultSetOutput", StringComparison.Ordinal))
+            .Select(type => type.FullName!)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(
+            [
+                "ItTiger.TigerQuery.Engine.OutDirectiveBehavior",
+                "ItTiger.TigerQuery.Engine.OutputRoutingOptions",
+                "ItTiger.TigerQuery.Engine.ResultSetFileMode",
+                "ItTiger.TigerQuery.Engine.ResultSetOutputFormat",
+                "ItTiger.TigerQuery.OutputRoutingException"
+            ],
+            exported);
+    }
+
+    [Fact]
+    public void OutputRoutingExceptionIsATigerQueryException()
+    {
+        Assert.True(typeof(TigerQueryException).IsAssignableFrom(typeof(OutputRoutingException)));
+        Assert.True(typeof(OutputRoutingException).IsSealed);
+    }
+
     private static bool IsEnumeration(Type type)
     {
         if (!type.IsGenericType)

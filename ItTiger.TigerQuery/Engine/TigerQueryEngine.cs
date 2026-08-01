@@ -1,4 +1,5 @@
 ﻿using ItTiger.TigerQuery.Events;
+using ItTiger.TigerQuery.Output;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
@@ -43,6 +44,11 @@ public sealed class TigerQueryEngine
     // Non-null only between the start and end of one batch execution attempt, which is
     // what confines server diagnostics to the batch that produced them.
     private BatchDiagnostics? _activeBatchDiagnostics;
+
+    // Non-null only while a run owns output destinations. Provider message events are
+    // delivered synchronously, so the router has to be reachable from the connection
+    // handler as well as from the coordinator.
+    private OutputRouter? _activeRouter;
 
     /// <summary>Initializes an engine with fixed run options.</summary>
     /// <param name="options">The parsing, execution, and callback configuration.</param>
@@ -112,10 +118,10 @@ public sealed class TigerQueryEngine
     internal void ReportServerMessage(SqlCmdMessage message)
     {
         _activeBatchDiagnostics?.RecordDelivered(message);
-        LogAndRaise(message);
+        LogAndRaise(message, isException: false, MessageOrigin.ServerDiagnostic);
     }
 
-    private void LogAndRaise(SqlCmdMessage msg, bool isException = false)
+    private void LogAndRaise(SqlCmdMessage msg, bool isException, MessageOrigin origin)
     {
         // Logging
         var level = msg.Type switch
@@ -143,7 +149,16 @@ public sealed class TigerQueryEngine
         {
             _options.Logger?.Log(level, "SQL {Type}: {Message}", msg.Type, msg.Text);
         }
-        _options.OnMessage?.Invoke(msg, isException);        
+
+        // Logging above is deliberately independent of routing: redirecting a message
+        // to a file must never suppress the configured logger.
+        if (_activeRouter is null)
+        {
+            _options.OnMessage?.Invoke(msg, isException);
+            return;
+        }
+
+        _activeRouter.RouteMessage(msg, isException, origin);
     }
 
     internal static IAsyncEnumerable<ExecutionStep> ReadStreamingStepsAsync(
@@ -193,6 +208,7 @@ public sealed class TigerQueryEngine
     private async Task<ExecutionResult> ExecuteStepsAsync(
         IAsyncEnumerable<ExecutionStep> executionSteps,
         QueryExecutionContext context,
+        OutputRouter router,
         int? totalLogicalBatchCount,
         long? totalExecutionCount,
         CancellationToken cancellationToken)
@@ -211,7 +227,24 @@ public sealed class TigerQueryEngine
         {
             if (step is not ExecuteBatchStep batchStep)
             {
-                ApplyRouteStep(step);
+                try
+                {
+                    ApplyRouteStep(step, router);
+                }
+                catch (OutputRoutingException routeFailure)
+                {
+                    // A route change that fails outside a batch stops before the next
+                    // batch and uses the same output-failure classification.
+                    _options.Logger?.LogError(
+                        routeFailure,
+                        "The output route could not be changed to {Path}.",
+                        routeFailure.Path);
+                    ex = routeFailure;
+                    resultCode = ExecutionResultCode.OutputFailed;
+                    stop = true;
+                    break;
+                }
+
                 continue;
             }
 
@@ -243,6 +276,7 @@ public sealed class TigerQueryEngine
                 var sw = Stopwatch.StartNew();
 
                 bool success = true;
+                bool sqlCompleted = false;
                 var diagnostics = new BatchDiagnostics();
                 _activeBatchDiagnostics = diagnostics;
 
@@ -259,6 +293,14 @@ public sealed class TigerQueryEngine
                         batchIndex,
                         executionIndex,
                         cancellationToken);
+                    sqlCompleted = true;
+
+                    // Message text is flushed at batch boundaries rather than per
+                    // message. Provider message events are synchronous, so a write
+                    // failure raised inside one was captured by the router and is
+                    // rethrown here, at a safe coordinator boundary.
+                    router.FlushAtBatchBoundary();
+                    router.ThrowIfFailed();
 
                     // The provider can complete a batch normally after having reported a
                     // server error as an informational message. Such an attempt did not
@@ -283,6 +325,15 @@ public sealed class TigerQueryEngine
                         executed++;
                     }
                 }
+                catch (OutputRoutingException outputFailure)
+                {
+                    ReportOutputFailure(outputFailure, sqlCompleted);
+                    ex = outputFailure;
+                    success = false;
+                    failed++;
+                    resultCode = ExecutionResultCode.OutputFailed;
+                    stop = true;
+                }
                 catch (OperationCanceledException oce)
                 {
                     _options.Logger?.LogWarning("Execution cancelled by user.");
@@ -292,11 +343,10 @@ public sealed class TigerQueryEngine
                     success = false;
                     failed++;
                     var msg = SqlCmdMessage.FromException(oce);
-                    LogAndRaise(msg, true);
+                    LogAndRaise(msg, true, MessageOrigin.EngineException);
                 }
                 catch (SqlException se)
                 {
-                    ex = se;
                     success = false;
                     failed++;
 
@@ -313,26 +363,52 @@ public sealed class TigerQueryEngine
                         if (diagnostics.WasDelivered(msg))
                             continue;
 
-                        LogAndRaise(msg, true);
+                        LogAndRaise(msg, true, MessageOrigin.ServerDiagnostic);
                     }
 
-                    if (fatal || !context.ContinueOnError)
+                    // An output failure captured while handling a provider message stays
+                    // the primary exception; the SQL exception is secondary context.
+                    var outputFailure = TakeContemporaneousOutputFailure(router, se);
+                    if (outputFailure is not null)
                     {
+                        ReportOutputFailure(outputFailure, sqlCompleted);
+                        ex = outputFailure;
+                        resultCode = ExecutionResultCode.OutputFailed;
                         stop = true;
-                        resultCode = fatal ? ExecutionResultCode.Fatal : ExecutionResultCode.BatchFailed;
+                    }
+                    else
+                    {
+                        ex = se;
+                        if (fatal || !context.ContinueOnError)
+                        {
+                            stop = true;
+                            resultCode = fatal ? ExecutionResultCode.Fatal : ExecutionResultCode.BatchFailed;
+                        }
                     }
                 }
                 catch (Exception e)
                 {
                     success = false;
-                    ex = e;
                     failed++;
-                    var msg = SqlCmdMessage.FromException(e);
-                    LogAndRaise(msg, true);
-                    if (e is TigerQueryException || !context.ContinueOnError || !_options.ContinueOnErrorForUnhandledExceptions)
+
+                    var outputFailure = TakeContemporaneousOutputFailure(router, e);
+                    if (outputFailure is not null)
                     {
+                        ReportOutputFailure(outputFailure, sqlCompleted);
+                        ex = outputFailure;
+                        resultCode = ExecutionResultCode.OutputFailed;
                         stop = true;
-                        resultCode = e is TigerQueryException ? ExecutionResultCode.FatalException : ExecutionResultCode.UnhandledException;
+                    }
+                    else
+                    {
+                        ex = e;
+                        var msg = SqlCmdMessage.FromException(e);
+                        LogAndRaise(msg, true, MessageOrigin.EngineException);
+                        if (e is TigerQueryException || !context.ContinueOnError || !_options.ContinueOnErrorForUnhandledExceptions)
+                        {
+                            stop = true;
+                            resultCode = e is TigerQueryException ? ExecutionResultCode.FatalException : ExecutionResultCode.UnhandledException;
+                        }
                     }
                 }
                 finally
@@ -358,10 +434,31 @@ public sealed class TigerQueryEngine
             if (stop)
                 break;
         }
+
+        // Every destination is flushed and closed whether the run succeeded or failed.
+        // A cleanup failure never replaces an earlier primary cause.
+        var completionFailure = router.Complete();
+        if (completionFailure is not null)
+        {
+            if (resultCode == ExecutionResultCode.Success)
+            {
+                ReportOutputFailure(completionFailure, sqlCompleted: true);
+                ex = completionFailure;
+                resultCode = ExecutionResultCode.OutputFailed;
+            }
+            else
+            {
+                _options.Logger?.LogError(
+                    completionFailure,
+                    "Completing output for {Path} failed after an earlier failure.",
+                    completionFailure.Path);
+            }
+        }
+
         return new ExecutionResult
         {
             ResultCode = resultCode,
-            Exception = ex, 
+            Exception = ex,
             ExecutedBatches = executed,
             FailedBatches = failed,
             TotalDuration = totalSw.Elapsed
@@ -369,29 +466,77 @@ public sealed class TigerQueryEngine
     }
 
     /// <summary>
-    /// Consumes one output-route step.
+    /// Returns an output failure captured while <paramref name="thrown"/> was in
+    /// flight, attaching that exception as secondary diagnostic context.
+    /// </summary>
+    private static OutputRoutingException? TakeContemporaneousOutputFailure(
+        OutputRouter router,
+        Exception thrown)
+    {
+        var failure = router.TakePendingFailure();
+        if (failure is not null)
+        {
+            failure.Data[OutputRoutingException.ContemporaneousExceptionDataKey] = thrown;
+        }
+
+        return failure;
+    }
+
+    /// <summary>
+    /// Logs an output failure and raises it as an engine message.
     /// </summary>
     /// <remarks>
-    /// Route steps are ordered no-ops until output routing exists. Both execution
-    /// modes reach this method through the same step stream, so their order relative
-    /// to batches is already the order routing will observe.
+    /// The message uses the engine-exception origin, so it reaches the message
+    /// callback and the logger but can never enter a routed <c>:Error</c> file.
     /// </remarks>
-    private void ApplyRouteStep(ExecutionStep step)
+    private void ReportOutputFailure(OutputRoutingException failure, bool sqlCompleted)
     {
-        var directive = step switch
+        _options.Logger?.LogError(
+            failure,
+            sqlCompleted
+                ? "SQL execution completed before output failed for {Path}."
+                : "Output failed for {Path} while the batch result was being read.",
+            failure.Path);
+
+        LogAndRaise(SqlCmdMessage.FromException(failure), true, MessageOrigin.EngineException);
+    }
+
+    /// <summary>
+    /// Applies one output-route step to the run's routing state.
+    /// </summary>
+    /// <remarks>
+    /// Both execution modes reach this method through the same ordered step stream,
+    /// so route transitions occur at the same points relative to batches. Applying a
+    /// directive resolves and reserves paths but creates no file.
+    /// </remarks>
+    /// <exception cref="OutputRoutingException">
+    /// The directive path cannot be resolved or collides with another channel.
+    /// </exception>
+    private void ApplyRouteStep(ExecutionStep step, OutputRouter router)
+    {
+        var (command, directive) = step switch
         {
-            SetOutRouteStep outStep => (Command: ":Out", outStep.Directive),
-            SetErrorRouteStep errorStep => (Command: ":Error", errorStep.Directive),
+            SetOutRouteStep outStep => (":Out", outStep.Directive),
+            SetErrorRouteStep errorStep => (":Error", errorStep.Directive),
             _ => throw new InvalidOperationException(
                 $"Unsupported TigerQuery execution step: {step.GetType().Name}.")
         };
 
         _options.Logger?.Log(
             LogLevel.Debug,
-            "Output directive {Command} at line {Line}, column {Column} is not yet routed.",
-            directive.Command,
-            directive.Directive.Line,
-            directive.Directive.Column);
+            "Applying {Command} at line {Line}, column {Column}.",
+            command,
+            directive.Line,
+            directive.Column);
+
+        if (step is SetOutRouteStep)
+        {
+            router.ApplyOutDirective(directive.Path);
+        }
+        else
+        {
+            router.ApplyErrorDirective(directive.Path);
+        }
     }
 
     internal static bool TryGetExecutionIndex(
@@ -411,32 +556,55 @@ public sealed class TigerQueryEngine
 
     private async Task<ExecutionResult> RunStreamingAsync(
         TextReader input,
+        OutputRoutingConfiguration routingConfiguration,
         CancellationToken cancellationToken)
     {
+        // Initial routes are resolved before the connection opens, so a run that
+        // cannot route fails without contacting SQL Server.
+        using var router = new OutputRouter(_options, routingConfiguration);
         await using var connection = new SqlConnection();
         ConfigureConnection(connection);
-        await _openConnectionAsync(connection, cancellationToken);
-        var context = new QueryExecutionContext(_options, connection);
-        var parser = new SqlCmdParser(input, _options, context);
+        _activeRouter = router;
+        try
+        {
+            await _openConnectionAsync(connection, cancellationToken);
+            var context = new QueryExecutionContext(_options, connection)
+            {
+                OutputRouter = router
+            };
+            var parser = new SqlCmdParser(input, _options, context);
 
-        return await ExecuteStepsAsync(
-            ReadStreamingStepsAsync(parser, cancellationToken),
-            context,
-            totalLogicalBatchCount: null,
-            totalExecutionCount: null,
-            cancellationToken);
+            return await ExecuteStepsAsync(
+                ReadStreamingStepsAsync(parser, cancellationToken),
+                context,
+                router,
+                totalLogicalBatchCount: null,
+                totalExecutionCount: null,
+                cancellationToken);
+        }
+        finally
+        {
+            _activeRouter = null;
+        }
     }
 
     private async Task<ExecutionResult> RunPreparedAsync(
         TextReader input,
+        OutputRoutingConfiguration routingConfiguration,
         CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection();
+        using var router = new OutputRouter(_options, routingConfiguration);
         var context = new QueryExecutionContext(_options, connection);
         var parser = new SqlCmdParser(input, _options, context);
         var plan = await PrepareExecutionPlanAsync(
             parser,
             cancellationToken);
+
+        // Statically known routing failures are found here, before plan readiness and
+        // before the connection opens, so no output file is created for a plan that
+        // cannot route.
+        OutputRoutePlanValidator.Validate(plan.Steps, _options, routingConfiguration);
 
         cancellationToken.ThrowIfCancellationRequested();
         _options.OnExecutionPlanReady?.Invoke(new ExecutionPlanReady
@@ -448,14 +616,24 @@ public sealed class TigerQueryEngine
 
         ConfigureConnection(connection);
         cancellationToken.ThrowIfCancellationRequested();
-        await _openConnectionAsync(connection, cancellationToken);
+        _activeRouter = router;
+        try
+        {
+            await _openConnectionAsync(connection, cancellationToken);
+            context.OutputRouter = router;
 
-        return await ExecuteStepsAsync(
-            ReadPreparedStepsAsync(plan, cancellationToken),
-            context,
-            plan.LogicalBatchCount,
-            plan.TotalExecutionCount,
-            cancellationToken);
+            return await ExecuteStepsAsync(
+                ReadPreparedStepsAsync(plan, cancellationToken),
+                context,
+                router,
+                plan.LogicalBatchCount,
+                plan.TotalExecutionCount,
+                cancellationToken);
+        }
+        finally
+        {
+            _activeRouter = null;
+        }
     }
 
     /// <summary>
@@ -501,12 +679,16 @@ public sealed class TigerQueryEngine
     {
         ArgumentNullException.ThrowIfNull(input);
 
+        // Routing configuration is validated first: encoding, base directory, and enum
+        // values must be usable before parsing, connection opening, or file creation.
+        var routingConfiguration = OutputRoutingConfiguration.Create(_options.OutputRouting);
+
         return _options.ExecutionMode switch
         {
             TigerQueryExecutionMode.Streaming =>
-                await RunStreamingAsync(input, cancellationToken),
+                await RunStreamingAsync(input, routingConfiguration, cancellationToken),
             TigerQueryExecutionMode.Prepared =>
-                await RunPreparedAsync(input, cancellationToken),
+                await RunPreparedAsync(input, routingConfiguration, cancellationToken),
             _ => throw new InvalidOperationException(
                 $"Unsupported TigerQuery execution mode: {_options.ExecutionMode}.")
         };

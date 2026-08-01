@@ -4,7 +4,7 @@ Status: proposed design
 
 Scope: `ItTiger.TigerQuery`, `tiger-sqlcmd`, and reusable consumers such as TigerWrap
 
-Implementation: phase 1 complete (internal ordered execution steps; `:Out` and `:Error` recognized, validated, and ordered, but not yet routed). Phases 2-4 not started.
+Implementation: phases 1 and 2 complete (ordered execution steps; TigerQuery-owned routing, built-in CSV, file lifecycle, and output-failure handling). Phase 3 (`tiger-sqlcmd` options and help) and phase 4 (TigerWrap reuse and hardening) not started.
 
 ## Current-state summary
 
