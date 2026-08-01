@@ -65,6 +65,7 @@ public sealed class TigerSqlCmdCommand : TigerCliAsyncCommandHandler<TigerSqlCmd
             Mode = settings.Mode,
             Variables = variables,
             Logger = logger,
+            OutputRouting = settings.ToOutputRoutingOptions(),
             OnMessage = renderer.WriteMessage,
             OnBatchStart = renderer.WriteBatchStart,
             OnBatchEnd = renderer.WriteBatchEnd,

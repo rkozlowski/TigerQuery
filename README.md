@@ -135,7 +135,18 @@ tiger-sqlcmd run -c local -m sqlcmdex -f script.sql
 
 Here, `local` is a saved connection managed with `tiger-sqlcmd connections`.
 The `run` command supports `-v name=value` for variables, `--verbosity`,
-`--log-level`, and more.
+`--log-level`, and more. Route result sets to TigerQuery's built-in CSV writer
+with `-o`/`--output`:
+
+```bash
+tiger-sqlcmd run -c local -f script.sql -o results.csv
+```
+
+Use `--output-mode FilePerResultSet` for generated per-result-set files,
+`-e`/`--error-output` for SQL errors, and `--out-behavior` to choose whether
+`:Out` also redirects normal messages. See the
+[`tiger-sqlcmd` output-routing guide](docs/api-docfx/tiger-sqlcmd.md) for the
+complete CLI, CSV, overwrite, naming, encoding, and partial-file contract.
 
 ---
 

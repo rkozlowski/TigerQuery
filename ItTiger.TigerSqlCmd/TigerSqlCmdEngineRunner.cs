@@ -1,5 +1,6 @@
 using ItTiger.TigerCli.Markup;
 using ItTiger.TigerCli.Terminal;
+using ItTiger.TigerQuery;
 using ItTiger.TigerQuery.Engine;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,15 @@ internal static class TigerSqlCmdEngineRunner
             // batch execution is already mapped by the engine to UserCancelled).
             logger?.LogWarning("Execution cancelled by user.");
             return TigerSqlCmdExitCode.Cancelled;
+        }
+        catch (OutputRoutingException ex)
+        {
+            // Initial-route and prepared-plan failures can occur before the engine
+            // reaches its ExecutionResult path. They use the same dedicated process
+            // code as output failures returned by the execution coordinator.
+            logger?.LogError(ex, "Script output failed for {Path}.", ex.Path);
+            TigerConsole.MarkupErrorLine($"[Error]{CliMarkupParser.Escape(ex.Message)}[/]");
+            return TigerSqlCmdExitCode.OutputFailed;
         }
         catch (SqlException ex)
         {

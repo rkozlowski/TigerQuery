@@ -113,7 +113,7 @@ internal static class TigerSqlCmdApp
             // Advanced command: full script/sqlcmd execution.
             .AddCommand<TigerSqlCmdCommand>(
                 "run",
-                "Advanced sqlcmd execution: run a script file or query with variables, mode, verbosity and logging.",
+                "Advanced sqlcmd execution: run a script file or query with variables, output routing, mode, verbosity and logging.",
                 descriptionResourceKey: "Cmd_Run_Description")
             .Build();
     }

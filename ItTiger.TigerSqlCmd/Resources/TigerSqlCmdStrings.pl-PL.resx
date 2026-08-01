@@ -54,7 +54,7 @@
   <!-- ── App and command metadata (identifier keys) ─────────────────── -->
   <data name="App_Description" xml:space="preserve"><value>Wykonuje zapytanie [Accent]SQL Server[/] na zapisanym połączeniu. Użyj [Accent]run[/] dla skryptów i zaawansowanych opcji sqlcmd.</value></data>
   <data name="Grp_Connections_Description" xml:space="preserve"><value>Zarządzanie zapisanymi połączeniami</value></data>
-  <data name="Cmd_Run_Description" xml:space="preserve"><value>Zaawansowane wykonywanie sqlcmd: uruchamia plik skryptu lub zapytanie ze zmiennymi, trybem, szczegółowością i logowaniem.</value></data>
+  <data name="Cmd_Run_Description" xml:space="preserve"><value>Zaawansowane wykonywanie sqlcmd: uruchamia plik skryptu lub zapytanie ze zmiennymi, przekierowaniem wyników, trybem, szczegółowością i logowaniem.</value></data>
 
   <!-- ── Option metadata (identifier keys) ──────────────────────────── -->
   <data name="Opt_Connection_Description" xml:space="preserve"><value>Nazwa zapisanego połączenia SQL Server (zarządzanego poleceniem 'connections').</value></data>
@@ -62,6 +62,12 @@
   <data name="Opt_Run_File_Description" xml:space="preserve"><value>Ścieżka do pliku skryptu SQL do wykonania.</value></data>
   <data name="Opt_Run_Query_Description" xml:space="preserve"><value>Zapytanie SQL podane w wierszu poleceń.</value></data>
   <data name="Opt_Run_Mode_Description" xml:space="preserve"><value>Tryb wykonywania.</value></data>
+  <data name="Opt_Run_Output_Description" xml:space="preserve"><value>Wyniki: początkowa ścieżka dla przekierowanych zestawów wyników; dyrektywa :Out może ją zastąpić.</value></data>
+  <data name="Opt_Run_ResultFormat_Description" xml:space="preserve"><value>Wyniki: format strukturalny zestawów wyników.</value></data>
+  <data name="Opt_Run_OutputMode_Description" xml:space="preserve"><value>Wyniki: zapis do jednego pliku albo do osobnego pliku dla każdego zestawu wyników.</value></data>
+  <data name="Opt_Run_OutputEncoding_Description" xml:space="preserve"><value>Wyniki: nazwa kodowania .NET dla wszystkich przekierowanych plików; domyślnie UTF-8 z BOM.</value></data>
+  <data name="Opt_Run_ErrorOutput_Description" xml:space="preserve"><value>Komunikaty/błędy: początkowa ścieżka dla komunikatów błędów SQL; dyrektywa :Error może ją zastąpić.</value></data>
+  <data name="Opt_Run_OutBehavior_Description" xml:space="preserve"><value>Komunikaty/błędy: określa, czy :Out przekierowuje również zwykłe komunikaty.</value></data>
   <data name="Opt_Run_LogFile_Description" xml:space="preserve"><value>Ścieżka do pliku dziennika.</value></data>
   <data name="Opt_Run_LogLevel_Description" xml:space="preserve"><value>Minimalny poziom logowania.</value></data>
   <data name="Opt_Run_Verbosity_Description" xml:space="preserve"><value>Steruje szczegółowością danych wyjściowych.</value></data>
@@ -77,4 +83,7 @@
   <data name="[Success]completed[/] in {0}ms" xml:space="preserve"><value>[Success]ukończono[/] w {0} ms</value></data>
   <data name="[Error]failed[/] in {0}ms" xml:space="preserve"><value>[Error]niepowodzenie[/] w {0} ms</value></data>
   <data name="[Muted](No columns returned)[/]" xml:space="preserve"><value>[Muted](Nie zwrócono kolumn)[/]</value></data>
+  <data name="--output must not be empty or whitespace." xml:space="preserve"><value>--output nie może być pusty ani składać się wyłącznie z białych znaków.</value></data>
+  <data name="--error-output must not be empty or whitespace." xml:space="preserve"><value>--error-output nie może być pusty ani składać się wyłącznie z białych znaków.</value></data>
+  <data name="'{0}' is not a supported .NET output encoding name." xml:space="preserve"><value>„{0}” nie jest obsługiwaną nazwą kodowania wyjściowego .NET.</value></data>
 </root>

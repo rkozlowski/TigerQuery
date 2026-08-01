@@ -4,6 +4,8 @@
   href: getting-started.md
 - name: TigerQuery engine
   href: engine.md
+- name: tiger-sqlcmd output routing
+  href: tiger-sqlcmd.md
 - name: Connection profiles
   href: connection-profiles.md
 - name: CLI integration

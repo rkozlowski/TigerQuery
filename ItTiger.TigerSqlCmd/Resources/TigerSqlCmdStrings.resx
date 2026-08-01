@@ -54,7 +54,7 @@
   <!-- ── App and command metadata (identifier keys) ─────────────────── -->
   <data name="App_Description" xml:space="preserve"><value>Run a [Accent]SQL Server[/] query against a saved connection. Use [Accent]run[/] for scripts and advanced sqlcmd options.</value></data>
   <data name="Grp_Connections_Description" xml:space="preserve"><value>Manage saved connections</value></data>
-  <data name="Cmd_Run_Description" xml:space="preserve"><value>Advanced sqlcmd execution: run a script file or query with variables, mode, verbosity and logging.</value></data>
+  <data name="Cmd_Run_Description" xml:space="preserve"><value>Advanced sqlcmd execution: run a script file or query with variables, output routing, mode, verbosity and logging.</value></data>
 
   <!-- ── Option metadata (identifier keys) ──────────────────────────── -->
   <data name="Opt_Connection_Description" xml:space="preserve"><value>Name of a saved SQL Server connection (managed via the 'connections' command).</value></data>
@@ -62,6 +62,12 @@
   <data name="Opt_Run_File_Description" xml:space="preserve"><value>Path to the SQL script file to execute.</value></data>
   <data name="Opt_Run_Query_Description" xml:space="preserve"><value>Inline SQL query to execute.</value></data>
   <data name="Opt_Run_Mode_Description" xml:space="preserve"><value>Execution mode.</value></data>
+  <data name="Opt_Run_Output_Description" xml:space="preserve"><value>Result output: Initial path for routed result sets; :Out can replace it.</value></data>
+  <data name="Opt_Run_ResultFormat_Description" xml:space="preserve"><value>Result output: Structured result-set format.</value></data>
+  <data name="Opt_Run_OutputMode_Description" xml:space="preserve"><value>Result output: Write one file or one file per result set.</value></data>
+  <data name="Opt_Run_OutputEncoding_Description" xml:space="preserve"><value>Result output: .NET encoding name for all routed files; default is UTF-8 with BOM.</value></data>
+  <data name="Opt_Run_ErrorOutput_Description" xml:space="preserve"><value>Message/error routing: Initial path for SQL error messages; :Error can replace it.</value></data>
+  <data name="Opt_Run_OutBehavior_Description" xml:space="preserve"><value>Message/error routing: Select whether :Out also redirects normal messages.</value></data>
   <data name="Opt_Run_LogFile_Description" xml:space="preserve"><value>Path to the log file.</value></data>
   <data name="Opt_Run_LogLevel_Description" xml:space="preserve"><value>Minimum log level.</value></data>
   <data name="Opt_Run_Verbosity_Description" xml:space="preserve"><value>Controls output verbosity.</value></data>
@@ -77,4 +83,7 @@
   <data name="[Success]completed[/] in {0}ms" xml:space="preserve"><value>[Success]completed[/] in {0}ms</value></data>
   <data name="[Error]failed[/] in {0}ms" xml:space="preserve"><value>[Error]failed[/] in {0}ms</value></data>
   <data name="[Muted](No columns returned)[/]" xml:space="preserve"><value>[Muted](No columns returned)[/]</value></data>
+  <data name="--output must not be empty or whitespace." xml:space="preserve"><value>--output must not be empty or whitespace.</value></data>
+  <data name="--error-output must not be empty or whitespace." xml:space="preserve"><value>--error-output must not be empty or whitespace.</value></data>
+  <data name="'{0}' is not a supported .NET output encoding name." xml:space="preserve"><value>'{0}' is not a supported .NET output encoding name.</value></data>
 </root>
