@@ -49,6 +49,19 @@ The host application retains control of themes, cultures, other commands, and
 exit-code mapping. Connection commands return portable semantic TigerCli exit
 kinds such as success, validation error, not found, and already exists.
 
+## One selected store
+
+`options.Store` is the store-selection injection point, and deliberately the
+only one — TigerQuery defines no default store of its own. Resolve the
+application's choice (a `Shared`/`AppSpecific` per-user location, or an explicit
+`FilePath` for isolation, CI, or a test run) once, construct a single
+[SqlServerConnectionStore](xref:ItTiger.TigerQuery.Core.SqlServerConnectionStore),
+and pass that same instance to `SqlServerConnectionCommands.Configure` and to
+every other consumer in the application. The store never probes another
+location, so lookup, filtering, copy, add, update, save, and delete all stay on
+the selected file; `store.FilePath` reports the normalized path it uses. See
+[Selecting one store](connection-profiles.md#selecting-one-store).
+
 ## Localization and metadata
 
 `CreateAppResources(params ResourceManager[])` creates a chained resource

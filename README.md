@@ -30,7 +30,8 @@ Unlike sqlcmd or SSMS, TigerQuery:
 
 ## ✨ Features
 
-- ✅ Familiar `:setvar`, `$(var)`, `:on error`, and `GO [n]` handling
+- ✅ Familiar `:setvar`, `$(var)`, `:on error`, and `GO [n]` handling, including
+  sqlcmd-compatible stop-on-error for severity 11-16 server errors
 - ✅ `SqlCmdEx` protected host variables for automation and embedded tooling
 - ✅ Fully async parser and execution engine
 - ✅ Tracks exact line/column metadata per batch
@@ -145,7 +146,7 @@ The `run` command supports `-v name=value` for variables, `--verbosity`,
 | Package | Purpose |
 |---|---|
 | [`ItTiger.TigerQuery`](https://www.nuget.org/packages/ItTiger.TigerQuery/) | Standalone sqlcmd-compatible SQL script parser and execution engine |
-| [`ItTiger.TigerQuery.Core`](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) | Saved SQL Server connection profiles: storage, validation, resolution |
+| [`ItTiger.TigerQuery.Core`](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) | Saved SQL Server connection profiles: storage, validation, resolution, same-store copying |
 | [`ItTiger.TigerQuery.CliCore`](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/) | Reusable TigerCli connection-management commands for CLI apps |
 
 ```bash

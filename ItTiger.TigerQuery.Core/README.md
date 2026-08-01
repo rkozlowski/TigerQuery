@@ -7,9 +7,10 @@ Intended consumers are tool and application developers: define profiles once (se
 ## Key types
 
 - `SqlServerConnectionProfile` — a named profile with first-class options (server, database, authentication, encryption, trust, application intent, timeouts, pooling), a free-form options escape hatch, and optional namespaced application metadata; builds a `SqlConnectionStringBuilder` / connection string.
-- `SqlServerConnectionStore` / `SqlServerConnectionStoreOptions` — JSON file storage with `Shared(vendor)` (a per-user vendor store shared across tools) and `AppSpecific(vendor, app)` locations, or any explicit `FilePath`; `QueryByMetadata(...)` applies reusable metadata filters.
+- `SqlServerConnectionStore` / `SqlServerConnectionStoreOptions` — JSON file storage with `Shared(vendor)` (a per-user vendor store shared across tools) and `AppSpecific(vendor, app)` locations, or any explicit `FilePath`; `QueryByMetadata(...)` applies reusable metadata filters and `Copy(...)` duplicates a saved connection inside the same store.
+- `SqlServerConnectionCopyOptions` — the controlled overrides a copy may apply: target name, initial catalog, and selected metadata entries.
 - `SqlServerConnectionResolver` / `SqlServerConnectionResolution` — name → connection string with clean failure messages.
-- `SqlServerConnectionValidator` / `SqlServerConnectionValidationPolicy` — profile validation (e.g. database required vs. optional).
+- `SqlServerConnectionValidator` / `SqlServerConnectionValidationPolicy` — profile validation (e.g. database required vs. optional); `ValidateComplete(...)` also checks credential presence and connection-string compatibility.
 - `IConnectionPasswordProtector` — password-at-rest strategy: `DpapiConnectionPasswordProtector`, `NonPersistingConnectionPasswordProtector`, `NoOpConnectionPasswordProtector`, and `ConnectionPasswordProtector.CreateDefault()`.
 - `SqlServerDatabaseLister` — async database enumeration for a profile.
 
@@ -80,6 +81,82 @@ var automationProfiles = store.QueryByMetadata(
 
 For a real shared store, prefer `SqlServerConnectionStoreOptions.Shared("YourVendor")` (per-user application-data location on Windows, `~/.config` elsewhere) so multiple tools see the same connections.
 
+## Copying a saved connection
+
+`Copy` duplicates an existing profile under a new name inside the **same** store. It is
+the supported way to derive a connection — a scratch database, a per-run test database,
+a second catalog on the same server — from one that a user already approved, instead of
+rebuilding a connection string or hand-copying properties:
+
+```csharp
+var copy = store.Copy("bootstrap", new SqlServerConnectionCopyOptions
+{
+    TargetName = "run-42",
+    InitialCatalogOverride = "ScratchDb",
+    MetadataToSet = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["yourvendor.yourapp.role"] = "scratch"
+    },
+    MetadataToRemove = ["yourvendor.yourapp.owner"]
+});
+
+// The result is an ordinary saved profile.
+var resolution = SqlServerConnectionResolver.Resolve(store, copy.Name);
+store.Delete(copy.Name);
+```
+
+What the operation guarantees:
+
+- **Everything is preserved by default.** Server, authentication mode, user name, the
+  protected password, encryption and certificate trust, timeouts, pooling, free-form
+  `Options`, and every metadata entry are carried over. The copy is taken from the
+  profile's own JSON contract, not from a hand-written property list, so a field added
+  to `SqlServerConnectionProfile` in a later release is copied without a caller change.
+- **Only three things can be overridden**: the profile name, the initial catalog
+  (`null` preserves, `""` clears, anything else replaces), and the metadata entries you
+  name. Unrelated metadata survives untouched.
+- **Same store, always.** `Copy` is an instance method with no destination parameter, so
+  a copy cannot cross into another store.
+- **No plaintext.** The stored `EncryptedPassword` and `PasswordEncryption` are
+  duplicated exactly as they sit on disk. The password is never decrypted, reconstructed,
+  logged, or returned to the caller, and the copy succeeds even when the current user
+  cannot decrypt the blob. Neither the source nor any unrelated profile is re-protected,
+  so their stored ciphertext does not change.
+- **It is not an upsert.** A missing source, an existing target name (compared ordinally
+  and case-sensitively), an invalid metadata mutation, or a profile that fails validation
+  throws and leaves the store exactly as it was.
+
+Validation uses `SqlServerConnectionValidationPolicy.DatabaseOptional` unless you pass a
+policy; no SQL connection is opened.
+
+## One selected store, no fallback
+
+There is deliberately no universal default store. An application picks `Shared(...)`,
+`AppSpecific(...)`, or an explicit `FilePath` **once**, constructs a single
+`SqlServerConnectionStore`, and injects that instance everywhere — including into
+`ItTiger.TigerQuery.CliCore`'s `SqlServerConnectionCommandOptions.Store`.
+
+Every operation on that instance — `Load`, `Find`, `Exists`, `QueryByMetadata`, `Add`,
+`AddOrUpdate`, `Copy`, `Save`, `Delete` — uses the file it was constructed with. Nothing
+probes a default location when the selected file is missing, malformed, or inaccessible;
+that condition is reported, never worked around. `store.FilePath` exposes the normalized
+absolute path so diagnostics and tests can prove which store an operation used.
+
+## Concurrent and interrupted writes
+
+Mutating operations are coordinated by normalized file path and replace the file in one
+step — the new content is written to a same-directory temporary file, flushed to disk,
+and then atomically moved over the destination:
+
+- Concurrent mutations cannot lose one another's updates. The guarantee is absolute
+  within a process; across processes it is provided by a sibling `<file>.lock` and holds
+  for processes that use this library.
+- A mutation that fails at any point leaves the previous file intact rather than
+  truncated, and removes only its own temporary artifact.
+- Readers never observe a partially written file, so `Load` is not coordinated.
+- `SqlServerConnectionStoreOptions.MutationTimeout` (15 seconds by default) bounds the
+  wait; exceeding it throws `TimeoutException` without mutating anything.
+
 ## Password protection and platforms
 
 SQL-password profiles never store plain-text passwords by default:
@@ -89,6 +166,11 @@ SQL-password profiles never store plain-text passwords by default:
 - `NoOpConnectionPasswordProtector` performs no protection at all and is intended for tests or externally secured stores.
 
 The store constructor accepts an explicit `IConnectionPasswordProtector` when you need to choose the strategy yourself.
+
+Protection is applied to the profile you supply to `Add`, `AddOrUpdate`, or `Save`, and
+unprotection happens on `Load`. Profiles that a mutation merely carries along — and the
+source of a `Copy` — keep their stored representation byte-for-byte, so an unrelated
+`Add` or `Delete` never re-encrypts anyone else's password.
 
 ## Related packages
 

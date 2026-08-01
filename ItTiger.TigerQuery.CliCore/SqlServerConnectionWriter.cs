@@ -6,44 +6,19 @@ using ItTiger.TigerQuery.Core;
 namespace ItTiger.TigerQuery.CliCore;
 
 /// <summary>
-/// Shared validation used by the add and edit commands. Connection-string concerns
+/// Shared validation used by the add and edit commands. The rules themselves live in
+/// <see cref="SqlServerConnectionValidator.ValidateComplete"/> so that stored,
+/// edited, and copied profiles are held to one standard; connection-string concerns
 /// (key/value validity, pool sizes, etc.) are delegated to
 /// <see cref="Microsoft.Data.SqlClient.SqlConnectionStringBuilder"/> rather than
-/// reimplemented here.
+/// reimplemented there.
 /// </summary>
 internal static class SqlServerConnectionWriter
 {
     public static IReadOnlyList<string> Validate(
         SqlServerConnectionProfile profile,
-        SqlServerConnectionValidationPolicy policy)
-    {
-        var errors = SqlServerConnectionValidator.Validate(profile, policy).ToList();
-
-        if (profile.Authentication == AuthenticationType.SqlPassword)
-        {
-            if (string.IsNullOrWhiteSpace(profile.Username))
-                errors.Add("Username is required for SQL password authentication.");
-
-            if (string.IsNullOrEmpty(profile.PlainPassword) &&
-                string.IsNullOrEmpty(profile.EncryptedPassword))
-            {
-                errors.Add("Password is required for SQL password authentication.");
-            }
-        }
-
-        // Let SqlConnectionStringBuilder validate the option surface (unknown --opt keys,
-        // out-of-range pool sizes, malformed values, ...).
-        try
-        {
-            _ = profile.BuildConnectionString();
-        }
-        catch (Exception ex) when (ex is ArgumentException or FormatException)
-        {
-            errors.Add(ex.Message);
-        }
-
-        return errors;
-    }
+        SqlServerConnectionValidationPolicy policy) =>
+        SqlServerConnectionValidator.ValidateComplete(profile, policy);
 
     public static bool TryReportErrors(
         TigerCliSettings settings,

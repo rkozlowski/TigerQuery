@@ -69,8 +69,20 @@ public sealed class TigerQueryEngineOptions
     /// Gets the initial policy for continuing after a failed batch execution.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>:ON ERROR IGNORE</c> and <c>:ON ERROR EXIT</c> update this policy for
     /// subsequent parser-produced batches. Fatal SQL errors always stop execution.
+    /// </para>
+    /// <para>
+    /// A batch fails when SQL Server reports an error of severity 11 or higher for
+    /// it, whether the provider throws or reports the error as an informational
+    /// message. Under an effective exit-on-error policy the triggering batch ends
+    /// unsuccessfully, no further batch is started, and the run's
+    /// <see cref="ExecutionResult.ResultCode"/> is not
+    /// <see cref="ExecutionResultCode.Success"/>. Under an effective continue policy
+    /// the batch still counts towards <see cref="ExecutionResult.FailedBatches"/> and
+    /// the next scheduled batch runs.
+    /// </para>
     /// </remarks>
     public bool ContinueOnError { get; init; } = true;
 
@@ -93,8 +105,11 @@ public sealed class TigerQueryEngineOptions
     /// </summary>
     /// <remarks>
     /// The Boolean argument is true when the message was raised while handling an
-    /// exception. Informational server messages use false. The callback can occur
-    /// between matching batch-start and batch-end callbacks.
+    /// exception. Server messages delivered by the provider use false, including
+    /// error diagnostics, which the provider reports that way for severities 11
+    /// through 16. The callback can occur between matching batch-start and batch-end
+    /// callbacks. A diagnostic that the provider delivers both as a message and on a
+    /// thrown exception for the same attempt is raised once.
     /// </remarks>
     public Action<SqlCmdMessage, bool>? OnMessage { get; init; }
 

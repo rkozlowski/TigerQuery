@@ -174,6 +174,47 @@ connection-opening failures can escape the run method instead of being
 normalized into an execution result. An optional
 `Microsoft.Extensions.Logging.ILogger` receives structured logs.
 
+## `:on error` semantics
+
+A batch attempt **fails** when SQL Server reports an error of severity 11 or
+higher for it. That includes errors the provider delivers as informational
+messages rather than by throwing, which is how severity 11-16 arrives — the
+range that `RAISERROR(..., 16, ...)`, `THROW`, and ordinary compilation errors
+such as an invalid object name fall into. A batch that returns normally after
+such an error is not a successful batch.
+
+The effective policy comes from
+[ContinueOnError](xref:ItTiger.TigerQuery.Engine.TigerQueryEngineOptions.ContinueOnError)
+and is updated by `:ON ERROR EXIT` and `:ON ERROR IGNORE` as the script is
+parsed.
+
+| | Effective exit-on-error | Effective continue-on-error |
+| --- | --- | --- |
+| Triggering batch | `BatchEnd.Success = false` | `BatchEnd.Success = false` |
+| `FailedBatches` | Incremented | Incremented |
+| `ExecutedBatches` | Not incremented for the failing attempt | Not incremented for the failing attempt |
+| Later batches | Not started — no `BatchStart` or `BatchEnd` is raised for them | The next scheduled batch runs |
+| `ResultCode` | `BatchFailed`, or `Fatal` for a fatal server error | `Success` |
+
+`GO n` repeat counts follow the same rule per iteration: under exit-on-error a
+failing iteration stops the remaining iterations, under continue-on-error they
+proceed. A fatal server error stops the run under either policy.
+
+For compatibility, an ignored failure keeps `ResultCode` at `Success` while
+`FailedBatches` is greater than zero — so a caller that must not tolerate any
+failed batch should check `FailedBatches`, not only the result code. Exit-on-error
+never returns `Success`.
+
+Diagnostics reach `OnMessage` in server order with their original number,
+severity, state, procedure, and line, and a diagnostic delivered both as a
+message and on a thrown exception is raised once. When a batch fails without a
+thrown exception, `BatchEnd.Exception` and `ExecutionResult.Exception` carry a
+[SqlBatchErrorException](xref:ItTiger.TigerQuery.SqlBatchErrorException) whose
+`Errors` collection holds those same diagnostics.
+
+Prepared and streaming execution share one coordinator, so this behavior,
+the batch lifecycle, and the counts are identical in both modes.
+
 ## Parsing modes
 
 [SqlCmdMode](xref:ItTiger.TigerQuery.SqlCmdMode) selects normal SQL parsing,

@@ -21,11 +21,18 @@ public enum ExecutionResultCode
     /// </summary>
     /// <remarks>
     /// Ignored nonfatal failures can still make
-    /// <see cref="ExecutionResult.FailedBatches"/> greater than zero.
+    /// <see cref="ExecutionResult.FailedBatches"/> greater than zero. This remains
+    /// true for server errors reported without a thrown exception; an effective
+    /// exit-on-error policy, however, never produces this code.
     /// </remarks>
     Success = 0,
 
     /// <summary>A batch failed and the effective error policy stopped execution.</summary>
+    /// <remarks>
+    /// The failure is either a caught nonfatal <see cref="Microsoft.Data.SqlClient.SqlException"/>
+    /// or a <see cref="SqlBatchErrorException"/> built from server errors the provider
+    /// reported as informational messages.
+    /// </remarks>
     BatchFailed = 1,
 
     /// <summary>A fatal SQL Server error stopped execution.</summary>

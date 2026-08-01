@@ -48,6 +48,10 @@ var app = TigerCliApp.CreateBuilder()
 return await app.RunAsync(args);
 ```
 
+### One selected store
+
+`options.Store` is the injection point for store selection, and it is deliberately the only one — TigerQuery defines no default store of its own. Resolve your application's choice (a `Shared`/`AppSpecific` per-user location or an explicit `FilePath`) **once**, construct a single `SqlServerConnectionStore`, and pass that same instance both to `SqlServerConnectionCommands.Configure` and to every other part of your application that reads or writes connections. Nothing in the store probes another location, so a run that selects an explicit file uses that file for lookup, filtering, copy, add, update, and delete alike; `store.FilePath` reports the normalized path it settled on.
+
 Your application keeps full ownership of everything around the group: overall app composition, themes, cultures, additional commands, and the application-wide exit-code policy (`UseExitCodes(...)`). The connection commands return portable TigerCli outcomes: `Success`, `ValidationError`, `NotFound`, and `AlreadyExists`. Map those kinds to your application's concrete exit-code enum with `ExitKind(...)`.
 
 `add` and `edit` accept repeatable `--metadata key=value` and

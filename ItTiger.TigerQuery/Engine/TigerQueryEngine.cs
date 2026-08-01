@@ -23,12 +23,26 @@ namespace ItTiger.TigerQuery.Engine;
 /// batch-start, any messages/result sets, and batch-end for each scheduled
 /// execution. Streaming mode omits plan-ready and preserves the same per-batch order.
 /// </para>
+/// <para>
+/// Both modes share one batch coordinator, so error accounting, the effective
+/// <c>:ON ERROR</c> policy, and the batch lifecycle behave identically. A batch
+/// attempt fails when an exception is caught for it or when SQL Server reports an
+/// error of severity 11 or higher during it — including the severity 11-16 user
+/// errors the provider delivers as informational messages instead of throwing. A
+/// failing attempt increments the failed count, ends with an unsuccessful batch-end
+/// carrying a diagnostic, and, unless the effective policy is continue-on-error,
+/// stops the run without starting any later batch.
+/// </para>
 /// </remarks>
 public sealed class TigerQueryEngine
 {
     private readonly TigerQueryEngineOptions _options;
     private readonly Func<SqlConnection, CancellationToken, Task> _openConnectionAsync;
     private readonly Func<QueryExecutionContext, SqlBatch, int, int, CancellationToken, Task> _executeBatchAsync;
+
+    // Non-null only between the start and end of one batch execution attempt, which is
+    // what confines server diagnostics to the batch that produced them.
+    private BatchDiagnostics? _activeBatchDiagnostics;
 
     /// <summary>Initializes an engine with fixed run options.</summary>
     /// <param name="options">The parsing, execution, and callback configuration.</param>
@@ -78,13 +92,27 @@ public sealed class TigerQueryEngine
         {
             foreach (SqlError error in e.Errors)
             {
-                var msg = SqlCmdMessage.FromSqlError(error);
-
-                LogAndRaise(msg);
+                ReportServerMessage(SqlCmdMessage.FromSqlError(error));
             }
         };
 
+        // Keeps a recoverable server error from aborting the reader, so the remaining
+        // diagnostics of a batch are delivered in order. The consequence is that SQL
+        // Server user errors (severity 11-16, what RAISERROR and THROW normally
+        // produce) arrive as events instead of as a SqlException, which is why the
+        // coordinator attributes them to the active batch below rather than treating
+        // a normal return as success.
         connection.FireInfoMessageEventOnUserErrors = true;
+    }
+
+    /// <summary>
+    /// Routes one provider-delivered server message to the active batch and to the
+    /// message callback.
+    /// </summary>
+    internal void ReportServerMessage(SqlCmdMessage message)
+    {
+        _activeBatchDiagnostics?.RecordDelivered(message);
+        LogAndRaise(message);
     }
 
     private void LogAndRaise(SqlCmdMessage msg, bool isException = false)
@@ -208,8 +236,10 @@ public sealed class TigerQueryEngine
                 });
 
                 var sw = Stopwatch.StartNew();
-                
+
                 bool success = true;
+                var diagnostics = new BatchDiagnostics();
+                _activeBatchDiagnostics = diagnostics;
 
                 try
                 {
@@ -224,7 +254,29 @@ public sealed class TigerQueryEngine
                         batchIndex,
                         executionIndex,
                         cancellationToken);
-                    executed++;
+
+                    // The provider can complete a batch normally after having reported a
+                    // server error as an informational message. Such an attempt did not
+                    // succeed, and the effective :on error policy has to apply to it
+                    // exactly as it does to a thrown SqlException.
+                    if (diagnostics.HasError)
+                    {
+                        success = false;
+                        failed++;
+                        ex = new SqlBatchErrorException(diagnostics.Errors);
+
+                        if (diagnostics.HasFatalError || !context.ContinueOnError)
+                        {
+                            stop = true;
+                            resultCode = diagnostics.HasFatalError
+                                ? ExecutionResultCode.Fatal
+                                : ExecutionResultCode.BatchFailed;
+                        }
+                    }
+                    else
+                    {
+                        executed++;
+                    }
                 }
                 catch (OperationCanceledException oce)
                 {
@@ -250,6 +302,12 @@ public sealed class TigerQueryEngine
                         var msg = SqlCmdMessage.FromSqlError(error);
                         if (msg.IsFatalError)
                             fatal = true;
+
+                        // A diagnostic already delivered as an informational message for
+                        // this attempt is not published a second time.
+                        if (diagnostics.WasDelivered(msg))
+                            continue;
+
                         LogAndRaise(msg, true);
                     }
 
@@ -271,6 +329,10 @@ public sealed class TigerQueryEngine
                         stop = true;
                         resultCode = e is TigerQueryException ? ExecutionResultCode.FatalException : ExecutionResultCode.UnhandledException;
                     }
+                }
+                finally
+                {
+                    _activeBatchDiagnostics = null;
                 }
 
                 _options.OnBatchEnd?.Invoke(new BatchEnd

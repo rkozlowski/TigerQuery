@@ -188,6 +188,26 @@ public sealed class SqlServerConnectionProfile
         }
     }
 
+    /// <summary>
+    /// Produces an independent copy of everything this profile persists, including
+    /// the protected password representation and every metadata entry.
+    /// </summary>
+    /// <remarks>
+    /// The clone is produced through the profile's own JSON contract rather than a
+    /// hand-written property list, so a field added to the profile in a later
+    /// release is carried automatically. <see cref="PlainPassword"/> is excluded
+    /// from that contract and is therefore never part of a clone; the copy carries
+    /// only the at-rest representation.
+    /// </remarks>
+    /// <returns>A detached profile with no shared mutable state.</returns>
+    internal SqlServerConnectionProfile ClonePersisted()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(this);
+        return System.Text.Json.JsonSerializer.Deserialize<SqlServerConnectionProfile>(json)
+            ?? throw new InvalidOperationException(
+                "A connection profile could not be cloned through its own JSON contract.");
+    }
+
     /// <summary>Builds a SqlClient connection-string builder from the current profile.</summary>
     /// <returns>A new builder that the caller may modify independently.</returns>
     /// <remarks>

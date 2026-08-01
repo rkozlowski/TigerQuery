@@ -104,6 +104,28 @@ The engine never writes to the console. Everything flows through the callbacks o
 
 Runs that reach the execution coordinator's result path return an `ExecutionResult` with an `ExecutionResultCode`, successful/failed execution counts (including `GO n` iterations), and total execution duration. Parser and connection-opening failures currently escape the run method rather than being normalized into a result. An optional `Microsoft.Extensions.Logging.ILogger` receives structured logs.
 
+## `:on error` semantics
+
+A batch attempt fails when SQL Server reports an error of severity 11 or higher for it — including the severity 11-16 errors the provider delivers as informational messages instead of throwing, which is what `RAISERROR(..., 16, ...)`, `THROW`, and ordinary compilation errors such as an invalid object name produce. A batch that returns normally after such an error is not counted as successful.
+
+The effective policy starts at `ContinueOnError` and is updated by `:ON ERROR EXIT` and `:ON ERROR IGNORE` while parsing:
+
+| | Effective exit-on-error | Effective continue-on-error |
+| --- | --- | --- |
+| Triggering batch | `BatchEnd.Success = false` | `BatchEnd.Success = false` |
+| `FailedBatches` | incremented | incremented |
+| `ExecutedBatches` | not incremented for the failing attempt | not incremented for the failing attempt |
+| Later batches | not started; no `BatchStart`/`BatchEnd` for them | the next scheduled batch runs |
+| `ResultCode` | `BatchFailed`, or `Fatal` for a fatal server error | `Success` |
+
+`GO n` iterations follow the same rule individually, and a fatal server error stops the run under either policy.
+
+For compatibility, an ignored failure keeps `ResultCode` at `Success` while `FailedBatches` is greater than zero, so a caller that tolerates no failed batch should check `FailedBatches` as well. Exit-on-error never returns `Success`.
+
+Every diagnostic reaches `OnMessage` with its original number, severity, state, procedure, and line, and a diagnostic delivered both as a message and on a thrown exception is raised once. A batch that fails without a thrown exception carries a `SqlBatchErrorException` on `BatchEnd.Exception` and `ExecutionResult.Exception`, whose `Errors` collection holds those diagnostics.
+
+Prepared and streaming execution share one coordinator, so the policy, lifecycle events, and counts are identical in both modes.
+
 ## Related packages
 
 - [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) — saved SQL Server connection profiles (storage, validation, resolution). Independent of this package; combine them when you want named connections in front of the engine.

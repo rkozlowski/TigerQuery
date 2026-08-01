@@ -51,10 +51,20 @@ public sealed class BatchEnd
     /// </remarks>
     public long? TotalExecutionCount { get; init; }
 
-    /// <summary>Gets whether the execution attempt completed without a caught exception.</summary>
+    /// <summary>Gets whether the execution attempt completed without an error.</summary>
+    /// <remarks>
+    /// An attempt fails either because an exception was caught or because SQL Server
+    /// reported an error (severity 11 or higher) for it. The provider delivers such
+    /// user errors as informational messages rather than throwing, so a batch can end
+    /// unsuccessfully even though execution returned normally.
+    /// </remarks>
     public bool Success { get; init; }
 
-    /// <summary>Gets the exception caught for the attempt, or <see langword="null"/> on success.</summary>
+    /// <summary>Gets the error recorded for the attempt, or <see langword="null"/> on success.</summary>
+    /// <remarks>
+    /// A server error reported without a thrown exception is represented by a
+    /// <see cref="SqlBatchErrorException"/> carrying the original diagnostics.
+    /// </remarks>
     public Exception? Exception { get; init; }
 
     /// <summary>Gets elapsed time for this execution attempt.</summary>
