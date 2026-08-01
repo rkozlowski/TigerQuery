@@ -215,6 +215,31 @@ thrown exception, `BatchEnd.Exception` and `ExecutionResult.Exception` carry a
 Prepared and streaming execution share one coordinator, so this behavior,
 the batch lifecycle, and the counts are identical in both modes.
 
+## `:Out` and `:Error` directives
+
+In `SqlCmd` and `SqlCmdEx` modes the parser recognizes and validates the
+`:Out` and `:Error` output directives, which previously failed as unknown colon
+commands. Each takes exactly one non-empty filename, either bare or in the
+sqlcmd double-quoted form (a doubled quote represents a quote), optionally
+followed by a single-line comment. `$(name)` references in the filename are
+expanded at the directive's source position, and undefined references stay
+literal. In `SqlCmdMode.Normal` the text is still sent to SQL Server unchanged.
+
+Both directives are currently accepted and ordered but not yet acted upon:
+result sets and messages continue to reach `OnResultSet` and `OnMessage`, and no
+files are created. Output routing itself arrives in a later release.
+
+Internally the engine consumes an ordered step stream in which each directive
+keeps its source position relative to the batches around it, so repeated routes
+to the same path and a directive placed between buffered SQL and its terminating
+`GO` are preserved rather than collapsed into final parser state. That stream is
+an implementation detail; there is no public script-step API.
+[SqlCmdParser.ReadBatchesAsync](xref:ItTiger.TigerQuery.SqlCmdParser.ReadBatchesAsync*)
+remains batch-only and unchanged for direct consumers: it validates the
+directives and then projects them away. Applications that will need routing
+should execute through
+[TigerQueryEngine](xref:ItTiger.TigerQuery.Engine.TigerQueryEngine).
+
 ## Parsing modes
 
 [SqlCmdMode](xref:ItTiger.TigerQuery.SqlCmdMode) selects normal SQL parsing,

@@ -146,54 +146,52 @@ public sealed class TigerQueryEngine
         _options.OnMessage?.Invoke(msg, isException);        
     }
 
-    internal static async IAsyncEnumerable<ExecutionBatch> ReadStreamingBatchesAsync(
+    internal static IAsyncEnumerable<ExecutionStep> ReadStreamingStepsAsync(
         SqlCmdParser parser,
-        QueryExecutionContext context,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
-        await foreach (var batch in parser.ReadBatchesAsync(cancellationToken))
-        {
-            yield return new ExecutionBatch(batch, context.ContinueOnError);
-        }
+        return parser.ReadExecutionStepsAsync(cancellationToken);
     }
 
     internal static async Task<PreparedExecutionPlan> PrepareExecutionPlanAsync(
         SqlCmdParser parser,
-        QueryExecutionContext context,
         CancellationToken cancellationToken = default)
     {
-        var batches = new List<ExecutionBatch>();
+        var steps = new List<ExecutionStep>();
         long totalExecutionCount = 0;
 
-        await foreach (var executionBatch in ReadStreamingBatchesAsync(
-            parser,
-            context,
-            cancellationToken))
+        await foreach (var step in ReadStreamingStepsAsync(parser, cancellationToken))
         {
-            batches.Add(executionBatch);
-            totalExecutionCount += Math.Max(0L, executionBatch.Batch.ExecCount);
+            steps.Add(step);
+
+            // Route directives are ordered work, but they are not batches and must not
+            // change the totals reported through ExecutionPlanReady.
+            if (step is ExecuteBatchStep batchStep)
+            {
+                totalExecutionCount += Math.Max(0L, batchStep.Execution.Batch.ExecCount);
+            }
         }
 
         return new PreparedExecutionPlan(
-            [.. batches],
+            [.. steps],
             totalExecutionCount);
     }
 
-    private static async IAsyncEnumerable<ExecutionBatch> ReadPreparedBatchesAsync(
+    private static async IAsyncEnumerable<ExecutionStep> ReadPreparedStepsAsync(
         PreparedExecutionPlan plan,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await Task.CompletedTask;
 
-        foreach (var executionBatch in plan.Batches)
+        foreach (var step in plan.Steps)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return executionBatch;
+            yield return step;
         }
     }
 
-    private async Task<ExecutionResult> ExecuteBatchesAsync(
-        IAsyncEnumerable<ExecutionBatch> executionBatches,
+    private async Task<ExecutionResult> ExecuteStepsAsync(
+        IAsyncEnumerable<ExecutionStep> executionSteps,
         QueryExecutionContext context,
         int? totalLogicalBatchCount,
         long? totalExecutionCount,
@@ -209,8 +207,15 @@ public sealed class TigerQueryEngine
         int failed = 0;
         bool stop = false;
 
-        await foreach (var executionBatch in executionBatches.WithCancellation(cancellationToken))
+        await foreach (var step in executionSteps.WithCancellation(cancellationToken))
         {
+            if (step is not ExecuteBatchStep batchStep)
+            {
+                ApplyRouteStep(step);
+                continue;
+            }
+
+            var executionBatch = batchStep.Execution;
             var batch = executionBatch.Batch;
             context.ContinueOnError = executionBatch.ContinueOnError;
             batchIndex++;
@@ -363,6 +368,32 @@ public sealed class TigerQueryEngine
         };
     }
 
+    /// <summary>
+    /// Consumes one output-route step.
+    /// </summary>
+    /// <remarks>
+    /// Route steps are ordered no-ops until output routing exists. Both execution
+    /// modes reach this method through the same step stream, so their order relative
+    /// to batches is already the order routing will observe.
+    /// </remarks>
+    private void ApplyRouteStep(ExecutionStep step)
+    {
+        var directive = step switch
+        {
+            SetOutRouteStep outStep => (Command: ":Out", outStep.Directive),
+            SetErrorRouteStep errorStep => (Command: ":Error", errorStep.Directive),
+            _ => throw new InvalidOperationException(
+                $"Unsupported TigerQuery execution step: {step.GetType().Name}.")
+        };
+
+        _options.Logger?.Log(
+            LogLevel.Debug,
+            "Output directive {Command} at line {Line}, column {Column} is not yet routed.",
+            directive.Command,
+            directive.Directive.Line,
+            directive.Directive.Column);
+    }
+
     internal static bool TryGetExecutionIndex(
         int executionCount,
         int zeroBasedIndex,
@@ -388,8 +419,8 @@ public sealed class TigerQueryEngine
         var context = new QueryExecutionContext(_options, connection);
         var parser = new SqlCmdParser(input, _options, context);
 
-        return await ExecuteBatchesAsync(
-            ReadStreamingBatchesAsync(parser, context, cancellationToken),
+        return await ExecuteStepsAsync(
+            ReadStreamingStepsAsync(parser, cancellationToken),
             context,
             totalLogicalBatchCount: null,
             totalExecutionCount: null,
@@ -405,7 +436,6 @@ public sealed class TigerQueryEngine
         var parser = new SqlCmdParser(input, _options, context);
         var plan = await PrepareExecutionPlanAsync(
             parser,
-            context,
             cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -420,8 +450,8 @@ public sealed class TigerQueryEngine
         cancellationToken.ThrowIfCancellationRequested();
         await _openConnectionAsync(connection, cancellationToken);
 
-        return await ExecuteBatchesAsync(
-            ReadPreparedBatchesAsync(plan, cancellationToken),
+        return await ExecuteStepsAsync(
+            ReadPreparedStepsAsync(plan, cancellationToken),
             context,
             plan.LogicalBatchCount,
             plan.TotalExecutionCount,

@@ -1,5 +1,5 @@
 using ItTiger.TigerQuery.Engine;
-using Microsoft.Data.SqlClient;
+using ItTiger.TigerQuery.Tests.Helpers;
 
 namespace ItTiger.TigerQuery.Tests.Engine;
 
@@ -147,23 +147,10 @@ public sealed class PreparedExecutionPlanTests
         Assert.Equal(1, executionBatch.Batch.StartColumn);
     }
 
-    private static async Task<PreparedExecutionPlan> PrepareAsync(
+    private static Task<PreparedExecutionPlan> PrepareAsync(
         string script,
         TigerQueryEngineOptions? options = null)
     {
-        options ??= new TigerQueryEngineOptions
-        {
-            Mode = SqlCmdMode.SqlCmd
-        };
-
-        await using var connection = new SqlConnection();
-        var context = new QueryExecutionContext(options, connection);
-        using var reader = new StringReader(script);
-        var parser = new SqlCmdParser(reader, options, context);
-
-        return await TigerQueryEngine.PrepareExecutionPlanAsync(
-            parser,
-            context,
-            TestContext.Current.CancellationToken);
+        return TestHelper.PrepareAsync(script, options);
     }
 }

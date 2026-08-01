@@ -21,6 +21,13 @@ namespace ItTiger.TigerQuery;
 /// <c>:ON ERROR IGNORE</c> to the shared execution context.
 /// </para>
 /// <para>
+/// In sqlcmd modes the parser also recognizes and validates the <c>:Out</c> and
+/// <c>:Error</c> output directives, which previously failed as unknown commands.
+/// They are represented internally as ordered execution steps that only
+/// <see cref="Engine.TigerQueryEngine"/> consumes; <see cref="ReadBatchesAsync"/>
+/// projects them away and still returns batches only.
+/// </para>
+/// <para>
 /// Parsing validates TigerQuery/sqlcmd structure only. It does not validate T-SQL.
 /// The parser consumes its <see cref="TextReader"/> and is not thread-safe.
 /// </para>
@@ -280,7 +287,7 @@ public sealed class SqlCmdParser
             && value.IndexOf(')', 2) == value.Length - 1;
     }
 
-    private static bool IsValidQuotedSetvarTerminator(SqlElement element)
+    private static bool IsValidQuotedArgumentTerminator(SqlElement element)
     {
         if (element.Kind == SqlElementKind.SingleLineComment)
         {
@@ -323,6 +330,87 @@ public sealed class SqlCmdParser
         return sb.ToString();
     }
 
+    private static bool IsOutputDirective(string command)
+    {
+        return command.Equals(":OUT", StringComparison.OrdinalIgnoreCase)
+            || command.Equals(":ERROR", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Reads the single filename argument of an <c>:Out</c> or <c>:Error</c> directive.
+    /// </summary>
+    /// <returns>
+    /// The expanded filename and, when the quoted form consumed one, the element that
+    /// terminated it and must be handed back to the caller's element loop.
+    /// </returns>
+    private async Task<(string Path, SqlElement? PendingElement)> ReadOutputDirectivePathAsync(
+        string command,
+        SqlElement element,
+        string[] parts,
+        CancellationToken cancellationToken)
+    {
+        var endedBy = element.EndedBy;
+        var isTerminated = endedBy is SqlElementKind.EndOfLine
+            or SqlElementKind.EndOfStream
+            or SqlElementKind.SingleLineComment;
+
+        // :Out results.csv
+        if (parts.Length == 2 && isTerminated)
+        {
+            return (_context.ExpandVariables(parts[1]), null);
+        }
+
+        // :Out "directory with spaces/results.csv"
+        if (parts.Length == 1 && endedBy == SqlElementKind.DoubleQuotedString)
+        {
+            var value = await Task.Run(ReadElement, cancellationToken);
+            if (value is null || value.Kind != SqlElementKind.DoubleQuotedString)
+            {
+                _options.Logger?.Log(
+                    LogLevel.Debug,
+                    "{Command} parsing failed. Argument element kind: {kind}.",
+                    command,
+                    value?.Kind ?? SqlElementKind.Unknown);
+                throw new TigerQueryException($"Incorrect syntax was encountered while parsing {command}.");
+            }
+
+            var quotedPath = value.InnerText;
+            if (string.IsNullOrWhiteSpace(quotedPath))
+            {
+                _options.Logger?.Log(LogLevel.Debug, "{Command} parsing failed. Empty quoted path.", command);
+                throw new TigerQueryException($"Incorrect syntax was encountered while parsing {command}.");
+            }
+
+            SqlElement? pendingElement = null;
+            var terminator = await Task.Run(ReadElement, cancellationToken);
+            if (terminator is not null)
+            {
+                if (!IsValidQuotedArgumentTerminator(terminator))
+                {
+                    _options.Logger?.Log(
+                        LogLevel.Debug,
+                        "{Command} parsing failed. Quoted path terminator kind: {kind}, ended by: {endedBy}.",
+                        command,
+                        terminator.Kind,
+                        terminator.EndedBy);
+                    throw new TigerQueryException($"Incorrect syntax was encountered while parsing {command}.");
+                }
+
+                pendingElement = terminator;
+            }
+
+            return (_context.ExpandVariables(quotedPath), pendingElement);
+        }
+
+        _options.Logger?.Log(
+            LogLevel.Debug,
+            "{Command} parsing failed. Parts.Length: {len}. Ended by: {endedBy}",
+            command,
+            parts.Length,
+            endedBy);
+        throw new TigerQueryException($"Incorrect syntax was encountered while parsing {command}.");
+    }
+
     private void UpdateLineAndColumn(char ch)
     {
         if (ch == '\n')
@@ -352,6 +440,11 @@ public sealed class SqlCmdParser
     /// the context before that batch is yielded. Consumers that defer execution
     /// must therefore snapshot relevant context state for each yielded batch.
     /// </para>
+    /// <para>
+    /// Recognized <c>:Out</c> and <c>:Error</c> directives are validated but not
+    /// returned by this method. Consumers that need output routing must execute
+    /// through <see cref="Engine.TigerQueryEngine"/>.
+    /// </para>
     /// </remarks>
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> is cancelled during enumeration.
@@ -360,6 +453,36 @@ public sealed class SqlCmdParser
     /// A sqlcmd directive, <c>GO</c> count, quoted section, or comment is malformed.
     /// </exception>
     public async IAsyncEnumerable<SqlBatch> ReadBatchesAsync(
+    [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var step in ReadExecutionStepsAsync(cancellationToken))
+        {
+            if (step is ExecuteBatchStep batchStep)
+            {
+                yield return batchStep.Execution.Batch;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Asynchronously yields the ordered execution steps of the script.
+    /// </summary>
+    /// <param name="cancellationToken">A token observed throughout parser enumeration.</param>
+    /// <returns>An asynchronous stream of batch and output-route steps in source order.</returns>
+    /// <remarks>
+    /// <para>
+    /// This is the engine's authoritative execution representation.
+    /// <see cref="ReadBatchesAsync"/> is a projection of this stream that keeps the
+    /// same syntax validation while dropping route steps.
+    /// </para>
+    /// <para>
+    /// A route step is emitted where its directive appears. Because a batch step is
+    /// emitted only at its terminating <c>GO</c> or at end of input, a directive
+    /// written after buffered SQL text is necessarily ordered before that batch, and
+    /// consecutive directives keep their source order.
+    /// </para>
+    /// </remarks>
+    internal async IAsyncEnumerable<ExecutionStep> ReadExecutionStepsAsync(
     [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         List<string> currentLines = [];
@@ -422,13 +545,15 @@ public sealed class SqlCmdParser
 
                         if (currentLines.Count > 0)
                         {
-                            yield return new SqlBatch
-                            {
-                                Text = string.Concat(currentLines),
-                                StartLine = batchStartLine ?? element.Line,
-                                StartColumn = batchStartColumn ?? element.Column,
-                                ExecCount = execCount
-                            };
+                            yield return new ExecuteBatchStep(new ExecutionBatch(
+                                new SqlBatch
+                                {
+                                    Text = string.Concat(currentLines),
+                                    StartLine = batchStartLine ?? element.Line,
+                                    StartColumn = batchStartColumn ?? element.Column,
+                                    ExecCount = execCount
+                                },
+                                _context.ContinueOnError));
                             currentLines.Clear();
                             batchStartLine = null;
                             batchStartColumn = null;
@@ -463,7 +588,7 @@ public sealed class SqlCmdParser
                                 var terminator = await Task.Run(ReadElement, cancellationToken);
                                 if (terminator is not null)
                                 {
-                                    if (!IsValidQuotedSetvarTerminator(terminator))
+                                    if (!IsValidQuotedArgumentTerminator(terminator))
                                     {
                                         _options.Logger?.Log(
                                             LogLevel.Debug,
@@ -487,6 +612,23 @@ public sealed class SqlCmdParser
                                 throw new TigerQueryException($"Incorrect syntax was encountered while parsing {command}.");
                             }
                             _context.SetVariableFromScript(varName, value);
+                        }
+                        else if (IsOutputDirective(command))
+                        {
+                            var (path, terminator) = await ReadOutputDirectivePathAsync(
+                                command,
+                                element,
+                                parts,
+                                cancellationToken);
+                            if (terminator is not null)
+                            {
+                                pendingElement = terminator;
+                            }
+
+                            var directive = new OutputDirective(path, element.Line, element.Column);
+                            yield return command.Equals(":OUT", StringComparison.OrdinalIgnoreCase)
+                                ? new SetOutRouteStep(directive)
+                                : new SetErrorRouteStep(directive);
                         }
                         else
                         {
@@ -542,13 +684,15 @@ public sealed class SqlCmdParser
         // Yield final batch if anything left
         if (currentLines.Count > 0)
         {
-            yield return new SqlBatch
-            {
-                Text = string.Concat(currentLines),
-                StartLine = batchStartLine ?? 1,
-                StartColumn = batchStartColumn ?? 1,
-                ExecCount = 1
-            };
+            yield return new ExecuteBatchStep(new ExecutionBatch(
+                new SqlBatch
+                {
+                    Text = string.Concat(currentLines),
+                    StartLine = batchStartLine ?? 1,
+                    StartColumn = batchStartColumn ?? 1,
+                    ExecCount = 1
+                },
+                _context.ContinueOnError));
         }
     }
 
