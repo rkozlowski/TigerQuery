@@ -106,7 +106,7 @@ public sealed class TigerSqlCmdAppTests : IDisposable
     [Fact]
     public async Task PromptCancellation_MapsToCancelledExitCode()
     {
-        await RunAsync("--non-interactive", "connections", "add", "demo", "--server", "srv");
+        await RunAsync("connections", "add", "demo", "--non-interactive", "--server", "srv");
 
         // Interactive default command with no queued answers: the connection prompt
         // times out, which TigerCli maps through the Cancelled kind.
@@ -133,7 +133,7 @@ public sealed class TigerSqlCmdAppTests : IDisposable
     [Fact]
     public async Task UnknownSavedConnection_WithSavedConnections_FailsProviderValidation()
     {
-        await RunAsync("--non-interactive", "connections", "add", "demo", "--server", "srv");
+        await RunAsync("connections", "add", "demo", "--non-interactive", "--server", "srv");
 
         // With choices available, TigerCli's provider validation rejects the value
         // before the handler runs ("not an available choice").
