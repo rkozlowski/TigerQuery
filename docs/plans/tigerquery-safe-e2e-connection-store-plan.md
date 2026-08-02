@@ -10,11 +10,109 @@ Scope:
 - third-party .NET applications consuming TigerQuery libraries directly
 - local development, CI/CD, containers, and mixed library/tool workflows
 
+## 0. Normative external reference
+
+The CLI integration in this plan is governed by the TigerCli app-contribution model:
+
+> **[TigerCli — App contributions and global options](https://github.com/rkozlowski/TigerCli/blob/main/docs/guides/app-contributions.md)** (`docs/guides/app-contributions.md` in the TigerCli repository).
+
+That guide is **normative** for everything in sections 5 and 6 and for phases 2 and 3.
+An implementation agent must read it before writing CliCore or host code. Where this
+plan and the guide disagree, the guide wins and this plan is the document that must be
+corrected.
+
+The API described there ships in **ItTiger.TigerCli 0.9.1**, which every project in this
+repository already references. No TigerCli change is required to start, and no TigerCli
+change may be introduced to accommodate TigerQuery.
+
+### 0.1 The 0.9.1 contribution surface, as actually shipped
+
+Verified against the `ItTiger.TigerCli` 0.9.1 reference assembly and XML documentation:
+
+| Member | Namespace `ItTiger.TigerCli.Commands` |
+| --- | --- |
+| `ITigerCliAppContribution` | `void Configure(TigerCliAppContributionBuilder builder)` |
+| `TigerCliAppBuilder.AddContribution(ITigerCliAppContribution)` | host opt-in; contribution is configured during `Build()` |
+| `TigerCliAppContributionBuilder.GlobalOptions` | returns `TigerCliGlobalOptionBuilder` |
+| `TigerCliAppContributionBuilder.AddEnvironmentVariable(string name, string description)` | help metadata only, surfaced by `--help-env` |
+| `TigerCliGlobalOptionBuilder.AddOptionalString(string name, string valueName, string description, Func<TigerCliGlobalOptionContext, string?, TigerCliValidationResult> apply)` | the only contributed-option shape in 0.9.1 |
+| `TigerCliGlobalOptionContext` | `Culture`, `InteractionMode` |
+| `TigerCliValidationResult` | `IsValid`, `ErrorMessage`, `Success()`, `Error(string)` |
+
+### 0.2 Division of ownership required by the guide
+
+- **TigerCli owns** metadata registration, option-name validation, parsing, duplicate
+  and reserved-name collision detection, help rendering and placement, and invoking
+  each contributed callback exactly once per command run.
+- **CliCore (the contributing library) owns** the option name, value placeholder,
+  description, semantics, validation logic, and the destination state that receives the
+  value.
+- **Core owns** environment-variable reading, precedence, path resolution and
+  normalization, and all domain validation.
+- **The host application owns** the decision to register the contribution, the
+  application default store path, the optional default bootstrap name, and the wiring
+  of contribution-owned state into its command factories and services.
+
+### 0.3 Constraints this plan must respect
+
+Taken directly from the guide and the 0.9.1 XML documentation:
+
+1. A contributed global option is an **optional string** with exactly **one canonical
+   `--` long name**. No short name, no alias, no prompting, no "required" form, and no
+   TigerCli-side environment-variable lookup.
+2. `AddEnvironmentVariable` is **help metadata only**. "TigerCli displays the name and
+   description ... it does not read, parse, or apply the variable." The library performs
+   the actual lookup.
+3. The callback is invoked **once per command run**, **with `null` when the option is
+   absent**, and **before command binding, prompting, and validation**. Returning
+   `TigerCliValidationResult.Error(...)` halts the run before binding.
+4. **Help rendering does not invoke callbacks.** Any state a help path needs must be
+   available without the callback having run.
+5. Supplying the option **more than once is an error**; TigerCli does not take the last
+   value. Supplying it **without a value is an argument error**.
+6. Placement follows TigerCli's grammar: the option appears **after the command path and
+   any required positional arguments**, in the command's normal options area.
+   `my-app --acme-config x project` is invalid; `my-app project --acme-config x` is
+   valid. "App-wide in meaning" does not make it valid before the command path.
+   Values beginning with `-` require the `--name=value` form.
+7. Duplicate, reserved, or conflicting contributed option and environment-variable names
+   **fail during `Build()`**, not at run time.
+
+### 0.4 Constraints the guide implies that this plan previously got wrong
+
+These were discovered while reconciling the plan with the shipped API and are now
+reflected in the phase plan:
+
+- **Contributions cannot add commands, groups, providers, or resources.** In 0.9.1 a
+  contribution may add optional string global options and environment-variable help
+  metadata, and nothing else. `connections add-e2e-bootstrap` must therefore be mounted
+  through the existing `SqlServerConnectionCommands.Configure(group, ...)` entry point,
+  not through the contribution. The contribution and the command group are two separate
+  opt-ins that the host performs.
+- **The contribution callback runs after `Build()`, but `SqlServerConnectionCommands.Configure`
+  runs during `Build()`.** Today `SqlServerConnectionCommandOptions.Store` takes an
+  already-constructed `SqlServerConnectionStore`, captured by the command factories at
+  build time. A store path chosen by `--tq-connection-store-file` is not known then.
+  Store selection must become **deferred** before the contribution can mean anything.
+  This is the single largest piece of work in the plan and it is a breaking change to a
+  published CliCore API (see section 6.2 and phase 2).
+- **Contributed option and environment-variable descriptions cannot be localized through
+  TigerCli's resource pipeline in 0.9.1.** `AddOptionalString` and `AddEnvironmentVariable`
+  take literal description strings and offer no `descriptionResourceKey` overload, and
+  `Configure` runs at `Build()` time, before `--culture` is resolved. Validation error
+  messages *can* be localized because the callback receives `TigerCliGlobalOptionContext.Culture`.
+  See open question 14.
+- **`--tq-connection-store-file` is not a command-setting option.** It must not appear on
+  `SqlServerConnectionSettings` or any other `TigerCliSettings` type, must not be bound,
+  prompted, or provider-backed, and must not be duplicated per command.
+
 ## 1. Purpose
 
-TigerQuery already provides a reusable SQL Server connection store with named profiles, metadata, protected credentials, copying, validation, and safe mutation.
+TigerQuery already provides a reusable SQL Server connection store with named profiles,
+metadata, protected credentials, copying, validation, and safe mutation.
 
-The next step is to make that store the standard configuration and safety boundary for SQL Server E2E testing.
+The next step is to make that store the standard configuration and safety boundary for
+SQL Server E2E testing.
 
 The design must make the safe path obvious and easy:
 
@@ -69,7 +167,7 @@ Applications consume the contract. They do not redefine it.
 
 TigerCli remains generic.
 
-TigerCli should provide only the generic app-contribution mechanism for registering and processing global options.
+TigerCli provides only the generic app-contribution mechanism described in section 0.
 
 `ItTiger.TigerQuery.CliCore` owns TigerQuery-specific global options such as:
 
@@ -77,7 +175,10 @@ TigerCli should provide only the generic app-contribution mechanism for register
 --tq-connection-store-file <path>
 ```
 
-Host applications opt into the contribution.
+Host applications opt into the contribution. There is exactly one global-option
+mechanism in play — TigerCli app contributions. No parallel mechanism (ambient statics,
+pre-parsed `args` scanning, a TigerQuery-specific pre-pass over the command line, or an
+environment variable consulted by TigerCli) may be introduced.
 
 ### 2.5 Local developer convenience
 
@@ -89,19 +190,19 @@ Environment variables remain useful for CI/CD, containers, build agents, and aut
 
 ## 3. Package responsibilities
 
-## 3.1 `ItTiger.TigerQuery.Core`
+### 3.1 `ItTiger.TigerQuery.Core`
 
 Core owns all reusable connection-store and E2E contracts.
 
 Responsibilities:
 
 - resolve the selected connection-store path;
-- define the standard environment variable for store-path override;
+- define the standard environment variable name for the store-path override, **and read it**;
 - accept an explicit path override from callers;
 - use the host application's default store path when no override exists;
 - normalize and validate the selected path;
 - report which source selected the path;
-- define reserved E2E metadata keys;
+- define reserved E2E metadata keys and their value grammar;
 - resolve and validate E2E bootstrap profiles without opening SQL connections;
 - reject ambiguous or invalid E2E configuration;
 - support future external-value references for profile fields;
@@ -117,50 +218,60 @@ Core must work equally for:
 - containers;
 - custom automation.
 
-## 3.2 `ItTiger.TigerQuery.CliCore`
+Core must not reference `ItTiger.TigerCli`, must not know the option name
+`--tq-connection-store-file`, and must not produce CLI-formatted messages.
+
+### 3.2 `ItTiger.TigerQuery.CliCore`
 
 CliCore bridges TigerQuery domain behavior into TigerCli-based applications.
 
 Responsibilities:
 
-- contribute the TigerQuery global connection-store option;
-- contribute environment-variable help metadata;
-- store the parsed explicit override;
-- pass that override to the Core resolver;
-- provide reusable connection commands;
-- provide future E2E setup and validation commands;
-- allow the host application to configure an optional default E2E connection name;
+- implement `ITigerCliAppContribution`;
+- contribute the TigerQuery global connection-store option and its help text;
+- contribute environment-variable help metadata for the Core-defined variable name;
+- hold the parsed explicit override in contribution-owned state;
+- pass that override to the Core resolver and expose the single selected store;
+- provide reusable connection commands, including the deferred-store wiring they need;
+- provide the bootstrap creation command;
+- allow the host application to configure the application default store path and an
+  optional default E2E bootstrap connection name;
 - keep all TigerQuery-specific option names and semantics outside TigerCli.
 
 CliCore must not duplicate:
 
 - Core path precedence;
+- environment-variable reading;
 - E2E metadata rules;
 - profile resolution;
 - authorization checks;
 - connection-store validation.
 
-## 3.3 TigerCli
+CliCore's callback may *invoke* Core validation and surface its result as a
+`TigerCliValidationResult`; it must not reimplement it.
+
+### 3.3 TigerCli
 
 TigerCli owns only generic composition mechanics:
 
 - app-contribution registration;
-- global-option registration;
-- option parsing;
-- validation plumbing;
-- help placement;
-- localization hooks;
-- contribution callbacks;
-- access to parsed values.
+- global-option registration and name validation;
+- option parsing and argument errors (missing value, repeated occurrence);
+- collision detection at `Build()`;
+- help placement and rendering, including `--help-env`;
+- interaction-mode and culture resolution;
+- contribution callback invocation;
+- validation plumbing (`TigerCliValidationResult`).
 
-TigerCli must not define or understand:
+TigerCli must not define, read, or understand:
 
 - TigerQuery connection stores;
 - `--tq-connection-store-file`;
+- `TIGERQUERY_CONNECTION_STORE_FILE` or any other TigerQuery environment variable;
 - E2E connection metadata;
 - SQL Server concepts.
 
-## 3.4 Host applications
+### 3.4 Host applications
 
 Examples:
 
@@ -170,34 +281,50 @@ Examples:
 
 Host responsibilities:
 
-- opt into the CliCore contribution;
-- provide the application's default user-profile store path;
+- construct the CliCore contribution **exactly once**;
+- register it through `TigerCliAppBuilder.AddContribution(...)`;
+- provide the application's default user-profile store path to the contribution;
 - optionally define a default E2E bootstrap connection name;
-- pass the shared contribution state to commands and services;
+- pass **the same contribution-owned state object** to `SqlServerConnectionCommands.Configure(...)`,
+  to its own command factories, and to any service that reads or writes connections;
 - decide user-facing command grouping and branding;
 - avoid independent store-path or E2E resolution logic.
+
+A host that constructs two contribution instances, or that passes one instance to
+`AddContribution` and a different one to its command factories, will silently run with an
+unresolved store path. The guide's pattern — one local variable used in both places — is
+the required shape.
 
 ## 4. Connection-store path resolution
 
 Core should expose one reusable resolver.
 
-Conceptually:
+Conceptually (names provisional):
 
 ```csharp
 public sealed class SqlServerConnectionStorePathOptions
 {
+    /// <summary>The caller-supplied override; from the CLI option in CLI hosts.</summary>
     public string? ExplicitPath { get; init; }
 
+    /// <summary>The host application's default store path. Required.</summary>
     public required string DefaultPath { get; init; }
 
     public string EnvironmentVariableName { get; init; }
         = SqlServerConnectionStoreEnvironment.ConnectionStoreFile;
+
+    /// <summary>
+    /// Environment lookup, injected so tests need not mutate process environment.
+    /// Defaults to <see cref="Environment.GetEnvironmentVariable(string)"/>.
+    /// </summary>
+    public Func<string, string?>? EnvironmentReader { get; init; }
 }
 ```
 
 ```csharp
 public sealed class SqlServerConnectionStorePathResolution
 {
+    /// <summary>The normalized absolute path.</summary>
     public required string Path { get; init; }
 
     public required SqlServerConnectionStorePathSource Source { get; init; }
@@ -213,9 +340,11 @@ public enum SqlServerConnectionStorePathSource
 }
 ```
 
-Exact names may differ, but the contract should be clear.
+Exact names may differ, but the contract should be clear. The injected
+`EnvironmentReader` is not cosmetic: without it, every precedence test must mutate
+process-global state, which is unsafe alongside the existing parallel test suites.
 
-## 4.1 Precedence
+### 4.1 Precedence
 
 The final precedence is:
 
@@ -243,89 +372,298 @@ environment variable
 application default store
 ```
 
-## 4.2 Failure behavior
+### 4.2 Failure behavior
 
 An invalid higher-priority value must fail explicitly.
 
-Examples:
+"Invalid" means, precisely:
 
-- command-line option points to an invalid path;
-- environment variable is present but empty;
-- environment variable contains an invalid path;
-- explicit path cannot be normalized.
+- the value is empty or whitespace;
+- the value cannot be normalized to an absolute path (illegal characters, malformed
+  root, path too long for the platform);
+- the value names a directory rather than a file, or ends in a directory separator.
 
-The resolver must not silently fall through to a lower-priority source.
+The resolver must not silently fall through to a lower-priority source when a
+higher-priority source is present but invalid. A present-and-empty environment variable
+is an error, not an absent variable.
 
-This prevents a misconfigured CI job from unexpectedly using a developer's default user-profile store.
+This prevents a misconfigured CI job from unexpectedly using a developer's default
+user-profile store.
 
-## 4.3 Resolution must be inert
+**Relative paths.** A relative explicit or environment value is normalized against the
+process working directory at resolution time and reported as absolute. This is
+deliberate but surprising, because the working directory differs between a shell run,
+an IDE test run, and a container entrypoint. The resolution result must always report
+the absolute path so diagnostics can show what was actually chosen.
+
+### 4.3 Resolution is inert; existence is a separate policy
 
 Resolving the store path must not:
 
-- create the store file;
+- create the store file or its directory;
 - open SQL connections;
-- probe the filesystem beyond path normalization and required validation;
+- probe the filesystem beyond the normalization and syntactic validation in section 4.2;
 - discover SQL Server instances;
 - choose a connection profile.
 
-Store-path resolution and connection-profile resolution are separate concerns.
+Store-path resolution and connection-profile resolution are separate concerns, and
+neither touches the disk.
+
+Separately from resolution, the plan needs a **store presence policy** applied when the
+store is first opened, because today a missing file simply reads as an empty store. That
+is right for the application default (a first-run developer has no store yet) and wrong
+for an explicit override (a CI job pointing at the wrong path would silently see zero
+connections and report "not configured" instead of "your path is wrong"). Recommended
+policy:
+
+| Source | File missing, read operation | File missing, `connections add` / `add-e2e-bootstrap` |
+| --- | --- | --- |
+| `ApplicationDefault` | behave as empty store (current behavior) | create |
+| `EnvironmentVariable` | **error**, naming the variable and the resolved path | create |
+| `Explicit` | **error**, naming the option and the resolved path | create |
+
+This is a behavior change relative to the current store and needs its own tests. See
+open question 5.
+
+### 4.4 Credential portability across store paths
+
+The default password protector is DPAPI-based on Windows and is scoped to the current
+user and machine. A store file created on a developer workstation and copied to a build
+agent or container **cannot be decrypted there**, and the failure will surface as a
+connection error rather than as a configuration error.
+
+Consequences for this plan:
+
+- moving the store path does not move the ability to read protected passwords;
+- CI and container stores must use external value references (section 10) or a
+  non-persisting protector rather than copied DPAPI blobs;
+- documentation must state this explicitly, because "just point the env var at a
+  checked-in store" is the obvious wrong thing for a user to try;
+- the store-presence and resolution work must not attempt to paper over it by silently
+  falling back.
+
+Protector selection remains a host concern and is orthogonal to path selection; the
+deferred store factory in section 6.2 must let the host keep supplying its protector.
 
 ## 5. TigerCli global option contribution
 
-`ItTiger.TigerQuery.CliCore` should define a TigerCli app contribution for:
+`ItTiger.TigerQuery.CliCore` defines a TigerCli app contribution for:
 
 ```text
 --tq-connection-store-file <path>
 ```
 
-Recommended properties:
+Properties, all of which follow from section 0.3 rather than being TigerQuery choices:
 
-- global within the host application;
-- optional;
-- non-promptable;
-- no short alias;
-- no hidden fallback behavior;
-- available to every command using the shared connection store;
-- documented together with the standard environment variable;
-- parsed once and reused everywhere.
+- optional string, one canonical long name, no short name, no alias;
+- never prompted, never bound to a settings type, never provider-backed;
+- app-wide in meaning, but written **after the command path and required positionals**;
+- absent → callback receives `null`;
+- repeated → TigerCli argument error (never last-value-wins);
+- value omitted → TigerCli argument error;
+- documented together with the standard environment variable through
+  `AddEnvironmentVariable`, which is help metadata only;
+- applied once per run, before command binding.
 
-The host application registers the contribution through TigerCli's app-contribution mechanism.
+### 5.1 Contribution shape
 
-Conceptually:
-
-```csharp
-var tigerQueryContribution =
-    new TigerQueryCliContribution(new TigerQueryCliContributionOptions
-    {
-        DefaultConnectionStoreFile = appDefaultStorePath,
-        DefaultE2eConnectionName = "app-e2e"
-    });
-
-app.AddContribution(tigerQueryContribution);
-```
-
-The exact API should follow TigerCli's contribution conventions.
-
-## 5.1 Shared resolved state
-
-CliCore should expose a shared state/service rather than forcing commands to inspect parse results independently.
-
-Conceptually:
+Conceptually (names provisional):
 
 ```csharp
-public sealed class TigerQueryCliEnvironment
+public sealed class TigerQueryCliOptions
 {
+    /// <summary>Set by the contribution callback; null when the option was absent.</summary>
     public string? ExplicitConnectionStoreFile { get; internal set; }
 
-    public string? DefaultE2eConnectionName { get; init; }
+    /// <summary>Host-supplied application default. Required.</summary>
+    public required string DefaultConnectionStoreFile { get; init; }
 
-    public SqlServerConnectionStorePathResolution ResolveStorePath();
+    /// <summary>Host-supplied bootstrap name; null means "no default configured".</summary>
+    public string? DefaultE2eBootstrapConnectionName { get; init; }
+
+    /// <summary>Host-supplied protector factory, or null for the Core default.</summary>
+    public Func<IConnectionPasswordProtector>? PasswordProtectorFactory { get; init; }
+
+    /// <summary>
+    /// The resolution produced by the callback. Null until the callback has run,
+    /// which is also the state seen on help-only runs.
+    /// </summary>
+    public SqlServerConnectionStorePathResolution? ResolvedStorePath { get; internal set; }
+
+    /// <summary>
+    /// The single store for this run, constructed lazily from
+    /// <see cref="ResolvedStorePath"/> on first access.
+    /// </summary>
+    public SqlServerConnectionStore Store { get; }
 }
 ```
 
-Every connection and execution command must use the same resolved store.
+```csharp
+public sealed class TigerQueryCliContribution : ITigerCliAppContribution
+{
+    public TigerQueryCliContribution(TigerQueryCliOptions options);
 
-## 6. Default E2E bootstrap connection
+    public TigerQueryCliOptions Options { get; }
+
+    public void Configure(TigerCliAppContributionBuilder builder)
+    {
+        builder.GlobalOptions.AddOptionalString(
+            name: "--tq-connection-store-file",
+            valueName: "path",
+            description: "Use a specific TigerQuery connection-store file.",
+            apply: (context, value) => Apply(context, value));
+
+        builder.AddEnvironmentVariable(
+            SqlServerConnectionStoreEnvironment.ConnectionStoreFile,
+            "Selects the TigerQuery connection-store file when "
+            + "--tq-connection-store-file is not supplied.");
+    }
+}
+```
+
+### 5.2 Host registration
+
+Following the guide's pattern exactly — one instance, used in both places:
+
+```csharp
+var tigerQuery = new TigerQueryCliContribution(new TigerQueryCliOptions
+{
+    DefaultConnectionStoreFile = appDefaultStorePath,
+    DefaultE2eBootstrapConnectionName = "tigerwrap-e2e"
+});
+
+return TigerCliApp.CreateBuilder()
+    .UseAssemblyMetadata(typeof(MyApp).Assembly)
+    .AddContribution(tigerQuery)
+    .UseAppResources(SqlServerConnectionCommands.CreateAppResources(MyStrings.ResourceManager))
+    .AddCommandGroup("connections", group =>
+    {
+        SqlServerConnectionCommands.Configure(group, options =>
+        {
+            options.TigerQuery = tigerQuery.Options;   // same instance
+            options.ValidationPolicy = SqlServerConnectionValidationPolicy.DatabaseOptional;
+        });
+    })
+    .AddCommand("run", () => new RunCommand(tigerQuery.Options), "…")
+    .Build();
+```
+
+Registering the contribution is one opt-in; mounting the connection command group is a
+second, independent one. A host may do either alone: a host with no `connections` group
+can still accept `--tq-connection-store-file` for its own commands, and a host that
+mounts the group without the contribution simply has no CLI override.
+
+The contribution must be registered **at most once**. A second registration of the same
+option name fails at `Build()`; so does a host that separately calls
+`TigerCliAppBuilder.AddEnvironmentVariable` with the same variable name that the
+contribution registers. Hosts migrating to the contribution must delete any such
+existing registration.
+
+### 5.3 Callback lifecycle and validation timing
+
+The callback should **resolve the store path completely**, not merely record the raw
+string. It has everything it needs: the explicit value (or `null`), the host default from
+its own options, and Core's environment reader. Resolution is inert (section 4.3), so
+doing it in the callback is cheap and makes misconfiguration fail before command binding
+with a clean validation error rather than deep inside a handler.
+
+```csharp
+private TigerCliValidationResult Apply(TigerCliGlobalOptionContext context, string? value)
+{
+    try
+    {
+        Options.ExplicitConnectionStoreFile = value;
+        Options.ResolvedStorePath = SqlServerConnectionStorePathResolver.Resolve(
+            new SqlServerConnectionStorePathOptions
+            {
+                ExplicitPath = value,
+                DefaultPath = Options.DefaultConnectionStoreFile
+            });
+        return TigerCliValidationResult.Success();
+    }
+    catch (SqlServerConnectionStorePathException ex)
+    {
+        return TigerCliValidationResult.Error(Localize(ex, context.Culture));
+    }
+}
+```
+
+Consequences to design for, all of which need tests:
+
+- **Every command run pays the resolution, including commands that never touch the
+  store.** A malformed `TIGERQUERY_CONNECTION_STORE_FILE` therefore fails `tiger-sqlcmd run`
+  as well as `connections list`. That is the intended fail-fast behavior; it must be a
+  deliberate, documented decision rather than an accident. See open question 6.
+- **The store itself is still constructed lazily**, on first access to `Options.Store`.
+  Constructing `SqlServerConnectionStore` in the callback would be acceptable today but
+  couples every run to store construction cost and to protector initialization.
+- **Help runs never invoke the callback**, so `ResolvedStorePath` is `null` during help
+  rendering. No help text may depend on it. Help that wants to mention the default store
+  path must use `DefaultConnectionStoreFile`, which is known at `Build()` time.
+- **The callback mutates per-run state on an object created at `Build()` time.** An app
+  instance run more than once in the same process (the test host does this) re-enters the
+  callback and must overwrite, not accumulate. The state object is not thread-safe and
+  parallel in-process runs against one app instance are unsupported; the existing
+  `TigerCliAppCollection` non-parallel test collection already assumes this.
+- **Validation messages are localized by CliCore** using `context.Culture` and CliCore's
+  own `ResourceManager`. TigerCli does not localize them.
+
+### 5.4 Shared resolved state
+
+CliCore exposes the contribution-owned state object as the single place every consumer
+reads the store from, rather than having commands inspect parse results independently.
+
+Every connection command, every execution command, and every host service must obtain
+its store from that one object, so a single run can never read one file and write
+another.
+
+## 6. Deferred store selection
+
+### 6.1 The problem
+
+`SqlServerConnectionCommands.Configure(group, options => { options.Store = store; })`
+takes a fully constructed store at `Build()` time and captures it inside the command
+factories, the `connections` provider, the `databases` provider, and the `AsEdit` load
+callback. The CliCore README states this explicitly: "`options.Store` is the injection
+point for store selection, and it is deliberately the only one."
+
+The contribution callback runs *after* `Build()`. Under the current API there is no way
+for `--tq-connection-store-file` to affect which store the commands use.
+
+### 6.2 The change
+
+`SqlServerConnectionCommandOptions` must accept a **deferred** store selection instead of
+(or in addition to) an eager instance. The minimal shape:
+
+- add a way to supply contribution-owned state, e.g. `options.TigerQuery = tigerQuery.Options`,
+  from which the group reads `Store` lazily;
+- keep `options.Store` for hosts that genuinely have one fixed store and no contribution,
+  or replace it with `options.StoreFactory` / `Func<SqlServerConnectionStore>`;
+- make every internal capture site (`SqlServerConnectionCommandContext`, both providers,
+  the `AsEdit` loader) go through the deferred accessor rather than a captured instance;
+- guarantee the accessor returns **the same instance** for the lifetime of a run, so the
+  file lock and in-process mutation gate behave as they do today;
+- fail with a clear `InvalidOperationException` if a command reaches the accessor before
+  the contribution callback has run — that indicates a host wiring bug, not a user error.
+
+Exactly one of the eager and deferred forms may be configured; supplying both is a host
+configuration error rejected during `Configure`.
+
+This is a **breaking change to a published CliCore public API** and needs a deliberate
+compatibility decision (section 17 and open question 12).
+
+### 6.3 Provider and completion timing
+
+`group.AddProvider("connections", …)` and the `databases` provider run during prompting,
+which is step 6 of the run pipeline — after the contribution callback. Deferred access is
+therefore safe for prompting.
+
+Any code path that enumerates providers *outside* a normal run — shell completion being
+the obvious candidate — may not have invoked contribution callbacks. Before relying on
+deferred access there, confirm TigerCli's behavior; if callbacks do not run, the provider
+must degrade to the application-default store rather than throw. See open question 7.
+
+## 7. Default E2E bootstrap connection
 
 A host application may define a default E2E bootstrap connection name. Bootstrap
 profile creation uses a dedicated command:
@@ -355,12 +693,14 @@ Requirements:
 - Core does not invent an application-specific name;
 - no implicit selection occurs when the host has not configured one;
 - the profile must still carry explicit TigerQuery E2E authorization metadata;
-- profile name alone is not authorization.
+- profile name alone is not authorization;
+- the failure case writes nothing — no file creation, no partial profile, no directory
+  creation — and returns a validation-error outcome.
 
 Possible CliCore configuration:
 
 ```csharp
-new TigerQueryCliContributionOptions
+new TigerQueryCliOptions
 {
     DefaultE2eBootstrapConnectionName = "tigerwrap-e2e"
 }
@@ -377,7 +717,11 @@ profile. Bootstrap identity must be explicit and must not be inferred from profi
 name, authorization metadata, or store ordering. The exact flag and metadata shape
 can be chosen during implementation.
 
-## 7. Standard E2E metadata contract
+Note that `--name` here is an ordinary command option on the `add-e2e-bootstrap`
+settings type, bindable and promptable like any other. It is unrelated to the
+contributed global option and must not be confused with it.
+
+## 8. Standard E2E metadata contract
 
 TigerQuery Core should reserve and document namespaced metadata keys.
 
@@ -411,12 +755,28 @@ public static class SqlServerE2eMetadata
 }
 ```
 
-## 7.1 Authorization semantics
+### 8.1 Key and value grammar
+
+Profile metadata is an `IReadOnlyDictionary<string, string>` compared with ordinal,
+case-sensitive semantics — the same semantics the existing `list --metadata` filters
+use. That means the grammar must be pinned down rather than assumed:
+
+- **Keys are matched exactly**, lower-case as written above. `ITTIGER.E2E.ENABLED` is a
+  different key and confers nothing.
+- **Values are matched by a single documented rule.** The recommendation is strict:
+  `true` and `false`, ordinal, lower-case, no trimming, no `1`/`yes`/`Y`. Any other value
+  for a reserved key is an *authorization failure with a specific error*, never a silent
+  `false`, so a typo like `True` fails loudly instead of quietly disabling E2E.
+- The `ittiger.` prefix should be documented as **reserved for TigerQuery**; applications
+  must not define their own keys under it. Whether Core actively rejects writes to
+  reserved keys from `connections add --metadata` is open question 8.
+
+### 8.2 Authorization semantics
 
 A profile qualifies as an E2E bootstrap profile only when:
 
 - `ittiger.e2e.enabled` is present;
-- its value is valid and evaluates to `true`;
+- its value is exactly `true` per section 8.1;
 - the profile passes complete structural validation;
 - any requested operation is explicitly allowed.
 
@@ -428,7 +788,7 @@ ittiger.e2e.allow-database-create=true
 
 Ordinary profiles are ignored, even when they are valid and connect successfully.
 
-## 7.2 No connection during resolution
+### 8.3 No connection during resolution
 
 E2E profile resolution must inspect only store data and metadata.
 
@@ -442,7 +802,7 @@ It must not:
 
 Connectivity validation should be a separate explicit operation.
 
-## 8. E2E resolver API
+## 9. E2E resolver API
 
 Core should provide a reusable E2E resolver with explicit outcomes.
 
@@ -495,7 +855,11 @@ public sealed class SqlServerE2eConnectionResolutionOptions
 }
 ```
 
-## 8.1 Resolution behavior
+`Errors` and `CandidateNames` are diagnostics shown to a developer fixing their setup.
+They must never contain a password, a connection string, or a resolved external value;
+see section 11.4.
+
+### 9.1 Resolution behavior
 
 - explicit connection name:
   - profile must exist;
@@ -504,15 +868,21 @@ public sealed class SqlServerE2eConnectionResolutionOptions
   - otherwise return `Invalid`;
 - configured default connection name:
   - same checks as explicit selection;
+  - a configured default that does not exist is `NotConfigured`, not `Invalid`: the host
+    named a convention, and the developer simply has not created it yet;
 - no selected name:
   - zero enabled profiles returns `NotConfigured`;
   - one enabled profile may resolve only if this behavior is deliberately approved;
   - multiple enabled profiles returns `Ambiguous`;
   - never use "first profile wins."
 
-A stricter initial design may require a name always, avoiding implicit selection completely.
+The recommended initial design is the strict one: **require a name always**, from either
+the caller or the host-configured default, and never select implicitly even when exactly
+one enabled profile exists. Implicit single-profile selection can be added later without
+breaking anyone; removing it later would be a breaking safety regression. See open
+question 3.
 
-## 9. CLI commands for easy developer setup
+## 10. CLI commands for easy developer setup
 
 CLI support should reuse existing connection commands wherever practical. The
 regular `connections add <name>` command should be able to create an
@@ -524,11 +894,16 @@ The only dedicated command needed in the first phase is:
 connections add-e2e-bootstrap [--name <name>]
 ```
 
-Enable, disable, show, validate, and other lifecycle commands are deferred to a
-later phase. The implementation should choose the smallest command and option
-design consistent with these requirements.
+Enable, disable, show, validate, and other lifecycle commands are **deferred** to a
+later phase and are explicitly out of scope for the initial implementation. The
+implementation should choose the smallest command and option design consistent with
+these requirements.
 
-## 9.1 Non-interactive setup
+Both the reuse and the new command are mounted through
+`SqlServerConnectionCommands.Configure`, not through the TigerCli contribution, which
+cannot add commands (section 0.4).
+
+### 10.1 Non-interactive setup
 
 CI/CD and automation need a fully non-interactive path.
 
@@ -545,7 +920,11 @@ This may require non-promptable options for:
 - E2E metadata authorization;
 - database-creation permission.
 
-## 10. External value references
+The store path is already non-promptable by construction: contributed global options are
+never prompted (section 0.3). The remaining options are ordinary command options and must
+be marked non-promptable individually.
+
+## 11. External value references
 
 For CI/CD and container use, the writable JSON connection store should be able to reference values supplied externally.
 
@@ -558,9 +937,10 @@ The store itself remains editable so the workflow can:
 - delete the profile;
 - drop the database.
 
-Secrets need not be stored directly in the writable JSON file.
+Secrets need not be stored directly in the writable JSON file. This is also the answer
+to the DPAPI portability problem in section 4.4.
 
-## 10.1 Supported sources
+### 11.1 Supported sources
 
 A profile value may be supplied as:
 
@@ -595,7 +975,12 @@ Conceptually:
 }
 ```
 
-## 10.2 Applicable profile values
+The JSON shape must be **forward- and backward-compatible with existing stores**: a value
+that is a plain string keeps meaning a literal, and a store written by an older TigerQuery
+must still load. An unknown `Source` value must fail with a clear error rather than being
+treated as a literal.
+
+### 11.2 Applicable profile values
 
 External references may provide:
 
@@ -616,7 +1001,7 @@ Server address is not normally secret, but the same external-value abstraction c
 
 Using one generic external-value system avoids separate secret and non-secret reference models.
 
-## 10.3 Full connection string versus fields
+### 11.3 Full connection string versus fields
 
 The model should support either:
 
@@ -629,7 +1014,12 @@ A whole connection string may be useful for simple CI integration.
 
 Individual fields are better when the workflow needs to override `InitialCatalog` for a generated test database.
 
-## 10.4 Security behavior
+The recommendation is **mutually exclusive**, rejected at validation time: a profile that
+supplies both a full connection string and individual fields is invalid. Precedence rules
+between the two are the kind of thing that produces a "why is it connecting to the wrong
+database" incident.
+
+### 11.4 Security behavior
 
 External values must:
 
@@ -641,15 +1031,25 @@ External values must:
 - never appear in exception messages as raw values;
 - never be printed by CLI inspection commands.
 
-## 11. Main use cases
+`connections show` and `list` must render a reference as its *description* — source kind
+plus variable name or file path — and never its resolved value, including when the
+reference resolves successfully. A file path may itself be sensitive in some
+environments; treat it as displayable but note it in documentation.
 
-## 11.1 Normal local development
+## 12. Main use cases
+
+### 12.1 Normal local development
 
 The developer creates one bootstrap connection in the normal app store:
 
 ```text
-tigerwrap connection add tigerwrap-e2e ...
-tigerwrap connection e2e enable tigerwrap-e2e --allow-database-create
+tigerwrap connections add-e2e-bootstrap
+```
+
+or, when the host has configured no default name:
+
+```text
+tigerwrap connections add-e2e-bootstrap --name tigerwrap-e2e
 ```
 
 After that:
@@ -664,12 +1064,20 @@ can all resolve the standard E2E profile without environment variables.
 
 No profile means no E2E access.
 
-## 11.2 Alternate local store
+### 12.2 Alternate local store
 
 A developer can isolate work with:
 
 ```text
-tigerwrap connection list --tq-connection-store-file C:\temp\e2e.json
+tigerwrap connections list --tq-connection-store-file C:\temp\e2e.json
+```
+
+Note the placement: the option follows the command path. `tigerwrap --tq-connection-store-file C:\temp\e2e.json connections list`
+is invalid (section 0.3, rule 6). For the default command with a positional query, the
+option follows the positional:
+
+```text
+tiger-sqlcmd "select 1" --tq-connection-store-file C:\temp\e2e.json
 ```
 
 Useful for:
@@ -682,14 +1090,14 @@ Useful for:
 
 The explicit path overrides the environment variable and default store.
 
-## 11.3 CI/CD
+### 12.3 CI/CD
 
 A pipeline creates or mounts a writable runtime store and sets the TigerQuery store-path environment variable.
 
 Example:
 
 ```text
-TIGERQUERY_CONNECTION_STORE=/workspace/runtime/connections.json
+TIGERQUERY_CONNECTION_STORE_FILE=/workspace/runtime/connections.json
 ```
 
 The store may contain external references to:
@@ -700,7 +1108,7 @@ The store may contain external references to:
 
 No TigerCli dependency is required for library-only CI consumers.
 
-## 11.4 Containers
+### 12.4 Containers
 
 A container may receive:
 
@@ -713,7 +1121,7 @@ TigerQuery resolves the store path through the standard environment variable.
 
 The store references external values and remains writable for temporary connection creation.
 
-## 11.5 Library mode
+### 12.5 Library mode
 
 A third-party application uses:
 
@@ -732,7 +1140,7 @@ Typical workflow:
 8. remove the temporary profile;
 9. drop the test database safely.
 
-## 11.6 Tool mode
+### 12.6 Tool mode
 
 A third-party developer uses `tiger-sqlcmd` to:
 
@@ -747,7 +1155,7 @@ A third-party developer uses `tiger-sqlcmd` to:
 
 `tiger-sqlcmd` remains a CLI over reusable TigerQuery APIs.
 
-## 11.7 Mixed mode
+### 12.7 Mixed mode
 
 Mixed mode is first-class.
 
@@ -772,7 +1180,12 @@ Both modes share:
 - authorization checks;
 - cleanup safety.
 
-## 12. Safe database lifecycle
+Mixed mode is also where store-path agreement matters most: the library side must
+resolve the same path the tool side used. In practice this means the environment
+variable, not the CLI option, is the mixed-mode coordination mechanism, because the
+library side has no command line. Documentation should say so directly.
+
+## 13. Safe database lifecycle
 
 Future reusable E2E APIs should support safe database lifecycle operations.
 
@@ -800,9 +1213,10 @@ Possible ownership evidence:
 - metadata table;
 - external run manifest.
 
-The final ownership mechanism needs separate design.
+The final ownership mechanism needs separate design and is the gate on this phase
+starting; see open question 9.
 
-## 13. Default test behavior
+## 14. Default test behavior
 
 A normal repository clone followed by:
 
@@ -819,7 +1233,8 @@ It must not:
 - create databases;
 - modify existing databases;
 - read unrelated cached credentials;
-- use ordinary connection profiles as E2E profiles.
+- use ordinary connection profiles as E2E profiles;
+- read or write the developer's real user-profile connection store.
 
 When E2E configuration is absent:
 
@@ -829,9 +1244,9 @@ When E2E configuration is absent:
 
 This behavior should be protected by tests proving zero connection attempts.
 
-## 14. Testing requirements
+## 15. Testing requirements
 
-## 14.1 Core path resolution
+### 15.1 Core path resolution
 
 Test:
 
@@ -839,51 +1254,85 @@ Test:
 - environment variable wins over default;
 - default used when no override exists;
 - invalid explicit path does not fall through;
+- present-but-empty environment variable is an error, not an absence;
 - invalid environment variable does not fall through;
-- selected path is normalized;
-- source is reported correctly;
-- no file or SQL access occurs during resolution.
+- selected path is normalized to absolute, including relative input;
+- source is reported correctly for all three sources;
+- no file, directory, or SQL access occurs during resolution;
+- environment reading goes through the injected reader, so no test mutates process state.
 
-## 14.2 E2E metadata
+### 15.2 Store presence policy
+
+Test, per section 4.3:
+
+- missing default store reads as empty;
+- missing explicit store errors on read and names the option;
+- missing environment-variable store errors on read and names the variable;
+- `add` and `add-e2e-bootstrap` create the file for every source;
+- a failed `add-e2e-bootstrap` (no name available) creates nothing.
+
+### 15.3 E2E metadata
 
 Test:
 
 - ordinary profile ignored;
 - enabled profile accepted;
-- invalid Boolean metadata rejected;
+- non-canonical Boolean metadata (`True`, `1`, `yes`, ` true `) rejected with a specific error rather than silently false;
+- wrong-case metadata key confers nothing;
 - database creation requires explicit permission;
 - explicit name must still be authorized;
 - ambiguity never selects the first profile;
 - missing configuration returns `NotConfigured`;
-- resolution opens no SQL connection.
+- a configured-but-absent default name returns `NotConfigured`, not `Invalid`;
+- resolution opens no SQL connection;
+- diagnostics contain no secrets.
 
-## 14.3 CliCore contribution
+### 15.4 CliCore contribution
 
 Test:
 
-- contribution registration;
-- global option parsing;
-- option availability across commands;
-- non-promptable behavior;
-- no short alias;
-- CLI override passed into Core;
-- environment-variable help contribution;
-- host default path honored;
-- shared state used by connection and execution commands.
+- contribution registration succeeds and the option appears in help;
+- global option parses and reaches contribution state;
+- callback runs with `null` when the option is absent;
+- callback runs before command binding;
+- validation error from the callback stops the run and maps to the usage/validation exit category;
+- repeated occurrence is an argument error, not last-value-wins;
+- missing value is an argument error;
+- option after the command path and positionals is valid; before the command path is invalid;
+- `--name=value` form works for values beginning with `-`;
+- option is never prompted, has no short alias, and is absent from settings types;
+- environment-variable help appears in `--help-env`;
+- `--help` renders without invoking the callback;
+- host default path is used when neither override is present;
+- duplicate registration of the option or env-var name fails at `Build()`;
+- the same state object serves connection commands, providers, and host commands;
+- running one built app twice re-applies rather than accumulates state.
 
-## 14.4 Host integration
+### 15.5 Deferred store selection
+
+Test:
+
+- commands, both providers, and the `AsEdit` loader all observe the run-selected store;
+- the accessor returns the same instance throughout a run;
+- reaching the accessor before the callback throws a wiring error, not a silent default;
+- configuring both eager and deferred forms is rejected at `Configure`;
+- the host-supplied password protector still reaches the constructed store.
+
+### 15.6 Host integration
 
 Test in `tiger-sqlcmd` and TigerWrap:
 
 - host opts into contribution;
 - no duplicate option implementation;
 - same store used by connection and run commands;
-- existing default behavior unchanged;
+- existing default behavior unchanged when no override is supplied;
 - explicit alternate store works;
 - environment-variable store works;
-- CLI override wins over environment variable.
+- CLI override wins over environment variable;
+- the existing CLI test host can still inject a store, and injection interacts with
+  CLI/environment overrides in a documented way (section 18).
 
-## 14.5 Safety regressions
+### 15.7 Safety regressions
 
 Add explicit tests proving:
 
@@ -893,9 +1342,10 @@ Add explicit tests proving:
 - no profile selection without E2E metadata;
 - no network access when E2E is not configured;
 - secrets are redacted;
-- external values are not persisted into the store.
+- external values are not persisted into the store;
+- the unconfigured test run never touches the real user-profile store path.
 
-## 15. Documentation requirements
+## 16. Documentation requirements
 
 Documentation should include:
 
@@ -904,123 +1354,374 @@ Documentation should include:
 - container setup;
 - CLI/API precedence;
 - standard environment variable;
-- standard E2E metadata;
+- **global-option placement rules and the `--name=value` form**;
+- standard E2E metadata, including exact key case and value grammar;
+- **DPAPI portability warning for copied stores** (section 4.4);
 - explicit warning that access is not authorization;
 - no-discovery policy;
 - examples for literal, environment, and file-based values;
-- mixed-mode examples;
+- mixed-mode examples, including that the environment variable is the coordination
+  mechanism;
 - cleanup safety requirements;
 - AI-agent guidance.
+
+The CliCore README's "One selected store" section must be rewritten when section 6 lands,
+because it currently states that `options.Store` is the only injection point.
 
 Recommended explicit instruction:
 
 > Never discover or probe for SQL Server instances. Resolve E2E access only through TigerQuery's connection-store and E2E authorization APIs. When the resolver reports `NotConfigured`, stop or skip without opening a connection.
 
-## 16. Phased implementation
+## 17. Phased implementation
 
-### Phase 1: shared store-path resolution
+Phases are ordered by dependency. Each carries a **difficulty rating** naming the
+strength of AI coding agent that should take it:
 
-In Core:
+- `Low` — localized, well-defined work with little architectural ambiguity;
+- `Medium` — cross-project changes, public API design, or moderate integration risk;
+- `High` — security-sensitive, lifecycle-sensitive, highly architectural, or requiring
+  careful reasoning across several packages.
 
-- standard environment-variable constant;
-- explicit/environment/default resolver;
-- normalized result and source;
-- strict failure behavior;
-- tests and documentation.
+### Phase 1 — Core store-path resolution
 
-In CliCore:
+**Difficulty: Medium.** New public Core API with strict precedence and failure semantics.
+The logic is small and self-contained, but it is a published contract that later phases
+and third parties depend on, and the "never fall through" rule is easy to get subtly
+wrong.
 
-- TigerCli app contribution;
-- `--tq-connection-store-file`;
-- environment help;
-- shared state;
-- host configuration for default store path.
+**Scope.** Path resolution only. No CLI, no store construction, no E2E concepts.
 
-In hosts:
+**Tasks.**
 
-- register contribution;
-- remove duplicate store-path logic.
+1. Environment-variable name constant (`SqlServerConnectionStoreEnvironment`).
+2. `SqlServerConnectionStorePathOptions`, `…Resolution`, `…Source`, and the resolver.
+3. Injected environment reader with the process default.
+4. Normalization to absolute, and the section 4.2 syntactic validation set.
+5. A dedicated exception (or result) type carrying which source failed and why, in a form
+   CliCore can localize.
+6. Store presence policy from section 4.3, wired into store opening.
+7. XML docs and Core README section.
 
-### Phase 2: E2E metadata and resolver
+**Depends on.** Nothing.
 
-In Core:
+**Validation.** Sections 15.1 and 15.2. Assert inertness by resolving paths under a
+directory that does not exist and confirming nothing is created.
 
-- reserved metadata constants;
-- resolver outcomes;
-- authorization validation;
-- default/explicit name handling;
-- no-connect guarantees.
+**Risks / open decisions.** Final environment-variable name (open question 1); whether
+the store presence policy is a behavior change too aggressive for existing users
+(open question 5); result-type versus exception style for resolution failure.
 
-In CliCore:
+### Phase 2 — CliCore deferred store selection and the TigerCli contribution
 
-- E2E enable/disable/show/validate commands;
-- host-configured default E2E connection name.
+**Difficulty: High.** A breaking change to a published public API, combined with
+lifecycle-sensitive callback timing across two packages, plus every internal capture site
+in the command group. Getting this wrong produces a run that reads one store and writes
+another, which is exactly the failure mode this plan exists to prevent.
 
-### Phase 3: external value references
+**Scope.** All of CliCore. Two coupled workstreams that ship together because neither is
+useful alone: deferred store selection (section 6) and the `ITigerCliAppContribution`
+implementation (section 5).
 
-In Core:
+**Tasks.**
 
-- external-value model;
-- environment source;
-- file source;
-- keyed-file source;
-- sensitivity/redaction rules;
-- full connection-string support;
-- field-level support.
+1. `TigerQueryCliOptions` contribution state: host default path, optional bootstrap name,
+   optional protector factory, callback-set explicit value and resolution, lazily
+   constructed single `Store`.
+2. `TigerQueryCliContribution : ITigerCliAppContribution` registering
+   `--tq-connection-store-file` via `GlobalOptions.AddOptionalString` and the environment
+   variable via `AddEnvironmentVariable`.
+3. Callback that delegates to the Phase 1 resolver and returns a localized
+   `TigerCliValidationResult.Error` on failure, using `context.Culture`.
+4. Extend `SqlServerConnectionCommandOptions` with the deferred form; reject configuring
+   both forms.
+5. Convert `SqlServerConnectionCommandContext`, the `connections` provider, the
+   `databases` provider, and the `AsEdit` loader to deferred access.
+6. Guard against access before the callback with a clear wiring error.
+7. CliCore resource entries for the callback's error messages (en-US, pl-PL).
+8. Update the CliCore README, including the "One selected store" section.
 
-In CliCore:
+**Depends on.** Phase 1.
 
-- non-interactive configuration options;
-- safe display and validation.
+**Validation.** Sections 15.4 and 15.5. Add a test that builds an app, runs it twice with
+different `--tq-connection-store-file` values, and asserts each run wrote only its own
+file.
 
-### Phase 4: database lifecycle helpers
+**Risks / open decisions.** Compatibility strategy for `options.Store` (open question 12);
+whether the callback should resolve eagerly for every command (open question 6);
+completion-path behavior (open question 7); the localization gap for the option and
+environment descriptions (open question 14).
 
-Reusable APIs for:
+### Phase 3 — Host registration and migration
 
-- safe generated names;
-- database creation;
-- profile copy/add;
-- script deployment;
-- cleanup authorization;
-- abandoned-run ownership checks.
+**Difficulty: Medium.** Mechanical in shape but touches the composition root, the static
+store ambient, and the existing CLI test harness. Regression risk is concentrated in "the
+default path must behave exactly as it does today."
 
-### Phase 5: first-party E2E migration
+**Scope.** `tiger-sqlcmd` first, then TigerWrap. No new user-visible behavior beyond the
+new option.
 
-- remove SQL Server discovery from TigerQuery tests;
-- remove discovery from TigerWrap tests;
-- use the shared resolver;
-- prove default `dotnet test` is inert;
-- add real `tiger-sqlcmd` external-process E2E tests;
-- document local and CI workflows.
+**Tasks.**
 
-## 17. Open questions
+1. Build the contribution once in `TigerSqlCmdApp.Build`, register it, and pass its state
+   to `SqlServerConnectionCommands.Configure` and to the app-level `connections` provider.
+2. Replace the `TigerSqlCmdApp.ConnectionStore` static ambient and `TryResolveConnection`
+   store lookup with contribution-state access.
+3. Decide and implement the test-injection story (section 18) so `CliTestRunner` keeps
+   working.
+4. Remove any host-side store-path logic and any host `AddEnvironmentVariable` call that
+   would now collide with the contribution.
+5. Repeat for TigerWrap.
+6. Host documentation and help-text review.
 
-1. Exact environment-variable name for the store path.
+**Depends on.** Phase 2.
+
+**Validation.** Section 15.6, plus the full existing `tiger-sqlcmd` CLI test suite passing
+unchanged in its default-path behavior.
+
+**Risks / open decisions.** How injected test stores interact with CLI/environment
+overrides (open question 13); whether TigerWrap migrates in the same release or lags.
+
+### Phase 4 — E2E metadata contract and resolver in Core
+
+**Difficulty: High.** This is the authorization boundary. Every default must be
+fail-closed, the value grammar must be strict, and diagnostics must not leak. A weak
+implementation here silently reintroduces "reachable means allowed."
+
+**Scope.** Core only. No CLI surface.
+
+**Tasks.**
+
+1. `SqlServerE2eMetadata` constants and the reserved-prefix documentation.
+2. Strict key/value grammar (section 8.1) with a specific error for malformed values.
+3. `SqlServerE2eResolutionStatus`, `SqlServerE2eConnectionResolution`, resolution options,
+   and the resolver.
+4. Strict name-required behavior per section 9.1.
+5. Structural-validation integration and permission checks.
+6. Redaction review of every diagnostic string the resolver can emit.
+7. Documented no-connect guarantee, enforced by test.
+
+**Depends on.** Phase 1 (store access). Independent of phases 2 and 3, so it may run in
+parallel with them.
+
+**Validation.** Section 15.3, plus a test asserting no `SqlConnection` is constructed
+during resolution.
+
+**Risks / open decisions.** Implicit single-profile selection (open question 3);
+reserved-key write rejection (open question 8); how frameworks map `NotConfigured` to
+skip (open question 11).
+
+### Phase 5 — Bootstrap CLI surface
+
+**Difficulty: Medium.** Small command surface, but it is the place where bootstrap
+identity and general E2E authorization must stay distinct, and where the
+"fail without modifying the store" rule is enforced.
+
+**Scope.** `connections add-e2e-bootstrap [--name <name>]` and the E2E-authorization flag
+on the regular `connections add`. Nothing else. Enable, disable, show, and validate stay
+deferred.
+
+**Tasks.**
+
+1. `add-e2e-bootstrap` command mounted through `SqlServerConnectionCommands.Configure`.
+2. Name resolution: `--name` wins, then the host-configured default, then a clean failure
+   that writes nothing.
+3. E2E-authorization flag on `connections add`, writing the metadata without conferring
+   bootstrap identity.
+4. Non-promptable options for every value automation needs (section 10.1).
+5. Resources for both commands in en-US and pl-PL.
+6. Host exit-kind mapping review.
+
+**Depends on.** Phases 2, 3, and 4.
+
+**Validation.** Command-level tests including the no-name failure writing nothing, and a
+test proving an `--e2e`-authorized profile is not selected as the bootstrap.
+
+**Risks / open decisions.** Exact flag and metadata shape for the `add` path; whether
+bootstrap identity is itself a metadata key or purely a name convention resolved by the
+host default (this needs settling in this phase — see open question 15).
+
+### Phase 6 — External value references
+
+**Difficulty: High.** A persisted-format change plus secret handling. Compatibility,
+redaction, and copy semantics all have to be right simultaneously, and mistakes are
+either data-format breaks or credential leaks.
+
+**Scope.** Core value model plus the CliCore options needed to configure it
+non-interactively.
+
+**Tasks.**
+
+1. External-value model and JSON contract with literal-string backward compatibility.
+2. Environment, whole-file, and keyed-file sources.
+3. Resolution at effective-connection build time only; never written back.
+4. Copy semantics preserving references.
+5. Sensitivity classification and redaction across logs, exceptions, `show`, and `list`.
+6. Mutually exclusive full-connection-string versus field mode, rejected at validation.
+7. Non-interactive CliCore options and safe display.
+
+**Depends on.** Phases 1–3 (a selected store) and Phase 4 (profiles worth protecting).
+
+**Validation.** Section 15.7 redaction and non-persistence tests, plus round-trip tests
+against stores written by the previous format version.
+
+**Risks / open decisions.** JSON contract and compatibility (open question 6 in the
+original numbering, now 16); keyed-file formats (open question 17); whether file-path
+values are themselves sensitive.
+
+### Phase 7 — Safe database lifecycle
+
+**Difficulty: High.** Destructive operations against real servers, gated by an ownership
+model that does not exist yet.
+
+**Scope.** Reusable APIs for creating and dropping test databases safely. **Do not start
+this phase until the ownership mechanism is designed and written down** — the current
+plan explicitly defers that decision.
+
+**Tasks.**
+
+1. Ownership-marker design (naming, run identifier, in-database evidence) as a written
+   decision.
+2. Safe generated names and pattern enforcement.
+3. Creation gated on `allow-database-create`.
+4. Profile copy/add for the generated database.
+5. Script deployment helpers.
+6. Cleanup authorization requiring positive ownership evidence, never age or
+   reachability.
+7. Abandoned-run cleanup as a separate, explicitly invoked operation.
+
+**Depends on.** Phase 4, and on the ownership design.
+
+**Validation.** Live tests behind the E2E gate, plus offline tests proving that
+non-matching names and unauthorized profiles are rejected before any command is sent.
+
+**Risks / open decisions.** Ownership marker (open question 9); whether these helpers live
+in Core or `ItTiger.TigerQuery` (open question 10); drop-safety under partial failure.
+
+### Phase 8 — First-party E2E migration and hardening
+
+**Difficulty: High.** The phase where the safety claims are actually proven, across two
+repositories and an external-process test surface.
+
+**Scope.** TigerQuery's and TigerWrap's own test suites.
+
+**Tasks.**
+
+1. Remove SQL Server discovery from TigerQuery tests.
+2. Remove discovery from TigerWrap tests.
+3. Move both onto the shared resolver and the `NotConfigured` skip path.
+4. Prove default `dotnet test` is inert, including that it never touches the real
+   user-profile store path.
+5. Add real `tiger-sqlcmd` external-process E2E tests.
+6. Document local and CI workflows end to end.
+
+**Depends on.** Phases 4 and 7 for the interesting cases; the inertness work can start
+after Phase 4.
+
+**Validation.** Section 15.7 in full, run on a machine with SQL Server installed and
+reachable — the proof that matters is that a reachable server changes nothing.
+
+**Risks / open decisions.** Skip-mechanism coupling to xUnit (open question 11); how much
+of the existing live-test surface must be rewritten rather than adapted.
+
+### Explicitly deferred
+
+Not in scope for any numbered phase above, and not to be added opportunistically:
+
+- `connections e2e enable | disable | show | validate` and any other E2E lifecycle
+  command family;
+- a user-facing global `--default-e2e-connection-name`;
+- implicit single-profile E2E selection;
+- any TigerCli change made on TigerQuery's behalf;
+- store formats other than the existing JSON file;
+- credential providers beyond the existing protector abstraction and the external-value
+  references in Phase 6.
+
+## 18. Compatibility and rollout
+
+**CliCore public API.** Phase 2 changes `SqlServerConnectionCommandOptions`, which is
+published. The recommended strategy is to keep `Store` working for hosts that supply a
+fixed store and add the deferred form alongside it, rejecting the combination. If `Store`
+is instead removed, the package needs a minor-version bump with a documented migration
+note, since the README currently instructs hosts to use it.
+
+**Host store injection in tests.** `CliTestRunner` calls `TigerSqlCmdApp.Build(store)`
+with a temp-file store. Once the store is run-selected, that overload must mean something
+precise. The recommendation is to model test injection as an override of the *application
+default*, so `--tq-connection-store-file` and the environment variable still win and the
+precedence tests are meaningful, plus a separate explicitly-named pinned mode for tests
+that must ignore both. Silently letting an injected instance beat the CLI option would
+make the CLI tests prove the opposite of the shipping behavior.
+
+**Rollout order.** Phases 1–3 are shippable as a unit and deliver user-visible value
+(`--tq-connection-store-file` plus the environment variable) with no E2E concepts at all.
+Phase 4 is shippable next as a library-only capability. Nothing before Phase 5 changes
+the command surface, so the risky CLI work lands after the plumbing has been exercised in
+a release.
+
+## 19. Open questions
+
+1. Exact environment-variable name for the store path. The document now uses
+   `TIGERQUERY_CONNECTION_STORE_FILE` for symmetry with `--tq-connection-store-file`;
+   confirm before Phase 1 ships, because renaming it later is a breaking change for CI.
 2. Exact public API names for path resolution.
-3. Whether E2E resolution may select the only enabled profile when no name is supplied, or must always require a configured/explicit name.
-4. Whether `--default-e2e-connection-name` is user-facing or host configuration only.
-5. Exact CLI command hierarchy for E2E setup.
-6. External-value JSON contract and compatibility strategy.
-7. Supported keyed-file formats in the first version.
-8. Full connection-string versus field-level precedence.
-9. Database ownership marker used for safe cleanup.
-10. Whether database lifecycle helpers belong entirely in Core or partly in `ItTiger.TigerQuery`.
-11. How test frameworks should map `NotConfigured` to skip behavior without coupling Core to xUnit, NUnit, or MSTest.
+3. Whether E2E resolution may select the only enabled profile when no name is supplied,
+   or must always require a configured/explicit name. Recommended: always require a name.
+4. Whether the resolution failure surface is an exception or a result type, and how
+   CliCore turns it into a localized `TigerCliValidationResult`.
+5. Whether the store-presence policy in section 4.3 is acceptable, given that it changes
+   existing behavior for explicitly-pathed stores that do not yet exist.
+6. Whether the contribution callback should resolve eagerly on every run, failing
+   commands that never touch the store, or defer resolution to first store access and
+   accept later, less well-placed errors.
+7. Whether TigerCli invokes contribution callbacks on shell-completion paths, and what a
+   provider should do if it does not.
+8. Whether Core actively rejects writes to the reserved `ittiger.` metadata prefix from
+   `connections add --metadata`, or merely documents it as reserved.
+9. Database ownership marker used for safe cleanup. Blocks Phase 7.
+10. Whether database lifecycle helpers belong entirely in Core or partly in
+    `ItTiger.TigerQuery`.
+11. How test frameworks should map `NotConfigured` to skip behavior without coupling Core
+    to xUnit, NUnit, or MSTest.
+12. Whether `SqlServerConnectionCommandOptions.Store` is retained alongside the deferred
+    form or removed with a version bump.
+13. How the existing CLI test harness injects a store once selection is run-time, and how
+    that injection ranks against the CLI option and environment variable.
+14. How contributed global-option and environment-variable *descriptions* get localized,
+    given that 0.9.1 accepts only literal strings at `Build()` time while the rest of the
+    host's help is resource-driven. Options: accept English-only help for this one
+    option; have the host pass a pre-localized description built from its default culture;
+    or request `descriptionResourceKey` overloads in a future TigerCli. This is a TigerCli
+    feature gap, not a TigerQuery design choice, and must not be worked around by making
+    TigerCli TigerQuery-aware.
+15. Whether bootstrap identity is recorded as its own metadata key or exists only as
+    "the profile whose name matches the host-configured default". The former survives
+    renames and is inspectable; the latter is simpler. Must be settled in Phase 5.
+16. External-value JSON contract and compatibility strategy.
+17. Supported keyed-file formats in the first version.
+18. Full connection-string versus field-level precedence, if the mutual-exclusion
+    recommendation in section 11.3 is rejected.
 
-## 18. Acceptance criteria
+## 20. Acceptance criteria
 
 The design is successful when:
 
-- TigerCli remains domain-neutral;
-- CliCore contributes the TigerQuery global option;
-- Core owns environment/default/explicit resolution;
+- TigerCli remains domain-neutral, with no TigerQuery names, concepts, or environment
+  variables anywhere in it;
+- CliCore contributes the TigerQuery global option through `ITigerCliAppContribution` and
+  no other mechanism;
+- the contributed option obeys every constraint in section 0.3, including placement,
+  repetition, and non-promptability;
+- Core owns environment reading, precedence, and explicit/default resolution;
 - CLI overrides environment variables;
 - environment variables override the application default;
+- an invalid higher-priority source never falls through to a lower one;
+- one run reads and writes exactly one store file;
 - local developers need no environment variables;
 - CI/CD can use environment variables and mounted files;
-- E2E profiles require explicit TigerQuery metadata;
+- E2E profiles require explicit TigerQuery metadata, matched exactly;
+- bootstrap identity is never inferred from name, authorization, or ordering alone;
 - no component discovers SQL Server;
-- no unconfigured test run opens a SQL connection;
+- no unconfigured test run opens a SQL connection or touches the developer's real store;
 - library, tool, and mixed modes use identical contracts;
 - TigerWrap and `tiger-sqlcmd` reuse the same implementation;
 - third-party developers can adopt the same safe workflow without inventing their own conventions.
