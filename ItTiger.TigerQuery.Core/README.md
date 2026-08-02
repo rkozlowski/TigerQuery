@@ -9,6 +9,7 @@ Intended consumers are tool and application developers: define profiles once (se
 - `SqlServerConnectionProfile` — a named profile with first-class options (server, database, authentication, encryption, trust, application intent, timeouts, pooling), a free-form options escape hatch, and optional namespaced application metadata; builds a `SqlConnectionStringBuilder` / connection string.
 - `SqlServerConnectionStore` / `SqlServerConnectionStoreOptions` — JSON file storage with `Shared(vendor)` (a per-user vendor store shared across tools) and `AppSpecific(vendor, app)` locations, or any explicit `FilePath`; `QueryByMetadata(...)` applies reusable metadata filters and `Copy(...)` duplicates a saved connection inside the same store.
 - `SqlServerConnectionCopyOptions` — the controlled overrides a copy may apply: target name, initial catalog, and selected metadata entries.
+- `SqlServerConnectionStorePathResolver` / `SqlServerConnectionStorePathOptions` / `SqlServerConnectionStorePathResolution` — the standard precedence for *which* store file to use: explicit path, then the `TIGERQUERY_CONNECTION_STORE_FILE` environment variable (`SqlServerConnectionStoreEnvironment`), then the application default; reports the winning source and never silently falls back.
 - `SqlServerConnectionResolver` / `SqlServerConnectionResolution` — name → connection string with clean failure messages.
 - `SqlServerConnectionValidator` / `SqlServerConnectionValidationPolicy` — profile validation (e.g. database required vs. optional); `ValidateComplete(...)` also checks credential presence and connection-string compatibility.
 - `IConnectionPasswordProtector` — password-at-rest strategy: `DpapiConnectionPasswordProtector`, `NonPersistingConnectionPasswordProtector`, `NoOpConnectionPasswordProtector`, and `ConnectionPasswordProtector.CreateDefault()`.
@@ -141,6 +142,49 @@ Every operation on that instance — `Load`, `Find`, `Exists`, `QueryByMetadata`
 probes a default location when the selected file is missing, malformed, or inaccessible;
 that condition is reported, never worked around. `store.FilePath` exposes the normalized
 absolute path so diagnostics and tests can prove which store an operation used.
+
+## Choosing which store file to use
+
+Picking the store file **once** is the application's job, but the precedence it should
+follow is standard, so `SqlServerConnectionStorePathResolver` defines it in one place:
+
+1. an explicit path the caller supplied — a command-line option, a test fixture, an API argument;
+2. the `TIGERQUERY_CONNECTION_STORE_FILE` environment variable;
+3. the host application's own default location.
+
+```csharp
+var resolution = SqlServerConnectionStorePathResolver.Resolve(
+    new SqlServerConnectionStorePathOptions
+    {
+        ExplicitFilePath = pathFromCommandLine,      // null when not supplied
+        DefaultFilePath = SqlServerConnectionStoreOptions.AppSpecific("YourVendor", "your-tool").FilePath
+    });
+
+if (!resolution.IsSuccess)
+    return Fail(resolution.ErrorMessage);           // never fall back on your own
+
+var store = new SqlServerConnectionStore(
+    new SqlServerConnectionStoreOptions { FilePath = resolution.FilePath! });
+```
+
+`resolution.Source` reports which of the three sources won, so diagnostics can say *why*
+a particular file was used.
+
+**A higher-priority source that speaks decides the outcome.** A source supplying no value
+is skipped; a source supplying an unusable one fails. An environment variable set to an
+empty string is a configuration error, not an unset variable, and neither it nor a
+malformed explicit path quietly falls through to your default — that is what stops a
+mis-pointed build agent from writing to a developer's personal store.
+
+Only syntactic validation is applied: blank values, values that cannot be normalized to
+an absolute path, and values with no file-name component. Resolving **touches nothing** —
+no file is created, no directory is probed, no connection is opened — so it is safe to
+call before you know whether a store will be used. Whether an absent store file is an
+error is a policy for the code that opens the store, not for path resolution.
+
+Set `EnvironmentReader` to supply the environment yourself; tests use it to cover
+precedence without mutating process-global state. Set `EnvironmentVariableName` only if
+your application must coexist with an established variable of its own.
 
 ## Concurrent and interrupted writes
 
