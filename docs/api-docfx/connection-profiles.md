@@ -52,7 +52,9 @@ chooses `Shared(...)`, `AppSpecific(...)`, or an explicit `FilePath` once,
 constructs a single
 [SqlServerConnectionStore](xref:ItTiger.TigerQuery.Core.SqlServerConnectionStore),
 and injects that same instance everywhere it is needed — including into
-`SqlServerConnectionCommandOptions.Store` for the reusable CLI commands.
+`SqlServerConnectionCommandOptions.Store` for the reusable CLI commands. A CLI
+application that instead lets each run pick its own store uses the deferred form
+described below.
 
 Every operation on that instance uses the file it was constructed with. Lookup,
 metadata filtering, copy, add, update, save, and delete never probe a default
@@ -60,6 +62,40 @@ location, and a missing, malformed, or inaccessible selected file is reported
 rather than worked around. `SqlServerConnectionStore.FilePath` exposes the
 normalized absolute path so diagnostics and tests can prove which store an
 operation used.
+
+### Letting a run choose the path
+
+An application that wants a run to be able to select its own store resolves the
+path through
+[SqlServerConnectionStorePathResolver](xref:ItTiger.TigerQuery.Core.SqlServerConnectionStorePathResolver)
+instead of hard-coding one. Its precedence is fixed:
+
+1. an explicit path — the `--tq-connection-store-file` option in a CLI host, or
+   the caller's own value in library code;
+2. the `TIGERQUERY_CONNECTION_STORE_FILE` environment variable;
+3. the application's default store location.
+
+A source that supplies nothing is skipped. A source that supplies an unusable
+value — blank, malformed, or naming a directory — fails resolution and is never
+worked around by falling through to a lower-priority source, so a misconfigured
+build agent reports its own mistake instead of silently using a developer's
+personal store. Resolution is inert: it normalizes a string and reads the
+environment, creating nothing and touching no file. The returned
+`SqlServerConnectionStorePathResolution` carries the normalized absolute path
+and which source chose it.
+
+`tiger-sqlcmd` uses exactly this, through the CliCore contribution described in
+[CLI integration](cli-integration.md#letting-a-run-select-the-store). Because
+the environment variable is read by Core rather than by any one tool, a
+mixed-mode workflow — a CLI step and library test code in the same job — can
+agree on one store by setting that variable, since the library side has no
+command line.
+
+> [!IMPORTANT]
+> The default Windows password protector is DPAPI-scoped to the current user
+> and machine. Pointing a store path at a file created elsewhere does not make
+> its protected passwords readable; supply the credentials on that machine
+> instead of copying the store.
 
 ## Copying a connection
 

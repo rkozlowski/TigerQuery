@@ -4,7 +4,7 @@ namespace ItTiger.TigerSqlCmd
     {
         static async Task<int> Main(string[] args)
         {
-            var app = TigerSqlCmdApp.Build(TigerSqlCmdApp.CreateDefaultStore());
+            var app = TigerSqlCmdApp.Build();
 
             return await app.RunAsync(args);
         }

@@ -13,8 +13,10 @@ namespace ItTiger.TigerQuery.CliCore;
 /// command group.
 /// </summary>
 /// <remarks>
-/// Host applications provide a <see cref="SqlServerConnectionStore"/>, register
-/// resources, and own final numeric exit-code mapping. The mounted commands return
+/// Host applications choose how the store is selected — deferred through
+/// <see cref="TigerQueryCliOptions"/> or fixed as one
+/// <see cref="SqlServerConnectionStore"/> — register resources, and own final numeric
+/// exit-code mapping. The mounted commands return
 /// semantic <see cref="TigerCliExitKind"/> outcomes such as success, validation
 /// error, not found, and already exists.
 /// </remarks>
@@ -45,7 +47,10 @@ public static class SqlServerConnectionCommands
     /// <summary>Mounts the connection providers and list/show/add/edit/delete commands.</summary>
     /// <param name="group">The TigerCli command group to configure.</param>
     /// <param name="configure">
-    /// A callback that supplies the required store and optional validation policy.
+    /// A callback that supplies the store selection — either
+    /// <see cref="SqlServerConnectionCommandOptions.TigerQuery"/> or
+    /// <see cref="SqlServerConnectionCommandOptions.Store"/> — and the optional validation
+    /// policy.
     /// </param>
     /// <remarks>
     /// <para>
@@ -64,12 +69,19 @@ public static class SqlServerConnectionCommands
     /// The handlers return semantic <see cref="TigerCliExitKind"/> values. The host
     /// must map those values to its own numeric exit-code policy.
     /// </para>
+    /// <para>
+    /// With <see cref="SqlServerConnectionCommandOptions.TigerQuery"/>, nothing here reads
+    /// the store: the handlers, the two providers, and the edit loader all reach it when
+    /// they run, which is after the contribution callback has selected it. The commands
+    /// therefore mount identically whether or not the run overrides the path.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="group"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    /// The configured <see cref="SqlServerConnectionCommandOptions.Store"/> or
+    /// Neither or both of <see cref="SqlServerConnectionCommandOptions.Store"/> and
+    /// <see cref="SqlServerConnectionCommandOptions.TigerQuery"/> were configured, or
     /// <see cref="SqlServerConnectionCommandOptions.ValidationPolicy"/> is null.
     /// </exception>
     public static void Configure(
@@ -81,19 +93,15 @@ public static class SqlServerConnectionCommands
         var options = new SqlServerConnectionCommandOptions();
         configure?.Invoke(options);
 
-        if (options.Store is null)
-            throw new InvalidOperationException("A SQL Server connection store is required.");
-        SqlServerConnectionStore store = options.Store!;
-
         var context = new SqlServerConnectionCommandContext(
-            store,
+            CreateStoreAccessor(options),
             options.ValidationPolicy ?? throw new InvalidOperationException("A validation policy is required."));
 
         group.SetPromptMode(TigerCliPromptMode.Yes);
 
         group.AddProvider(
             "connections",
-            ctx => store.GetConnectionNamesAsync(ctx.CancellationToken));
+            ctx => context.Store.GetConnectionNamesAsync(ctx.CancellationToken));
 
         // Database selection is provider-backed and prompted last: it depends on the
         // options needed to open a server connection so the effective server/security
@@ -148,5 +156,30 @@ public static class SqlServerConnectionCommands
             () => new DeleteSqlServerConnectionCommand(context),
             "Delete a saved SQL Server connection.",
             descriptionResourceKey: "Cmd_Connections_Delete_Description");
+    }
+
+    /// <summary>
+    /// Turns the configured store selection into the accessor the commands call at
+    /// execution time, rejecting a host that configured both forms or neither.
+    /// </summary>
+    private static Func<SqlServerConnectionStore> CreateStoreAccessor(
+        SqlServerConnectionCommandOptions options)
+    {
+        if (options.Store is not null && options.TigerQuery is not null)
+            throw new InvalidOperationException(
+                $"Configure either {nameof(SqlServerConnectionCommandOptions.Store)} or "
+                + $"{nameof(SqlServerConnectionCommandOptions.TigerQuery)}, not both. A fixed store would "
+                + "ignore the store path the run selected.");
+
+        if (options.TigerQuery is { } tigerQuery)
+            return () => tigerQuery.Store;
+
+        var store = options.Store
+            ?? throw new InvalidOperationException(
+                "A SQL Server connection store is required. Set "
+                + $"{nameof(SqlServerConnectionCommandOptions.TigerQuery)} to the contribution's options, or "
+                + $"{nameof(SqlServerConnectionCommandOptions.Store)} to one fixed store.");
+
+        return () => store;
     }
 }

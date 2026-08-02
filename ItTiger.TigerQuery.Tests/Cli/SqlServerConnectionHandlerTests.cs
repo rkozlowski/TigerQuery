@@ -17,7 +17,7 @@ public sealed class SqlServerConnectionHandlerTests : IDisposable
     public SqlServerConnectionHandlerTests()
     {
         _context = new SqlServerConnectionCommandContext(
-            _temp.Store,
+            () => _temp.Store,
             SqlServerConnectionValidationPolicy.DatabaseOptional);
     }
 

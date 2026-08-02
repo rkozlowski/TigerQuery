@@ -1,6 +1,7 @@
 using ItTiger.TigerCli.Commands;
 using ItTiger.TigerCli.Markup;
 using ItTiger.TigerCli.Terminal;
+using ItTiger.TigerQuery.CliCore;
 using ItTiger.TigerQuery.Engine;
 using ItTiger.TigerSqlCmd.Logging;
 using Microsoft.Extensions.Logging;
@@ -13,7 +14,12 @@ namespace ItTiger.TigerSqlCmd;
 /// variables, mode, verbosity and logging. Automation-friendly — it never prompts for
 /// the script/query, though it may prompt for a missing connection when interactive.
 /// </summary>
-public sealed class TigerSqlCmdCommand : TigerCliAsyncCommandHandler<TigerSqlCmdSettings, TigerSqlCmdExitCode>
+/// <param name="connections">
+/// The run-shared TigerQuery state the app composed, from which this command reads the
+/// store the run selected.
+/// </param>
+public sealed class TigerSqlCmdCommand(TigerQueryCliOptions connections)
+    : TigerCliAsyncCommandHandler<TigerSqlCmdSettings, TigerSqlCmdExitCode>
 {
     public override async Task<TigerSqlCmdExitCode> ExecuteAsync(TigerSqlCmdSettings settings)
     {
@@ -55,7 +61,7 @@ public sealed class TigerSqlCmdCommand : TigerCliAsyncCommandHandler<TigerSqlCmd
         // Resolve the saved connection profile to a connection string before building engine
         // options. The store is reused (no persistence logic duplicated here); the engine only
         // ever sees a plain connection string.
-        if (!TigerSqlCmdApp.TryResolveConnection(settings.Connection, logger, out var connectionString, out var failureExitCode))
+        if (!TigerSqlCmdApp.TryResolveConnection(connections, settings.Connection, logger, out var connectionString, out var failureExitCode))
             return failureExitCode;
 
         var renderer = new TigerSqlCmdRenderer(verbosity, settings);

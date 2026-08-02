@@ -148,6 +148,25 @@ Use `--output-mode FilePerResultSet` for generated per-result-set files,
 [`tiger-sqlcmd` output-routing guide](docs/api-docfx/tiger-sqlcmd.md) for the
 complete CLI, CSV, overwrite, naming, encoding, and partial-file contract.
 
+### Choosing a connection store
+
+Saved connections live in a per-user JSON store shared across Tiger tools. A
+single run can point somewhere else — a scratch store, a CI workspace, a
+container mount — without touching that default:
+
+```bash
+tiger-sqlcmd connections list --tq-connection-store-file /tmp/scratch.json
+export TIGERQUERY_CONNECTION_STORE_FILE=/workspace/runtime/connections.json
+```
+
+The command-line option wins over the environment variable, which wins over the
+application default. A store path that is supplied but unusable fails the run
+rather than quietly falling back, so a mistyped CI path can never send a job to
+a developer's personal store. The option is app-wide in meaning but still an
+option, so write it after the command path and any positionals; use
+`--tq-connection-store-file=<path>` when the path begins with `-`. See
+[selecting the connection store](docs/api-docfx/connection-profiles.md#selecting-one-store).
+
 ---
 
 ## 📦 Installation

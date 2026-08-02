@@ -279,6 +279,11 @@ Examples:
 - TigerWrap
 - third-party TigerCli-based applications
 
+These are the responsibilities of a host that has adopted the contribution. Adoption is
+per-host and staged: this plan migrates `tiger-sqlcmd` only (Phase 3). TigerWrap continues
+to pass a fixed `SqlServerConnectionCommandOptions.Store` until its own deferred migration,
+and a third-party host may do the same indefinitely.
+
 Host responsibilities:
 
 - construct the CliCore contribution **exactly once**;
@@ -637,8 +642,7 @@ for `--tq-connection-store-file` to affect which store the commands use.
 
 - add a way to supply contribution-owned state, e.g. `options.TigerQuery = tigerQuery.Options`,
   from which the group reads `Store` lazily;
-- keep `options.Store` for hosts that genuinely have one fixed store and no contribution,
-  or replace it with `options.StoreFactory` / `Func<SqlServerConnectionStore>`;
+- keep `options.Store` for hosts that genuinely have one fixed store and no contribution;
 - make every internal capture site (`SqlServerConnectionCommandContext`, both providers,
   the `AsEdit` loader) go through the deferred accessor rather than a captured instance;
 - guarantee the accessor returns **the same instance** for the lifetime of a run, so the
@@ -649,8 +653,10 @@ for `--tq-connection-store-file` to affect which store the commands use.
 Exactly one of the eager and deferred forms may be configured; supplying both is a host
 configuration error rejected during `Configure`.
 
-This is a **breaking change to a published CliCore public API** and needs a deliberate
-compatibility decision (section 17 and open question 12).
+This changes a published CliCore public API. `TigerQueryCliOptions` is the target
+architecture; `options.Store` stays as a compatibility path so an unmigrated host keeps
+building, and it is not removed at the end of Phase 3. Section 18 states the conditions
+under which it can eventually go.
 
 ### 6.3 Provider and completion timing
 
@@ -1320,7 +1326,7 @@ Test:
 
 ### 15.6 Host integration
 
-Test in `tiger-sqlcmd` and TigerWrap:
+Test in `tiger-sqlcmd`, which is the only first-party host migrated by this plan:
 
 - host opts into contribution;
 - no duplicate option implementation;
@@ -1451,14 +1457,21 @@ whether the callback should resolve eagerly for every command (open question 6);
 completion-path behavior (open question 7); the localization gap for the option and
 environment descriptions (open question 14).
 
-### Phase 3 — Host registration and migration
+### Phase 3 — `tiger-sqlcmd` registration and migration
 
 **Difficulty: Medium.** Mechanical in shape but touches the composition root, the static
 store ambient, and the existing CLI test harness. Regression risk is concentrated in "the
 default path must behave exactly as it does today."
 
-**Scope.** `tiger-sqlcmd` first, then TigerWrap. No new user-visible behavior beyond the
-new option.
+**Scope.** `tiger-sqlcmd` only. It is the single first-party host this plan migrates, and
+it is where the deferred plumbing gets proven. No new user-visible behavior beyond the new
+option.
+
+TigerWrap is deliberately **not** migrated here, and not in any later phase of this plan.
+It stays on the compatibility `SqlServerConnectionCommandOptions.Store` path for the whole
+of phases 3–8, unchanged. Migrating it early to "finish" phase 2 or phase 3 is explicitly
+not allowed: the point of routing everything through one host first is that a second host
+adds integration risk without adding evidence.
 
 **Tasks.**
 
@@ -1470,16 +1483,16 @@ new option.
    working.
 4. Remove any host-side store-path logic and any host `AddEnvironmentVariable` call that
    would now collide with the contribution.
-5. Repeat for TigerWrap.
-6. Host documentation and help-text review.
+5. Host documentation and help-text review.
 
 **Depends on.** Phase 2.
 
-**Validation.** Section 15.6, plus the full existing `tiger-sqlcmd` CLI test suite passing
-unchanged in its default-path behavior.
+**Validation.** Section 15.6 against `tiger-sqlcmd`, plus the full existing `tiger-sqlcmd`
+CLI test suite passing unchanged in its default-path behavior. TigerWrap is not exercised
+by this phase; the evidence that the deferred path works comes from `tiger-sqlcmd` alone.
 
 **Risks / open decisions.** How injected test stores interact with CLI/environment
-overrides (open question 13); whether TigerWrap migrates in the same release or lags.
+overrides (open question 13).
 
 ### Phase 4 — E2E metadata contract and resolver in Core
 
@@ -1599,26 +1612,28 @@ in Core or `ItTiger.TigerQuery` (open question 10); drop-safety under partial fa
 
 ### Phase 8 — First-party E2E migration and hardening
 
-**Difficulty: High.** The phase where the safety claims are actually proven, across two
-repositories and an external-process test surface.
+**Difficulty: High.** The phase where the safety claims are actually proven, through one
+host and an external-process test surface.
 
-**Scope.** TigerQuery's and TigerWrap's own test suites.
+**Scope.** TigerQuery's own test suite. TigerWrap's tests are out of scope and keep their
+current behavior; they move only during the deferred TigerWrap migration.
 
 **Tasks.**
 
 1. Remove SQL Server discovery from TigerQuery tests.
-2. Remove discovery from TigerWrap tests.
-3. Move both onto the shared resolver and the `NotConfigured` skip path.
-4. Prove default `dotnet test` is inert, including that it never touches the real
+2. Move them onto the shared resolver and the `NotConfigured` skip path.
+3. Prove default `dotnet test` is inert, including that it never touches the real
    user-profile store path.
-5. Add real `tiger-sqlcmd` external-process E2E tests.
-6. Document local and CI workflows end to end.
+4. Add real `tiger-sqlcmd` external-process E2E tests.
+5. Document local and CI workflows end to end.
 
 **Depends on.** Phases 4 and 7 for the interesting cases; the inertness work can start
 after Phase 4.
 
 **Validation.** Section 15.7 in full, run on a machine with SQL Server installed and
-reachable — the proof that matters is that a reachable server changes nothing.
+reachable — the proof that matters is that a reachable server changes nothing. Completing
+this phase is what makes the complete E2E workflow "proven through `tiger-sqlcmd`", and is
+therefore the gate on starting the deferred TigerWrap migration.
 
 **Risks / open decisions.** Skip-mechanism coupling to xUnit (open question 11); how much
 of the existing live-test surface must be rewritten rather than adapted.
@@ -1627,6 +1642,7 @@ of the existing live-test surface must be rewritten rather than adapted.
 
 Not in scope for any numbered phase above, and not to be added opportunistically:
 
+- **TigerWrap migration onto `TigerQueryCliOptions` and the contribution** — see below;
 - `connections e2e enable | disable | show | validate` and any other E2E lifecycle
   command family;
 - a user-facing global `--default-e2e-connection-name`;
@@ -1636,13 +1652,47 @@ Not in scope for any numbered phase above, and not to be added opportunistically
 - credential providers beyond the existing protector abstraction and the external-value
   references in Phase 6.
 
+**TigerWrap migration.** TigerWrap keeps using
+`SqlServerConnectionCommandOptions.Store` for the whole of this plan. No TigerWrap
+implementation code changes as part of phases 1–8, and TigerWrap is not migrated early to
+unblock, complete, or validate phase 2 or phase 3.
+
+Its migration is separate work that may begin only after **both** of the following hold:
+
+1. this plan is fully implemented — phases 1 through 8 complete;
+2. the complete E2E workflow is tested and proven end to end through `tiger-sqlcmd`,
+   per the Phase 8 validation.
+
+Doing it in that order means TigerWrap adopts a path that a real host has already run in
+anger, rather than two hosts discovering the same design problems in parallel. The
+migration itself then mirrors Phase 3: build the contribution once, register it, share one
+`TigerQueryCliOptions` with the command group and the host's own services, and drop any
+host-side store-path or environment-variable logic that would now collide.
+
 ## 18. Compatibility and rollout
 
 **CliCore public API.** Phase 2 changes `SqlServerConnectionCommandOptions`, which is
-published. The recommended strategy is to keep `Store` working for hosts that supply a
-fixed store and add the deferred form alongside it, rejecting the combination. If `Store`
-is instead removed, the package needs a minor-version bump with a documented migration
-note, since the README currently instructs hosts to use it.
+published. `Store` is kept working for hosts that supply a fixed store, and the deferred
+`TigerQuery` form is added alongside it. The two remain **mutually exclusive**: supplying
+both is a host configuration error rejected during `Configure`, because a fixed store would
+ignore whatever the run selected.
+
+`TigerQueryCliOptions` is the preferred integration path and the target architecture.
+`Store` is a **compatibility path** — it exists so an unmigrated host keeps building, not
+because a host has a good reason to prefer it. New hosts should use the deferred form.
+
+**When `Store` may be removed.** Not at the end of Phase 3, and not at the end of this
+plan. It is retained through the full TigerQuery implementation and the entire
+`tiger-sqlcmd` validation cycle, because TigerWrap depends on it for that whole period.
+Removal becomes possible only once **all** of the following hold:
+
+1. phases 1–8 are complete and `tiger-sqlcmd` has proven the deferred path end to end;
+2. the deferred TigerWrap migration is finished;
+3. every first-party host composes its command group through `TigerQueryCliOptions`, so
+   nothing first-party still passes `Store`.
+
+Removing it then is a breaking change to a published API and needs a version bump plus a
+documented migration note, since the README has instructed hosts to use it.
 
 **Host store injection in tests.** `CliTestRunner` calls `TigerSqlCmdApp.Build(store)`
 with a temp-file store. Once the store is run-selected, that overload must mean something
@@ -1654,9 +1704,13 @@ make the CLI tests prove the opposite of the shipping behavior.
 
 **Rollout order.** Phases 1–3 are shippable as a unit and deliver user-visible value
 (`--tq-connection-store-file` plus the environment variable) with no E2E concepts at all.
-Phase 4 is shippable next as a library-only capability. Nothing before Phase 5 changes
-the command surface, so the risky CLI work lands after the plumbing has been exercised in
-a release.
+They establish the new plumbing and exercise it **entirely through `tiger-sqlcmd`**: no
+TigerWrap change is required to ship any of them, and none should be made. Phase 4 is
+shippable next as a library-only capability. Nothing before Phase 5 changes the command
+surface, so the risky CLI work lands after the plumbing has been exercised in a release.
+
+Every phase in this plan therefore ships with exactly one migrated first-party host. The
+second host follows later, on the evidence the first one produced.
 
 ## 19. Open questions
 
@@ -1682,8 +1736,11 @@ a release.
     `ItTiger.TigerQuery`.
 11. How test frameworks should map `NotConfigured` to skip behavior without coupling Core
     to xUnit, NUnit, or MSTest.
-12. Whether `SqlServerConnectionCommandOptions.Store` is retained alongside the deferred
-    form or removed with a version bump.
+12. ~~Whether `SqlServerConnectionCommandOptions.Store` is retained alongside the deferred
+    form or removed with a version bump.~~ **Settled:** retained alongside the deferred
+    form as a compatibility path, mutually exclusive with it, and removable only under the
+    conditions in section 18 — after TigerWrap has migrated and no first-party host passes
+    it.
 13. How the existing CLI test harness injects a store once selection is run-time, and how
     that injection ranks against the CLI option and environment variable.
 14. How contributed global-option and environment-variable *descriptions* get localized,
@@ -1723,5 +1780,10 @@ The design is successful when:
 - no component discovers SQL Server;
 - no unconfigured test run opens a SQL connection or touches the developer's real store;
 - library, tool, and mixed modes use identical contracts;
-- TigerWrap and `tiger-sqlcmd` reuse the same implementation;
+- `tiger-sqlcmd` reuses the shared implementation rather than its own, and proves the
+  complete E2E workflow end to end;
 - third-party developers can adopt the same safe workflow without inventing their own conventions.
+
+TigerWrap is not part of these criteria. Its migration is deferred work gated on this
+plan being complete and proven through `tiger-sqlcmd`, and the plan is accepted with
+TigerWrap still on the `SqlServerConnectionCommandOptions.Store` compatibility path.

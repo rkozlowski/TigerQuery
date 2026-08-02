@@ -136,4 +136,12 @@
   <data name="Metadata keys must not be empty." xml:space="preserve"><value>Klucze metadanych nie mogą być puste.</value></data>
   <data name="A metadata key cannot be set more than once in the same command." xml:space="preserve"><value>Klucz metadanych nie może być ustawiony więcej niż raz w tym samym poleceniu.</value></data>
   <data name="The same metadata key cannot be both set and removed in one command." xml:space="preserve"><value>Ten sam klucz metadanych nie może być jednocześnie ustawiony i usunięty w jednym poleceniu.</value></data>
+
+  <!-- ── Connection-store path resolution (source-text keys) ────────── -->
+  <data name="The {0} option" xml:space="preserve"><value>Opcja {0}</value></data>
+  <data name="The {0} environment variable" xml:space="preserve"><value>Zmienna środowiskowa {0}</value></data>
+  <data name="The application default connection-store file path" xml:space="preserve"><value>Domyślna ścieżka pliku magazynu połączeń aplikacji</value></data>
+  <data name="{0} is present but empty. TigerQuery does not fall back to another connection store." xml:space="preserve"><value>{0} jest ustawiona, ale pusta. TigerQuery nie przechodzi awaryjnie do innego magazynu połączeń.</value></data>
+  <data name="{0} is not a valid file path: '{1}'. TigerQuery does not fall back to another connection store." xml:space="preserve"><value>{0} nie jest prawidłową ścieżką pliku: „{1}”. TigerQuery nie przechodzi awaryjnie do innego magazynu połączeń.</value></data>
+  <data name="{0} names a directory, not a connection-store file: '{1}'. TigerQuery does not fall back to another connection store." xml:space="preserve"><value>{0} wskazuje katalog, a nie plik magazynu połączeń: „{1}”. TigerQuery nie przechodzi awaryjnie do innego magazynu połączeń.</value></data>
 </root>

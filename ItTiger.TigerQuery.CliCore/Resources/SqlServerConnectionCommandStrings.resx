@@ -136,4 +136,12 @@
   <data name="Metadata keys must not be empty." xml:space="preserve"><value>Metadata keys must not be empty.</value></data>
   <data name="A metadata key cannot be set more than once in the same command." xml:space="preserve"><value>A metadata key cannot be set more than once in the same command.</value></data>
   <data name="The same metadata key cannot be both set and removed in one command." xml:space="preserve"><value>The same metadata key cannot be both set and removed in one command.</value></data>
+
+  <!-- ── Connection-store path resolution (source-text keys) ────────── -->
+  <data name="The {0} option" xml:space="preserve"><value>The {0} option</value></data>
+  <data name="The {0} environment variable" xml:space="preserve"><value>The {0} environment variable</value></data>
+  <data name="The application default connection-store file path" xml:space="preserve"><value>The application default connection-store file path</value></data>
+  <data name="{0} is present but empty. TigerQuery does not fall back to another connection store." xml:space="preserve"><value>{0} is present but empty. TigerQuery does not fall back to another connection store.</value></data>
+  <data name="{0} is not a valid file path: '{1}'. TigerQuery does not fall back to another connection store." xml:space="preserve"><value>{0} is not a valid file path: '{1}'. TigerQuery does not fall back to another connection store.</value></data>
+  <data name="{0} names a directory, not a connection-store file: '{1}'. TigerQuery does not fall back to another connection store." xml:space="preserve"><value>{0} names a directory, not a connection-store file: '{1}'. TigerQuery does not fall back to another connection store.</value></data>
 </root>
