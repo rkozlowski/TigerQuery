@@ -1,13 +1,13 @@
 # TigerQuery connection-store resolution and safe E2E foundation
 
-Status: proposed design
+Status: Phases 1–3 completed; Phases 4–8 proposed
 
 Scope:
 
 - `ItTiger.TigerQuery.Core`
 - `ItTiger.TigerQuery.CliCore`
-- TigerCli-based host applications such as `tiger-sqlcmd` and TigerWrap
-- third-party .NET applications consuming TigerQuery libraries directly
+- `tiger-sqlcmd`
+- contracts implemented and exercised within this repository
 - local development, CI/CD, containers, and mixed library/tool workflows
 
 ## 0. Normative external reference
@@ -49,7 +49,7 @@ Verified against the `ItTiger.TigerCli` 0.9.1 reference assembly and XML documen
   value.
 - **Core owns** environment-variable reading, precedence, path resolution and
   normalization, and all domain validation.
-- **The host application owns** the decision to register the contribution, the
+- **`tiger-sqlcmd` owns** the decision to register the contribution, the
   application default store path, the optional default bootstrap name, and the wiring
   of contribution-owned state into its command factories and services.
 
@@ -90,12 +90,11 @@ reflected in the phase plan:
   not through the contribution. The contribution and the command group are two separate
   opt-ins that the host performs.
 - **The contribution callback runs after `Build()`, but `SqlServerConnectionCommands.Configure`
-  runs during `Build()`.** Today `SqlServerConnectionCommandOptions.Store` takes an
-  already-constructed `SqlServerConnectionStore`, captured by the command factories at
-  build time. A store path chosen by `--tq-connection-store-file` is not known then.
-  Store selection must become **deferred** before the contribution can mean anything.
-  This is the single largest piece of work in the plan and it is a breaking change to a
-  published CliCore API (see section 6.2 and phase 2).
+  runs during `Build()`.** Phase 2 solved this by adding deferred store selection through
+  `TigerQueryCliOptions`; command factories capture an accessor to that state rather than
+  an already-constructed store. The remaining fixed
+  `SqlServerConnectionCommandOptions.Store` property is cleanup, not a supported
+  integration path (see section 6.2).
 - **Contributed option and environment-variable descriptions cannot be localized through
   TigerCli's resource pipeline in 0.9.1.** `AddOptionalString` and `AddEnvironmentVariable`
   take literal description strings and offer no `descriptionResourceKey` overload, and
@@ -119,9 +118,12 @@ The design must make the safe path obvious and easy:
 - a developer can configure one bootstrap E2E connection in the normal application connection store;
 - a test suite can use that connection without discovering or probing SQL Server instances;
 - CI/CD can provide an alternate writable store through configuration;
-- TigerCli-based applications can expose a standard global store-path option without adding TigerQuery-specific concepts to TigerCli itself;
-- library-only applications can use the same resolution behavior without depending on TigerCli;
-- TigerWrap, `tiger-sqlcmd`, and third-party applications do not invent their own metadata keys, precedence rules, or connection-discovery logic.
+- `tiger-sqlcmd` exposes a standard global store-path option without adding
+  TigerQuery-specific concepts to TigerCli itself;
+- library-only workflows in this repository use the same resolution behavior without
+  depending on TigerCli;
+- `tiger-sqlcmd` and TigerQuery's library/test workflows do not invent separate metadata
+  keys, precedence rules, or connection-discovery logic.
 
 The governing safety rule is:
 
@@ -175,7 +177,7 @@ TigerCli provides only the generic app-contribution mechanism described in secti
 --tq-connection-store-file <path>
 ```
 
-Host applications opt into the contribution. There is exactly one global-option
+`tiger-sqlcmd` opts into the contribution. There is exactly one global-option
 mechanism in play — TigerCli app contributions. No parallel mechanism (ambient statics,
 pre-parsed `args` scanning, a TigerQuery-specific pre-pass over the command line, or an
 environment variable consulted by TigerCli) may be introduced.
@@ -208,15 +210,8 @@ Responsibilities:
 - support future external-value references for profile fields;
 - remain independent of TigerCli and host-specific UI.
 
-Core must work equally for:
-
-- command-line applications;
-- test libraries;
-- desktop applications;
-- services;
-- build agents;
-- containers;
-- custom automation.
+Within this repository, Core must work equally for command-line execution, test-library
+use, build agents, containers, and custom automation.
 
 Core must not reference `ItTiger.TigerCli`, must not know the option name
 `--tq-connection-store-file`, and must not produce CLI-formatted messages.
@@ -271,22 +266,11 @@ TigerCli must not define, read, or understand:
 - E2E connection metadata;
 - SQL Server concepts.
 
-### 3.4 Host applications
+### 3.4 `tiger-sqlcmd`
 
-Examples:
+Phase 3 completed the repository's host integration. Its responsibilities are:
 
-- `tiger-sqlcmd`
-- TigerWrap
-- third-party TigerCli-based applications
-
-These are the responsibilities of a host that has adopted the contribution. Adoption is
-per-host and staged: this plan migrates `tiger-sqlcmd` only (Phase 3). TigerWrap continues
-to pass a fixed `SqlServerConnectionCommandOptions.Store` until its own deferred migration,
-and a third-party host may do the same indefinitely.
-
-Host responsibilities:
-
-- construct the CliCore contribution **exactly once**;
+- construct one `TigerQueryCliOptions` and one CliCore contribution **exactly once**;
 - register it through `TigerCliAppBuilder.AddContribution(...)`;
 - provide the application's default user-profile store path to the contribution;
 - optionally define a default E2E bootstrap connection name;
@@ -295,25 +279,23 @@ Host responsibilities:
 - decide user-facing command grouping and branding;
 - avoid independent store-path or E2E resolution logic.
 
-A host that constructs two contribution instances, or that passes one instance to
-`AddContribution` and a different one to its command factories, will silently run with an
-unresolved store path. The guide's pattern — one local variable used in both places — is
-the required shape.
+The same `TigerQueryCliOptions` instance is constructor-injected into both command
+factories and captured by the app-level connection provider. It is also supplied to
+`SqlServerConnectionCommands.Configure`. This replaces the old static ambient store and
+ensures one run cannot resolve one store and use another.
 
 ## 4. Connection-store path resolution
 
-Core should expose one reusable resolver.
-
-Conceptually (names provisional):
+Core exposes one reusable resolver. The completed Phase 1 contract is:
 
 ```csharp
 public sealed class SqlServerConnectionStorePathOptions
 {
     /// <summary>The caller-supplied override; from the CLI option in CLI hosts.</summary>
-    public string? ExplicitPath { get; init; }
+    public string? ExplicitFilePath { get; init; }
 
     /// <summary>The host application's default store path. Required.</summary>
-    public required string DefaultPath { get; init; }
+    public required string DefaultFilePath { get; init; }
 
     public string EnvironmentVariableName { get; init; }
         = SqlServerConnectionStoreEnvironment.ConnectionStoreFile;
@@ -329,10 +311,12 @@ public sealed class SqlServerConnectionStorePathOptions
 ```csharp
 public sealed class SqlServerConnectionStorePathResolution
 {
-    /// <summary>The normalized absolute path.</summary>
-    public required string Path { get; init; }
-
-    public required SqlServerConnectionStorePathSource Source { get; init; }
+    public bool IsSuccess { get; }
+    public string? FilePath { get; }
+    public SqlServerConnectionStorePathSource Source { get; }
+    public SqlServerConnectionStorePathError Error { get; }
+    public string? AttemptedValue { get; }
+    public string? ErrorMessage { get; }
 }
 ```
 
@@ -345,8 +329,7 @@ public enum SqlServerConnectionStorePathSource
 }
 ```
 
-Exact names may differ, but the contract should be clear. The injected
-`EnvironmentReader` is not cosmetic: without it, every precedence test must mutate
+The injected `EnvironmentReader` is not cosmetic: without it, every precedence test must mutate
 process-global state, which is unsafe alongside the existing parallel test suites.
 
 ### 4.1 Precedence
@@ -386,7 +369,8 @@ An invalid higher-priority value must fail explicitly.
 - the value is empty or whitespace;
 - the value cannot be normalized to an absolute path (illegal characters, malformed
   root, path too long for the platform);
-- the value names a directory rather than a file, or ends in a directory separator.
+- the normalized value has no file-name component, including a root or a path ending in
+  a directory separator.
 
 The resolver must not silently fall through to a lower-priority source when a
 higher-priority source is present but invalid. A present-and-empty environment variable
@@ -414,7 +398,8 @@ Resolving the store path must not:
 Store-path resolution and connection-profile resolution are separate concerns, and
 neither touches the disk.
 
-Separately from resolution, the plan needs a **store presence policy** applied when the
+Separately from the completed Phase 1 resolver, the plan still needs a **store presence
+policy** applied when the
 store is first opened, because today a missing file simply reads as an empty store. That
 is right for the application default (a first-run developer has no store yet) and wrong
 for an explicit override (a CI job pointing at the wrong path would silently see zero
@@ -427,8 +412,8 @@ policy:
 | `EnvironmentVariable` | **error**, naming the variable and the resolved path | create |
 | `Explicit` | **error**, naming the option and the resolved path | create |
 
-This is a behavior change relative to the current store and needs its own tests. See
-open question 5.
+This was not implemented in Phase 1. It is a behavior change relative to the current
+store and needs its own implementation phase and tests after open question 5 is settled.
 
 ### 4.4 Credential portability across store paths
 
@@ -472,13 +457,13 @@ Properties, all of which follow from section 0.3 rather than being TigerQuery ch
 
 ### 5.1 Contribution shape
 
-Conceptually (names provisional):
+The completed Phase 2 shape is:
 
 ```csharp
 public sealed class TigerQueryCliOptions
 {
     /// <summary>Set by the contribution callback; null when the option was absent.</summary>
-    public string? ExplicitConnectionStoreFile { get; internal set; }
+    public string? ExplicitConnectionStoreFile { get; private set; }
 
     /// <summary>Host-supplied application default. Required.</summary>
     public required string DefaultConnectionStoreFile { get; init; }
@@ -489,11 +474,14 @@ public sealed class TigerQueryCliOptions
     /// <summary>Host-supplied protector factory, or null for the Core default.</summary>
     public Func<IConnectionPasswordProtector>? PasswordProtectorFactory { get; init; }
 
+    /// <summary>Injected environment lookup, or null for the process environment.</summary>
+    public Func<string, string?>? EnvironmentReader { get; init; }
+
     /// <summary>
     /// The resolution produced by the callback. Null until the callback has run,
     /// which is also the state seen on help-only runs.
     /// </summary>
-    public SqlServerConnectionStorePathResolution? ResolvedStorePath { get; internal set; }
+    public SqlServerConnectionStorePathResolution? ResolvedStorePath { get; private set; }
 
     /// <summary>
     /// The single store for this run, constructed lazily from
@@ -528,41 +516,44 @@ public sealed class TigerQueryCliContribution : ITigerCliAppContribution
 
 ### 5.2 Host registration
 
-Following the guide's pattern exactly — one instance, used in both places:
+Phase 3 follows the guide's pattern exactly — one shared options instance and one
+contribution, used everywhere:
 
 ```csharp
-var tigerQuery = new TigerQueryCliContribution(new TigerQueryCliOptions
+var connections = new TigerQueryCliOptions
 {
-    DefaultConnectionStoreFile = appDefaultStorePath,
-    DefaultE2eBootstrapConnectionName = "tigerwrap-e2e"
-});
+    DefaultConnectionStoreFile = TigerSqlCmdApp.DefaultConnectionStoreFile
+};
+var tigerQuery = new TigerQueryCliContribution(connections);
 
 return TigerCliApp.CreateBuilder()
-    .UseAssemblyMetadata(typeof(MyApp).Assembly)
+    .UseAssemblyMetadata(typeof(TigerSqlCmdApp).Assembly)
     .AddContribution(tigerQuery)
     .UseAppResources(SqlServerConnectionCommands.CreateAppResources(MyStrings.ResourceManager))
     .AddCommandGroup("connections", group =>
     {
         SqlServerConnectionCommands.Configure(group, options =>
         {
-            options.TigerQuery = tigerQuery.Options;   // same instance
+            options.TigerQuery = connections;   // same instance
             options.ValidationPolicy = SqlServerConnectionValidationPolicy.DatabaseOptional;
         });
     })
-    .AddCommand("run", () => new RunCommand(tigerQuery.Options), "…")
+    .ConfigureProviders(providers =>
+        providers.Add("connections", context =>
+            connections.Store.GetConnectionNamesAsync(context.CancellationToken)))
+    .SetDefaultCommand(() => new TigerSqlCmdQueryCommand(connections))
+    .AddCommand("run", () => new TigerSqlCmdCommand(connections), "…")
     .Build();
 ```
 
-Registering the contribution is one opt-in; mounting the connection command group is a
-second, independent one. A host may do either alone: a host with no `connections` group
-can still accept `--tq-connection-store-file` for its own commands, and a host that
-mounts the group without the contribution simply has no CLI override.
+Registering the contribution and mounting the connection command group remain separate
+composition steps. `tiger-sqlcmd` performs both and passes the same state to its provider
+and command factories.
 
 The contribution must be registered **at most once**. A second registration of the same
-option name fails at `Build()`; so does a host that separately calls
-`TigerCliAppBuilder.AddEnvironmentVariable` with the same variable name that the
-contribution registers. Hosts migrating to the contribution must delete any such
-existing registration.
+option name fails at `Build()`; so would a separate
+call to `TigerCliAppBuilder.AddEnvironmentVariable` with the same variable name that the
+contribution registers. `tiger-sqlcmd` has no such duplicate registration.
 
 ### 5.3 Callback lifecycle and validation timing
 
@@ -615,34 +606,33 @@ Consequences to design for, all of which need tests:
 
 ### 5.4 Shared resolved state
 
-CliCore exposes the contribution-owned state object as the single place every consumer
-reads the store from, rather than having commands inspect parse results independently.
+CliCore exposes the contribution-owned state object as the single place every in-scope
+code path reads the store from, rather than having commands inspect parse results
+independently.
 
-Every connection command, every execution command, and every host service must obtain
-its store from that one object, so a single run can never read one file and write
+Every connection command, every execution command, and every `tiger-sqlcmd` service must
+obtain its store from that one object, so a single run can never read one file and write
 another.
 
 ## 6. Deferred store selection
 
-### 6.1 The problem
+### 6.1 The problem Phase 2 solved
 
-`SqlServerConnectionCommands.Configure(group, options => { options.Store = store; })`
-takes a fully constructed store at `Build()` time and captures it inside the command
+Before Phase 2, `SqlServerConnectionCommands.Configure(group, options =>
+{ options.Store = store; })` took a fully constructed store at `Build()` time and captured it inside the command
 factories, the `connections` provider, the `databases` provider, and the `AsEdit` load
-callback. The CliCore README states this explicitly: "`options.Store` is the injection
-point for store selection, and it is deliberately the only one."
+callback.
 
-The contribution callback runs *after* `Build()`. Under the current API there is no way
-for `--tq-connection-store-file` to affect which store the commands use.
+Because the contribution callback runs *after* `Build()`, that eager model could not let
+`--tq-connection-store-file` affect which store the commands used.
 
 ### 6.2 The change
 
-`SqlServerConnectionCommandOptions` must accept a **deferred** store selection instead of
-(or in addition to) an eager instance. The minimal shape:
+Phase 2 added deferred store selection through
+`SqlServerConnectionCommandOptions.TigerQuery`. The implemented shape:
 
 - add a way to supply contribution-owned state, e.g. `options.TigerQuery = tigerQuery.Options`,
   from which the group reads `Store` lazily;
-- keep `options.Store` for hosts that genuinely have one fixed store and no contribution;
 - make every internal capture site (`SqlServerConnectionCommandContext`, both providers,
   the `AsEdit` loader) go through the deferred accessor rather than a captured instance;
 - guarantee the accessor returns **the same instance** for the lifetime of a run, so the
@@ -650,13 +640,13 @@ for `--tq-connection-store-file` to affect which store the commands use.
 - fail with a clear `InvalidOperationException` if a command reaches the accessor before
   the contribution callback has run — that indicates a host wiring bug, not a user error.
 
-Exactly one of the eager and deferred forms may be configured; supplying both is a host
-configuration error rejected during `Configure`.
-
-This changes a published CliCore public API. `TigerQueryCliOptions` is the target
-architecture; `options.Store` stays as a compatibility path so an unmigrated host keeps
-building, and it is not removed at the end of Phase 3. Section 18 states the conditions
-under which it can eventually go.
+The committed implementation temporarily retains the eager `options.Store` form and
+rejects configuring it together with `options.TigerQuery`. The post-Phase 3 review finds
+no current in-repository consumer that needs the eager form. It should now be removed as
+cleanup, together with its eager-path tests and documentation, leaving
+`TigerQueryCliOptions` as the sole connection-store injection model. No compatibility API
+needs to be preserved: the current changes are unpublished and there are no other current
+consumers in this plan's scope.
 
 ### 6.3 Provider and completion timing
 
@@ -687,9 +677,8 @@ The bootstrap name is resolved as follows:
 Examples:
 
 ```text
-tigerwrap-e2e
 tigerquery-e2e
-myapp-e2e
+tiger-sqlcmd-e2e
 ```
 
 Requirements:
@@ -708,7 +697,7 @@ Possible CliCore configuration:
 ```csharp
 new TigerQueryCliOptions
 {
-    DefaultE2eBootstrapConnectionName = "tigerwrap-e2e"
+    DefaultE2eBootstrapConnectionName = "tiger-sqlcmd-e2e"
 }
 ```
 
@@ -1046,16 +1035,16 @@ environments; treat it as displayable but note it in documentation.
 
 ### 12.1 Normal local development
 
-The developer creates one bootstrap connection in the normal app store:
+The developer creates one bootstrap connection in the normal application store:
 
 ```text
-tigerwrap connections add-e2e-bootstrap
+tiger-sqlcmd connections add-e2e-bootstrap
 ```
 
 or, when the host has configured no default name:
 
 ```text
-tigerwrap connections add-e2e-bootstrap --name tigerwrap-e2e
+tiger-sqlcmd connections add-e2e-bootstrap --name tiger-sqlcmd-e2e
 ```
 
 After that:
@@ -1075,10 +1064,10 @@ No profile means no E2E access.
 A developer can isolate work with:
 
 ```text
-tigerwrap connections list --tq-connection-store-file C:\temp\e2e.json
+tiger-sqlcmd connections list --tq-connection-store-file C:\temp\e2e.json
 ```
 
-Note the placement: the option follows the command path. `tigerwrap --tq-connection-store-file C:\temp\e2e.json connections list`
+Note the placement: the option follows the command path. `tiger-sqlcmd --tq-connection-store-file C:\temp\e2e.json connections list`
 is invalid (section 0.3, rule 6). For the default command with a positional query, the
 option follows the positional:
 
@@ -1112,7 +1101,7 @@ The store may contain external references to:
 - mounted secret files;
 - mounted configuration files.
 
-No TigerCli dependency is required for library-only CI consumers.
+No TigerCli dependency is required for the library-only CI workflow.
 
 ### 12.4 Containers
 
@@ -1129,7 +1118,7 @@ The store references external values and remains writable for temporary connecti
 
 ### 12.5 Library mode
 
-A third-party application uses:
+TigerQuery's library and test workflows use:
 
 - `ItTiger.TigerQuery.Core` for store resolution and E2E authorization;
 - `ItTiger.TigerQuery` for SQL execution.
@@ -1148,7 +1137,7 @@ Typical workflow:
 
 ### 12.6 Tool mode
 
-A third-party developer uses `tiger-sqlcmd` to:
+A developer uses `tiger-sqlcmd` to:
 
 1. configure or validate the bootstrap profile;
 2. create the test database;
@@ -1321,12 +1310,13 @@ Test:
 - commands, both providers, and the `AsEdit` loader all observe the run-selected store;
 - the accessor returns the same instance throughout a run;
 - reaching the accessor before the callback throws a wiring error, not a silent default;
-- configuring both eager and deferred forms is rejected at `Configure`;
+- after cleanup, `SqlServerConnectionCommandOptions` exposes no eager `Store` injection
+  path and requires the shared `TigerQueryCliOptions` model;
 - the host-supplied password protector still reaches the constructed store.
 
 ### 15.6 Host integration
 
-Test in `tiger-sqlcmd`, which is the only first-party host migrated by this plan:
+Test in `tiger-sqlcmd`, the repository host covered by this plan:
 
 - host opts into contribution;
 - no duplicate option implementation;
@@ -1335,8 +1325,8 @@ Test in `tiger-sqlcmd`, which is the only first-party host migrated by this plan
 - explicit alternate store works;
 - environment-variable store works;
 - CLI override wins over environment variable;
-- the existing CLI test host can still inject a store, and injection interacts with
-  CLI/environment overrides in a documented way (section 18).
+- the existing CLI test host injects its temporary file as the application default;
+- CLI and environment overrides both outrank that injected application default.
 
 ### 15.7 Safety regressions
 
@@ -1371,8 +1361,9 @@ Documentation should include:
 - cleanup safety requirements;
 - AI-agent guidance.
 
-The CliCore README's "One selected store" section must be rewritten when section 6 lands,
-because it currently states that `options.Store` is the only injection point.
+The CliCore README's "One selected store" section was rewritten in Phase 2 for the shared
+`TigerQueryCliOptions` model. The post-Phase 3 cleanup must remove its remaining fixed
+`SqlServerConnectionCommandOptions.Store` documentation.
 
 Recommended explicit instruction:
 
@@ -1388,38 +1379,38 @@ strength of AI coding agent that should take it:
 - `High` — security-sensitive, lifecycle-sensitive, highly architectural, or requiring
   careful reasoning across several packages.
 
-### Phase 1 — Core store-path resolution
+### Phase 1 — Core store-path resolution — **Completed**
 
 **Difficulty: Medium.** New public Core API with strict precedence and failure semantics.
-The logic is small and self-contained, but it is a published contract that later phases
-and third parties depend on, and the "never fall through" rule is easy to get subtly
-wrong.
+The logic is small and self-contained, but it is a contract that later phases depend on,
+and the "never fall through" rule is easy to get subtly wrong.
 
 **Scope.** Path resolution only. No CLI, no store construction, no E2E concepts.
 
-**Tasks.**
+**Completed work.**
 
 1. Environment-variable name constant (`SqlServerConnectionStoreEnvironment`).
 2. `SqlServerConnectionStorePathOptions`, `…Resolution`, `…Source`, and the resolver.
 3. Injected environment reader with the process default.
 4. Normalization to absolute, and the section 4.2 syntactic validation set.
-5. A dedicated exception (or result) type carrying which source failed and why, in a form
-   CliCore can localize.
-6. Store presence policy from section 4.3, wired into store opening.
-7. XML docs and Core README section.
+5. A result type carrying success or failure, selected source, rejected value, and error
+   code/message in a form CliCore can localize.
+6. XML docs, Core README documentation, and exhaustive resolver tests.
 
 **Depends on.** Nothing.
 
-**Validation.** Sections 15.1 and 15.2. Assert inertness by resolving paths under a
-directory that does not exist and confirming nothing is created.
+**Validation completed.** Section 15.1, including inert resolution under a directory that
+does not exist. The store-presence policy in section 4.3 was not part of the committed
+implementation and remains a separate open design item.
 
-**Risks / open decisions.** Final environment-variable name (open question 1); whether
-the store presence policy is a behavior change too aggressive for existing users
-(open question 5); result-type versus exception style for resolution failure.
+**Settled outcomes.** The variable is `TIGERQUERY_CONNECTION_STORE_FILE`; the public API
+names in section 4 are final; resolution returns `SqlServerConnectionStorePathResolution`
+rather than throwing for a user-supplied unusable path. The store-presence policy remains
+open question 5.
 
-### Phase 2 — CliCore deferred store selection and the TigerCli contribution
+### Phase 2 — CliCore deferred store selection and the TigerCli contribution — **Completed**
 
-**Difficulty: High.** A breaking change to a published public API, combined with
+**Difficulty: High.** A public API change combined with
 lifecycle-sensitive callback timing across two packages, plus every internal capture site
 in the command group. Getting this wrong produces a run that reads one store and writes
 another, which is exactly the failure mode this plan exists to prevent.
@@ -1428,7 +1419,7 @@ another, which is exactly the failure mode this plan exists to prevent.
 useful alone: deferred store selection (section 6) and the `ITigerCliAppContribution`
 implementation (section 5).
 
-**Tasks.**
+**Completed work.**
 
 1. `TigerQueryCliOptions` contribution state: host default path, optional bootstrap name,
    optional protector factory, callback-set explicit value and resolution, lazily
@@ -1438,8 +1429,8 @@ implementation (section 5).
    variable via `AddEnvironmentVariable`.
 3. Callback that delegates to the Phase 1 resolver and returns a localized
    `TigerCliValidationResult.Error` on failure, using `context.Culture`.
-4. Extend `SqlServerConnectionCommandOptions` with the deferred form; reject configuring
-   both forms.
+4. Extended `SqlServerConnectionCommandOptions` with the deferred `TigerQuery` form; the
+   committed implementation rejects configuring it together with the eager `Store` form.
 5. Convert `SqlServerConnectionCommandContext`, the `connections` provider, the
    `databases` provider, and the `AsEdit` loader to deferred access.
 6. Guard against access before the callback with a clear wiring error.
@@ -1448,51 +1439,50 @@ implementation (section 5).
 
 **Depends on.** Phase 1.
 
-**Validation.** Sections 15.4 and 15.5. Add a test that builds an app, runs it twice with
+**Validation completed.** Sections 15.4 and 15.5, including a test that builds an app, runs it twice with
 different `--tq-connection-store-file` values, and asserts each run wrote only its own
 file.
 
-**Risks / open decisions.** Compatibility strategy for `options.Store` (open question 12);
-whether the callback should resolve eagerly for every command (open question 6);
-completion-path behavior (open question 7); the localization gap for the option and
-environment descriptions (open question 14).
+**Settled and remaining outcomes.** The callback resolves on every command run and the
+store remains lazy. The post-Phase 3 review settles `options.Store` for removal as cleanup
+(open question 12). Completion-path behavior remains open question 7. The inability to
+localize contribution descriptions remains an unresolved TigerCli gap (open question 14).
 
-### Phase 3 — `tiger-sqlcmd` registration and migration
+### Phase 3 — `tiger-sqlcmd` registration and migration — **Completed**
 
 **Difficulty: Medium.** Mechanical in shape but touches the composition root, the static
 store ambient, and the existing CLI test harness. Regression risk is concentrated in "the
 default path must behave exactly as it does today."
 
-**Scope.** `tiger-sqlcmd` only. It is the single first-party host this plan migrates, and
-it is where the deferred plumbing gets proven. No new user-visible behavior beyond the new
-option.
+**Scope.** `tiger-sqlcmd` only. This phase proves the deferred connection-store plumbing
+and precedence through the repository's real host. It does not prove the E2E metadata,
+authorization, database-lifecycle, or external-process workflow planned for Phases 4–8.
 
-TigerWrap is deliberately **not** migrated here, and not in any later phase of this plan.
-It stays on the compatibility `SqlServerConnectionCommandOptions.Store` path for the whole
-of phases 3–8, unchanged. Migrating it early to "finish" phase 2 or phase 3 is explicitly
-not allowed: the point of routing everything through one host first is that a second host
-adds integration risk without adding evidence.
+**Final wiring.**
 
-**Tasks.**
-
-1. Build the contribution once in `TigerSqlCmdApp.Build`, register it, and pass its state
-   to `SqlServerConnectionCommands.Configure` and to the app-level `connections` provider.
-2. Replace the `TigerSqlCmdApp.ConnectionStore` static ambient and `TryResolveConnection`
-   store lookup with contribution-state access.
-3. Decide and implement the test-injection story (section 18) so `CliTestRunner` keeps
-   working.
-4. Remove any host-side store-path logic and any host `AddEnvironmentVariable` call that
-   would now collide with the contribution.
-5. Host documentation and help-text review.
+1. `TigerSqlCmdApp.Build` creates one shared `TigerQueryCliOptions` and one
+   `TigerQueryCliContribution`, then registers that contribution once.
+2. The same options instance is passed to `SqlServerConnectionCommands.Configure`, the
+   app-level `connections` provider, and both command factories.
+3. `TigerSqlCmdCommand` and `TigerSqlCmdQueryCommand` receive the options through
+   constructor injection and resolve saved connections from the run-selected store.
+4. The static ambient `TigerSqlCmdApp.ConnectionStore` was removed.
+   `TryResolveConnection` now receives the shared options explicitly.
+5. `CliTestRunner` injects a temporary file as the application-default path, not as a
+   higher-priority fixed store.
+6. The contribution owns the option, environment help metadata, precedence, and path
+   validation; `tiger-sqlcmd` has no duplicate store-path mechanism.
 
 **Depends on.** Phase 2.
 
-**Validation.** Section 15.6 against `tiger-sqlcmd`, plus the full existing `tiger-sqlcmd`
-CLI test suite passing unchanged in its default-path behavior. TigerWrap is not exercised
-by this phase; the evidence that the deferred path works comes from `tiger-sqlcmd` alone.
+**Validation completed.** Host tests prove CLI > environment > application default,
+including that the injected test path is only the application default and loses to both
+overrides. They also prove that the connection commands, provider, default query command,
+and `run` command observe the run-selected store. The existing default-path behavior is
+unchanged.
 
-**Risks / open decisions.** How injected test stores interact with CLI/environment
-overrides (open question 13).
+**Settled outcome.** Open question 13 is settled: test injection acts as the
+application-default path and does not outrank CLI or environment overrides.
 
 ### Phase 4 — E2E metadata contract and resolver in Core
 
@@ -1513,8 +1503,7 @@ implementation here silently reintroduces "reachable means allowed."
 6. Redaction review of every diagnostic string the resolver can emit.
 7. Documented no-connect guarantee, enforced by test.
 
-**Depends on.** Phase 1 (store access). Independent of phases 2 and 3, so it may run in
-parallel with them.
+**Depends on.** Phase 1 (store access). Phases 1–3 are already complete.
 
 **Validation.** Section 15.3, plus a test asserting no `SqlConnection` is constructed
 during resolution.
@@ -1610,13 +1599,12 @@ non-matching names and unauthorized profiles are rejected before any command is 
 **Risks / open decisions.** Ownership marker (open question 9); whether these helpers live
 in Core or `ItTiger.TigerQuery` (open question 10); drop-safety under partial failure.
 
-### Phase 8 — First-party E2E migration and hardening
+### Phase 8 — Repository E2E migration and hardening
 
 **Difficulty: High.** The phase where the safety claims are actually proven, through one
 host and an external-process test surface.
 
-**Scope.** TigerQuery's own test suite. TigerWrap's tests are out of scope and keep their
-current behavior; they move only during the deferred TigerWrap migration.
+**Scope.** TigerQuery's own test suite and `tiger-sqlcmd` external-process coverage.
 
 **Tasks.**
 
@@ -1632,8 +1620,8 @@ after Phase 4.
 
 **Validation.** Section 15.7 in full, run on a machine with SQL Server installed and
 reachable — the proof that matters is that a reachable server changes nothing. Completing
-this phase is what makes the complete E2E workflow "proven through `tiger-sqlcmd`", and is
-therefore the gate on starting the deferred TigerWrap migration.
+this phase is what will make the complete E2E workflow proven through `tiger-sqlcmd`.
+Phase 3 proved only connection-store composition and precedence.
 
 **Risks / open decisions.** Skip-mechanism coupling to xUnit (open question 11); how much
 of the existing live-test surface must be rewritten rather than adapted.
@@ -1642,7 +1630,6 @@ of the existing live-test surface must be rewritten rather than adapted.
 
 Not in scope for any numbered phase above, and not to be added opportunistically:
 
-- **TigerWrap migration onto `TigerQueryCliOptions` and the contribution** — see below;
 - `connections e2e enable | disable | show | validate` and any other E2E lifecycle
   command family;
 - a user-facing global `--default-e2e-connection-name`;
@@ -1652,81 +1639,49 @@ Not in scope for any numbered phase above, and not to be added opportunistically
 - credential providers beyond the existing protector abstraction and the external-value
   references in Phase 6.
 
-**TigerWrap migration.** TigerWrap keeps using
-`SqlServerConnectionCommandOptions.Store` for the whole of this plan. No TigerWrap
-implementation code changes as part of phases 1–8, and TigerWrap is not migrated early to
-unblock, complete, or validate phase 2 or phase 3.
+## 18. Repository cleanup and rollout
 
-Its migration is separate work that may begin only after **both** of the following hold:
+**Remove `SqlServerConnectionCommandOptions.Store`.** The committed Phase 2 implementation
+added `TigerQueryCliOptions` alongside the eager `Store` property and made the two mutually
+exclusive. After Phase 3, every in-scope production composition path uses
+`TigerQueryCliOptions`; only tests exercise the eager branch. There are no other current
+consumers for which this repository must preserve source compatibility, and these changes
+have not yet been published.
 
-1. this plan is fully implemented — phases 1 through 8 complete;
-2. the complete E2E workflow is tested and proven end to end through `tiger-sqlcmd`,
-   per the Phase 8 validation.
+The conclusion is therefore to remove `SqlServerConnectionCommandOptions.Store` now as
+post-Phase 3 cleanup, remove the eager accessor branch and its tests/documentation, and
+leave `TigerQueryCliOptions` as the sole connection-store injection model. This is not a
+compatibility path and must not be carried through Phases 4–8.
 
-Doing it in that order means TigerWrap adopts a path that a real host has already run in
-anger, rather than two hosts discovering the same design problems in parallel. The
-migration itself then mirrors Phase 3: build the contribution once, register it, share one
-`TigerQueryCliOptions` with the command group and the host's own services, and drop any
-host-side store-path or environment-variable logic that would now collide.
+**Host store injection in tests.** This is settled. `CliTestRunner` passes a temporary
+file path to `TigerSqlCmdApp.Build(defaultConnectionStoreFile, environmentReader)`. That
+path replaces only the application default. The contribution still applies the production
+precedence: CLI > environment > application default. No pinned test mode that outranks
+the CLI or environment is needed.
 
-## 18. Compatibility and rollout
-
-**CliCore public API.** Phase 2 changes `SqlServerConnectionCommandOptions`, which is
-published. `Store` is kept working for hosts that supply a fixed store, and the deferred
-`TigerQuery` form is added alongside it. The two remain **mutually exclusive**: supplying
-both is a host configuration error rejected during `Configure`, because a fixed store would
-ignore whatever the run selected.
-
-`TigerQueryCliOptions` is the preferred integration path and the target architecture.
-`Store` is a **compatibility path** — it exists so an unmigrated host keeps building, not
-because a host has a good reason to prefer it. New hosts should use the deferred form.
-
-**When `Store` may be removed.** Not at the end of Phase 3, and not at the end of this
-plan. It is retained through the full TigerQuery implementation and the entire
-`tiger-sqlcmd` validation cycle, because TigerWrap depends on it for that whole period.
-Removal becomes possible only once **all** of the following hold:
-
-1. phases 1–8 are complete and `tiger-sqlcmd` has proven the deferred path end to end;
-2. the deferred TigerWrap migration is finished;
-3. every first-party host composes its command group through `TigerQueryCliOptions`, so
-   nothing first-party still passes `Store`.
-
-Removing it then is a breaking change to a published API and needs a version bump plus a
-documented migration note, since the README has instructed hosts to use it.
-
-**Host store injection in tests.** `CliTestRunner` calls `TigerSqlCmdApp.Build(store)`
-with a temp-file store. Once the store is run-selected, that overload must mean something
-precise. The recommendation is to model test injection as an override of the *application
-default*, so `--tq-connection-store-file` and the environment variable still win and the
-precedence tests are meaningful, plus a separate explicitly-named pinned mode for tests
-that must ignore both. Silently letting an injected instance beat the CLI option would
-make the CLI tests prove the opposite of the shipping behavior.
-
-**Rollout order.** Phases 1–3 are shippable as a unit and deliver user-visible value
-(`--tq-connection-store-file` plus the environment variable) with no E2E concepts at all.
-They establish the new plumbing and exercise it **entirely through `tiger-sqlcmd`**: no
-TigerWrap change is required to ship any of them, and none should be made. Phase 4 is
-shippable next as a library-only capability. Nothing before Phase 5 changes the command
-surface, so the risky CLI work lands after the plumbing has been exercised in a release.
-
-Every phase in this plan therefore ships with exactly one migrated first-party host. The
-second host follows later, on the evidence the first one produced.
+**Rollout order.** Phases 1–3 are complete and deliver
+`--tq-connection-store-file`, `TIGERQUERY_CONNECTION_STORE_FILE`, and the shared deferred
+store plumbing with no E2E metadata or lifecycle concepts. The host tests prove this
+composition and precedence through `tiger-sqlcmd`; they do not prove the complete E2E
+workflow. Phase 4 is next as a Core capability, Phase 5 adds the bootstrap command surface,
+and Phase 8 supplies the end-to-end proof after the remaining safety contracts exist.
 
 ## 19. Open questions
 
-1. Exact environment-variable name for the store path. The document now uses
-   `TIGERQUERY_CONNECTION_STORE_FILE` for symmetry with `--tq-connection-store-file`;
-   confirm before Phase 1 ships, because renaming it later is a breaking change for CI.
-2. Exact public API names for path resolution.
+1. ~~Exact environment-variable name for the store path.~~ **Settled in Phase 1:**
+   `TIGERQUERY_CONNECTION_STORE_FILE`.
+2. ~~Exact public API names for path resolution.~~ **Settled in Phase 1:** the names shown
+   in section 4 are implemented.
 3. Whether E2E resolution may select the only enabled profile when no name is supplied,
    or must always require a configured/explicit name. Recommended: always require a name.
-4. Whether the resolution failure surface is an exception or a result type, and how
-   CliCore turns it into a localized `TigerCliValidationResult`.
+4. ~~Whether the resolution failure surface is an exception or a result type.~~ **Settled
+   in Phases 1–2:** Core returns `SqlServerConnectionStorePathResolution`; CliCore maps a
+   failed result to a localized `TigerCliValidationResult.Error`.
 5. Whether the store-presence policy in section 4.3 is acceptable, given that it changes
    existing behavior for explicitly-pathed stores that do not yet exist.
-6. Whether the contribution callback should resolve eagerly on every run, failing
-   commands that never touch the store, or defer resolution to first store access and
-   accept later, less well-placed errors.
+6. ~~Whether the contribution callback should resolve eagerly on every run.~~ **Settled
+   in Phase 2:** path resolution runs in the callback on every command run; store
+   construction remains lazy.
 7. Whether TigerCli invokes contribution callbacks on shell-completion paths, and what a
    provider should do if it does not.
 8. Whether Core actively rejects writes to the reserved `ittiger.` metadata prefix from
@@ -1737,12 +1692,11 @@ second host follows later, on the evidence the first one produced.
 11. How test frameworks should map `NotConfigured` to skip behavior without coupling Core
     to xUnit, NUnit, or MSTest.
 12. ~~Whether `SqlServerConnectionCommandOptions.Store` is retained alongside the deferred
-    form or removed with a version bump.~~ **Settled:** retained alongside the deferred
-    form as a compatibility path, mutually exclusive with it, and removable only under the
-    conditions in section 18 — after TigerWrap has migrated and no first-party host passes
-    it.
-13. How the existing CLI test harness injects a store once selection is run-time, and how
-    that injection ranks against the CLI option and environment variable.
+    form.~~ **Settled after Phase 3:** remove it as repository cleanup and leave
+    `TigerQueryCliOptions` as the sole injection model. No compatibility API is required.
+13. ~~How the existing CLI test harness injects a store and how that injection ranks.~~
+    **Settled in Phase 3:** injection supplies the application-default path; CLI and
+    environment overrides retain higher precedence.
 14. How contributed global-option and environment-variable *descriptions* get localized,
     given that 0.9.1 accepts only literal strings at `Build()` time while the rest of the
     host's help is resource-driven. Options: accept English-only help for this one
@@ -1773,6 +1727,8 @@ The design is successful when:
 - environment variables override the application default;
 - an invalid higher-priority source never falls through to a lower one;
 - one run reads and writes exactly one store file;
+- `TigerQueryCliOptions` is the sole connection-store injection model after the
+  post-Phase 3 cleanup;
 - local developers need no environment variables;
 - CI/CD can use environment variables and mounted files;
 - E2E profiles require explicit TigerQuery metadata, matched exactly;
@@ -1780,10 +1736,5 @@ The design is successful when:
 - no component discovers SQL Server;
 - no unconfigured test run opens a SQL connection or touches the developer's real store;
 - library, tool, and mixed modes use identical contracts;
-- `tiger-sqlcmd` reuses the shared implementation rather than its own, and proves the
-  complete E2E workflow end to end;
-- third-party developers can adopt the same safe workflow without inventing their own conventions.
-
-TigerWrap is not part of these criteria. Its migration is deferred work gated on this
-plan being complete and proven through `tiger-sqlcmd`, and the plan is accepted with
-TigerWrap still on the `SqlServerConnectionCommandOptions.Store` compatibility path.
+- `tiger-sqlcmd` reuses the shared implementation rather than its own;
+- Phase 8 proves the complete E2E workflow end to end through `tiger-sqlcmd`.
