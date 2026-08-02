@@ -327,7 +327,18 @@ Every connection and execution command must use the same resolved store.
 
 ## 6. Default E2E bootstrap connection
 
-A host application may define an expected default E2E connection name.
+A host application may define a default E2E bootstrap connection name. Bootstrap
+profile creation uses a dedicated command:
+
+```text
+tiger-sqlcmd connections add-e2e-bootstrap [--name <name>]
+```
+
+The bootstrap name is resolved as follows:
+
+- when `--name` is provided, use it;
+- otherwise, use the host-configured default E2E bootstrap connection name;
+- when neither exists, fail clearly without modifying the connection store.
 
 Examples:
 
@@ -351,23 +362,20 @@ Possible CliCore configuration:
 ```csharp
 new TigerQueryCliContributionOptions
 {
-    DefaultE2eConnectionName = "tigerwrap-e2e"
+    DefaultE2eBootstrapConnectionName = "tigerwrap-e2e"
 }
 ```
 
-Possible CLI override:
+This default is host configuration, not a user-facing global
+`--default-e2e-connection-name` option. The dedicated command's `--name` option is
+the explicit per-invocation override.
 
-```text
---default-e2e-connection-name <name>
-```
-
-Whether that should be a user-facing global option or a host-only configuration value remains an API-design decision.
-
-A simple initial model is:
-
-- host configures the expected default name;
-- automation may supply an explicit connection name through the E2E API or command;
-- Core never selects an arbitrary marked profile.
+Bootstrap identity is separate from general E2E authorization. The regular
+`connections add <name>` command may support a flag that marks a newly created
+profile as E2E-authorized, but that does not make the profile the bootstrap
+profile. Bootstrap identity must be explicit and must not be inferred from profile
+name, authorization metadata, or store ordering. The exact flag and metadata shape
+can be chosen during implementation.
 
 ## 7. Standard E2E metadata contract
 
@@ -506,37 +514,19 @@ A stricter initial design may require a name always, avoiding implicit selection
 
 ## 9. CLI commands for easy developer setup
 
-Developers should not need to know metadata keys.
+CLI support should reuse existing connection commands wherever practical. The
+regular `connections add <name>` command should be able to create an
+E2E-authorized connection without requiring developers to know metadata keys.
 
-CliCore should provide reusable commands such as:
-
-```text
-connection e2e enable <connection-name>
-connection e2e disable <connection-name>
-connection e2e show [connection-name]
-connection e2e validate [connection-name]
-```
-
-For database creation:
+The only dedicated command needed in the first phase is:
 
 ```text
-connection e2e enable <connection-name> --allow-database-create
+connections add-e2e-bootstrap [--name <name>]
 ```
 
-Possible creation workflow:
-
-```text
-connection add <connection-name> ...
-connection e2e enable <connection-name> --allow-database-create
-```
-
-Or a combined command later:
-
-```text
-connection e2e add <connection-name> ...
-```
-
-The first implementation should prefer reuse of existing connection commands over duplicating profile creation.
+Enable, disable, show, validate, and other lifecycle commands are deferred to a
+later phase. The implementation should choose the smallest command and option
+design consistent with these requirements.
 
 ## 9.1 Non-interactive setup
 
@@ -554,32 +544,6 @@ This may require non-promptable options for:
 - store path;
 - E2E metadata authorization;
 - database-creation permission.
-
-## 9.2 Validation modes
-
-Recommended distinction:
-
-```text
-connection e2e validate <name>
-```
-
-Validates:
-
-- profile existence;
-- required metadata;
-- structural completeness;
-- external-value reference shape;
-- requested authorization.
-
-It does not connect.
-
-An explicit connectivity check may be:
-
-```text
-connection e2e validate <name> --connect
-```
-
-Connectivity remains opt-in.
 
 ## 10. External value references
 
