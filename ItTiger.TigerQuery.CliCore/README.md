@@ -71,7 +71,7 @@ Registering the contribution and mounting the `connections` group are separate o
 
 The one rule that matters: **create the `TigerQueryCliOptions` once** and give that same instance to `AddContribution`, to `options.TigerQuery`, and to your own command factories and services. Two instances, or one registered and a different one passed to the commands, gives you a run whose resolved path nothing reads.
 
-`options.Store` remains available for an application that selects one fixed store itself and offers no store-path option. It is mutually exclusive with `options.TigerQuery`; configuring both is rejected at `Configure` time, because a fixed store would ignore whatever the run selected.
+`options.TigerQuery` is the only way to give the group a store. There is deliberately no way to pin an already-constructed `SqlServerConnectionStore` at composition time, because such a store would ignore whatever the run selected; a group configured without `options.TigerQuery` is rejected at `Configure` time.
 
 ### Option placement and lifecycle
 

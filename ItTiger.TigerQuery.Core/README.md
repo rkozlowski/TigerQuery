@@ -11,6 +11,7 @@ Intended consumers are tool and application developers: define profiles once (se
 - `SqlServerConnectionCopyOptions` — the controlled overrides a copy may apply: target name, initial catalog, and selected metadata entries.
 - `SqlServerConnectionStorePathResolver` / `SqlServerConnectionStorePathOptions` / `SqlServerConnectionStorePathResolution` — the standard precedence for *which* store file to use: explicit path, then the `TIGERQUERY_CONNECTION_STORE_FILE` environment variable (`SqlServerConnectionStoreEnvironment`), then the application default; reports the winning source and never silently falls back.
 - `SqlServerConnectionResolver` / `SqlServerConnectionResolution` — name → connection string with clean failure messages.
+- `SqlServerE2eMetadata` / `SqlServerE2eConnectionResolver` — the reserved metadata that authorizes a profile for end-to-end testing, and the resolver that finds the bootstrap profile by name without opening a connection.
 - `SqlServerConnectionValidator` / `SqlServerConnectionValidationPolicy` — profile validation (e.g. database required vs. optional); `ValidateComplete(...)` also checks credential presence and connection-string compatibility.
 - `IConnectionPasswordProtector` — password-at-rest strategy: `DpapiConnectionPasswordProtector`, `NonPersistingConnectionPasswordProtector`, `NoOpConnectionPasswordProtector`, and `ConnectionPasswordProtector.CreateDefault()`.
 - `SqlServerDatabaseLister` — async database enumeration for a profile.
@@ -134,8 +135,9 @@ policy; no SQL connection is opened.
 
 There is deliberately no universal default store. An application picks `Shared(...)`,
 `AppSpecific(...)`, or an explicit `FilePath` **once**, constructs a single
-`SqlServerConnectionStore`, and injects that instance everywhere — including into
-`ItTiger.TigerQuery.CliCore`'s `SqlServerConnectionCommandOptions.Store`.
+`SqlServerConnectionStore`, and injects that instance everywhere. A CLI application
+built on `ItTiger.TigerQuery.CliCore` lets the run choose the path instead, through
+`TigerQueryCliOptions`, and still ends up with exactly one store per run.
 
 Every operation on that instance — `Load`, `Find`, `Exists`, `QueryByMetadata`, `Add`,
 `AddOrUpdate`, `Copy`, `Save`, `Delete` — uses the file it was constructed with. Nothing
@@ -185,6 +187,99 @@ error is a policy for the code that opens the store, not for path resolution.
 Set `EnvironmentReader` to supply the environment yourself; tests use it to cover
 precedence without mutating process-global state. Set `EnvironmentVariableName` only if
 your application must coexist with an established variable of its own.
+
+## Authorizing a connection for end-to-end testing
+
+Test infrastructure that creates databases and runs scripts needs a SQL Server to work
+against, and the dangerous way to get one is to look for it. TigerQuery does the opposite:
+
+> **Reachability is not authorization.** A connection may be used by E2E infrastructure
+> only because someone deliberately marked it, in a store the application already selected.
+
+Nothing here searches for instances. `.`, `(local)`, `localhost`, LocalDB, named
+instances, ports, services, and containers are never tried, a reachable server is never
+taken as consent, and "the first profile that works" is not a selection rule. A machine
+with no marked profile resolves to `NotConfigured`, and a test suite skips.
+
+Two reserved metadata keys carry the authorization:
+
+```text
+ittiger.e2e.enabled=true                 # this profile may be used for E2E work
+ittiger.e2e.allow-database-create=true   # …and E2E work may create databases through it
+```
+
+Use the `SqlServerE2eMetadata` constants rather than the literals. The grammar is exact,
+because profile metadata is compared ordinally:
+
+- keys match as written, lower-case — `ITTIGER.E2E.ENABLED` is a different key and grants
+  nothing;
+- values are the literal `true` and `false`. `True`, `1`, `yes`, and `" true "` are **not**
+  accepted spellings, and none of them means `false` — they are reported as malformed, so
+  a typo fails loudly instead of quietly withdrawing an authorization its author believed
+  they had written;
+- the `ittiger.` prefix is reserved for TigerQuery. Keep application metadata under your
+  own prefix; `SqlServerE2eMetadata.IsReservedKey(...)` tells you which is which.
+
+```csharp
+var profile = store.Find("tiger-sqlcmd-e2e")!;
+profile.SetMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
+profile.SetMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, SqlServerE2eMetadata.True);
+store.AddOrUpdate(profile);
+```
+
+### Resolving the bootstrap connection
+
+`SqlServerE2eConnectionResolver` turns a store into one of four explicit outcomes:
+
+```csharp
+var resolution = SqlServerE2eConnectionResolver.Resolve(store,
+    new SqlServerE2eConnectionResolutionOptions
+    {
+        ConnectionName = nameFromTheCaller,          // null when the caller named nothing
+        DefaultConnectionName = "tiger-sqlcmd-e2e",  // your application's convention
+        RequireDatabaseCreationPermission = true
+    });
+
+switch (resolution.Status)
+{
+    case SqlServerE2eResolutionStatus.Resolved:
+        UseIt(resolution.Profile!);
+        break;
+    case SqlServerE2eResolutionStatus.NotConfigured:
+        Skip();                                      // the normal state of a fresh clone
+        break;
+    default:
+        Fail(resolution.Errors);                     // Ambiguous or Invalid
+        break;
+}
+```
+
+**Identity is separate from authorization.** The keys above say what a profile is *allowed*
+to be used for; they never say which profile *is* the bootstrap connection. That is chosen
+by name — the caller's `ConnectionName`, otherwise the host's `DefaultConnectionName` —
+and by nothing else. A store holding exactly one authorized profile still resolves nothing
+when no name is supplied, and a profile is never nominated by its name alone, by its
+metadata, or by where it sits in the file.
+
+The four outcomes:
+
+| Status | When |
+| --- | --- |
+| `Resolved` | one profile matched the name, is marked `enabled=true`, holds every requested permission, and passes `ValidateComplete`. The only status carrying a `Profile`. |
+| `NotConfigured` | no name was supplied; or the host's `DefaultConnectionName` names a profile that does not exist yet. A skip, not a fault. |
+| `Ambiguous` | several profiles share the requested name, or no name was supplied and several profiles are authorized. Never settled by taking the first. |
+| `Invalid` | a name the *caller* supplied does not exist; the profile is not authorized; reserved metadata is malformed; a requested permission is missing; the profile fails validation; or the store file could not be read. |
+
+`ConnectionName` and `DefaultConnectionName` are separate because they fail differently: a
+caller who names a missing profile made a mistake and gets `Invalid`, while a host
+convention nobody has set up yet is just an unconfigured machine and gets `NotConfigured`.
+A present-but-blank name is an error rather than an absence, for the same reason a
+present-but-empty store-path variable is.
+
+Resolving reads the store and nothing else. It opens no connection, contacts no server,
+tests no credentials, and creates nothing — so calling it on every test run, including the
+runs that will skip, is safe. `Errors` and `CandidateNames` are meant to be printed and
+never carry a password or a connection string.
 
 ## Concurrent and interrupted writes
 

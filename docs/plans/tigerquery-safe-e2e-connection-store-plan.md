@@ -1,6 +1,6 @@
 # TigerQuery connection-store resolution and safe E2E foundation
 
-Status: Phases 1–3 completed; Phases 4–8 proposed
+Status: Phases 1–4 completed; Phases 5–8 proposed
 
 Scope:
 
@@ -708,9 +708,9 @@ the explicit per-invocation override.
 Bootstrap identity is separate from general E2E authorization. The regular
 `connections add <name>` command may support a flag that marks a newly created
 profile as E2E-authorized, but that does not make the profile the bootstrap
-profile. Bootstrap identity must be explicit and must not be inferred from profile
-name, authorization metadata, or store ordering. The exact flag and metadata shape
-can be chosen during implementation.
+profile. The resolver selects a bootstrap profile only by the caller's explicit name or
+the host-configured default name. Authorization metadata, a hard-coded naming convention,
+and store ordering never select one. The exact Phase 5 flag and command shape remain open.
 
 Note that `--name` here is an ordinary command option on the `add-e2e-bootstrap`
 settings type, bindable and promptable like any other. It is unrelated to the
@@ -718,16 +718,14 @@ contributed global option and must not be confused with it.
 
 ## 8. Standard E2E metadata contract
 
-TigerQuery Core should reserve and document namespaced metadata keys.
-
-Initial proposal:
+Phase 4 implemented the Core-owned reserved metadata contract:
 
 ```text
 ittiger.e2e.enabled=true
 ittiger.e2e.allow-database-create=true
 ```
 
-Possible future keys:
+Possible future TigerQuery-owned keys include:
 
 ```text
 ittiger.e2e.database-prefix=TigerQuery_E2E_
@@ -735,18 +733,29 @@ ittiger.e2e.owner=<application-or-suite>
 ittiger.e2e.purpose=<purpose>
 ```
 
-Core should expose constants rather than requiring applications to copy string literals.
-
-Conceptually:
+Core exposes constants rather than requiring applications to copy string literals:
 
 ```csharp
 public static class SqlServerE2eMetadata
 {
-    public const string Enabled =
-        "ittiger.e2e.enabled";
+    public const string ReservedKeyPrefix = "ittiger.";
+    public const string Enabled = "ittiger.e2e.enabled";
+    public const string AllowDatabaseCreation = "ittiger.e2e.allow-database-create";
+    public const string True = "true";
+    public const string False = "false";
 
-    public const string AllowDatabaseCreation =
-        "ittiger.e2e.allow-database-create";
+    public static bool IsReservedKey(string key);
+    public static SqlServerE2eFlagState ReadFlag(
+        SqlServerConnectionProfile profile,
+        string key);
+}
+
+public enum SqlServerE2eFlagState
+{
+    Absent = 0,
+    True = 1,
+    False = 2,
+    Malformed = 3
 }
 ```
 
@@ -758,13 +767,21 @@ use. That means the grammar must be pinned down rather than assumed:
 
 - **Keys are matched exactly**, lower-case as written above. `ITTIGER.E2E.ENABLED` is a
   different key and confers nothing.
-- **Values are matched by a single documented rule.** The recommendation is strict:
-  `true` and `false`, ordinal, lower-case, no trimming, no `1`/`yes`/`Y`. Any other value
-  for a reserved key is an *authorization failure with a specific error*, never a silent
-  `false`, so a typo like `True` fails loudly instead of quietly disabling E2E.
-- The `ittiger.` prefix should be documented as **reserved for TigerQuery**; applications
-  must not define their own keys under it. Whether Core actively rejects writes to
-  reserved keys from `connections add --metadata` is open question 8.
+- **Known reserved Boolean values are exact.** `true` and `false` are ordinal,
+  lower-case literals; there is no trimming and no `1`/`yes`/`Y`. Any other value for a
+  known reserved E2E Boolean flag is malformed and makes the named profile `Invalid`.
+  This applies to every known flag even when the current request does not require the
+  permission represented by that flag. For example, malformed
+  `ittiger.e2e.allow-database-create` invalidates a read-only resolution too.
+- **The entire lowercase `ittiger.*` namespace is reserved for TigerQuery-owned
+  metadata.** Applications must keep their metadata under another prefix. Generic
+  metadata commands and generic metadata-mutation APIs must reject setting or removing
+  every reserved key. Only TigerQuery-owned E2E/bootstrap operations may write those
+  keys. This is a binding constraint on Phase 5, not an open design question.
+- **Unknown reserved keys are tolerated when reading.** A resolver that encounters an
+  `ittiger.*` key it does not understand ignores it, so stores written by newer
+  TigerQuery versions remain readable. Read tolerance does not grant generic callers
+  permission to write the key.
 
 ### 8.2 Authorization semantics
 
@@ -785,23 +802,27 @@ Ordinary profiles are ignored, even when they are valid and connect successfully
 
 ### 8.3 No connection during resolution
 
-E2E profile resolution must inspect only store data and metadata.
+The completed resolver inspects only the selected store data and metadata. Its only I/O
+is reading that store; an absent store is read as empty and resolution never writes it.
 
 It must not:
 
+- discover or enumerate SQL Server instances, services, ports, LocalDB installations, or
+  containers;
+- construct a `SqlConnection`;
 - connect to SQL Server;
+- probe any server or endpoint;
 - validate server reachability;
 - test credentials;
 - inspect database permissions;
-- create a database.
+- create a database;
+- create or modify a store file, profile, directory, or metadata value.
 
 Connectivity validation should be a separate explicit operation.
 
 ## 9. E2E resolver API
 
-Core should provide a reusable E2E resolver with explicit outcomes.
-
-Conceptually:
+Phase 4 added the following reusable Core API with explicit outcomes:
 
 ```csharp
 public enum SqlServerE2eResolutionStatus
@@ -820,62 +841,68 @@ public sealed class SqlServerE2eConnectionResolution
 
     public SqlServerConnectionProfile? Profile { get; init; }
 
-    public IReadOnlyList<string> CandidateNames { get; init; }
-        = Array.Empty<string>();
+    public IReadOnlyList<string> CandidateNames { get; init; } = [];
 
-    public IReadOnlyList<string> Errors { get; init; }
-        = Array.Empty<string>();
+    public IReadOnlyList<string> Errors { get; init; } = [];
+
+    public string? RequestedName { get; init; }
 }
 ```
 
-Possible resolver:
-
 ```csharp
-public sealed class SqlServerE2eConnectionResolver
+public static class SqlServerE2eConnectionResolver
 {
-    public SqlServerE2eConnectionResolution Resolve(
+    public static SqlServerE2eConnectionResolution Resolve(
         SqlServerConnectionStore store,
         SqlServerE2eConnectionResolutionOptions? options = null);
 }
 ```
-
-Options may include:
 
 ```csharp
 public sealed class SqlServerE2eConnectionResolutionOptions
 {
     public string? ConnectionName { get; init; }
 
+    public string? DefaultConnectionName { get; init; }
+
     public bool RequireDatabaseCreationPermission { get; init; }
+
+    public SqlServerConnectionValidationPolicy? ValidationPolicy { get; init; }
 }
 ```
 
 `Errors` and `CandidateNames` are diagnostics shown to a developer fixing their setup.
 They must never contain a password, a connection string, or a resolved external value;
-see section 11.4.
+see section 11.4. Only `Resolved` carries a detached profile; every refusal carries no
+profile. `RequestedName` preserves the attempted explicit/default name, and
+`CandidateNames` reports the distinct names of E2E-enabled profiles as diagnostics, never
+as a list from which the resolver may choose. A null store is a caller error; user and
+store configuration failures are returned as status values.
 
 ### 9.1 Resolution behavior
 
-- explicit connection name:
-  - profile must exist;
-  - profile must be E2E-enabled;
-  - requested permissions must be present;
-  - otherwise return `Invalid`;
-- configured default connection name:
-  - same checks as explicit selection;
-  - a configured default that does not exist is `NotConfigured`, not `Invalid`: the host
-    named a convention, and the developer simply has not created it yet;
-- no selected name:
-  - zero enabled profiles returns `NotConfigured`;
-  - one enabled profile may resolve only if this behavior is deliberately approved;
-  - multiple enabled profiles returns `Ambiguous`;
-  - never use "first profile wins."
+The implemented selection contract is strict and name-based:
 
-The recommended initial design is the strict one: **require a name always**, from either
-the caller or the host-configured default, and never select implicitly even when exactly
-one enabled profile exists. Implicit single-profile selection can be added later without
-breaking anyone; removing it later would be a breaking safety regression. See open
-question 3.
+1. Use `ConnectionName` when the caller supplied it.
+2. Otherwise use the host's `DefaultConnectionName`.
+3. Otherwise select nothing. Zero or one authorized profile returns `NotConfigured`; one
+   authorized profile is never selected implicitly. Several authorized profiles return
+   `Ambiguous`, still without selecting one.
+
+Names are matched ordinally and case-sensitively. A present-but-blank explicit or default
+name is `Invalid` and never falls through. A missing explicitly named profile is
+`Invalid`; a missing host-default profile is `NotConfigured`, because the host convention
+has not been configured on that machine. More than one stored profile with the selected
+name is `Ambiguous`, including duplicates introduced by a hand edit or direct `Save`; the
+resolver never takes the first match.
+
+After finding exactly one named profile, the resolver requires
+`ittiger.e2e.enabled=true`, checks any requested database-creation permission, and runs
+complete structural validation. The default validation policy is `DatabaseOptional`;
+callers may request another policy. Malformed values for either known reserved E2E flag
+make the profile `Invalid` regardless of which permission the request needs. Unknown
+future `ittiger.*` keys are ignored while reading. An absent store is `NotConfigured`; an
+existing unreadable or malformed store is `Invalid`.
 
 ## 10. CLI commands for easy developer setup
 
@@ -1268,18 +1295,29 @@ Test, per section 4.3:
 
 ### 15.3 E2E metadata
 
-Test:
+Phase 4 validation completed:
 
 - ordinary profile ignored;
 - enabled profile accepted;
 - non-canonical Boolean metadata (`True`, `1`, `yes`, ` true `) rejected with a specific error rather than silently false;
+- malformed `allow-database-create` rejected even when database creation is not requested;
 - wrong-case metadata key confers nothing;
+- unknown future `ittiger.*` metadata tolerated when reading;
 - database creation requires explicit permission;
+- explicit name wins over the host default;
 - explicit name must still be authorized;
-- ambiguity never selects the first profile;
-- missing configuration returns `NotConfigured`;
+- no name never selects a sole authorized profile;
+- duplicate selected names and multiple unnamed candidates return `Ambiguous` and never
+  select the first profile;
+- no name with zero or one authorized profile returns `NotConfigured`;
+- an explicitly named absent profile returns `Invalid`;
 - a configured-but-absent default name returns `NotConfigured`, not `Invalid`;
-- resolution opens no SQL connection;
+- present-but-blank explicit/default names return `Invalid` without fallback;
+- structural validation and optional database requirements are applied;
+- an absent store returns `NotConfigured` without creating it, while an unreadable store
+  returns `Invalid`;
+- resolution performs no SQL Server discovery or probing, constructs no `SqlConnection`,
+  contacts no server, and writes nothing;
 - diagnostics contain no secrets.
 
 ### 15.4 CliCore contribution
@@ -1484,7 +1522,7 @@ unchanged.
 **Settled outcome.** Open question 13 is settled: test injection acts as the
 application-default path and does not outrank CLI or environment overrides.
 
-### Phase 4 — E2E metadata contract and resolver in Core
+### Phase 4 — E2E metadata contract and resolver in Core — **Completed**
 
 **Difficulty: High.** This is the authorization boundary. Every default must be
 fail-closed, the value grammar must be strict, and diagnostics must not leak. A weak
@@ -1492,25 +1530,41 @@ implementation here silently reintroduces "reachable means allowed."
 
 **Scope.** Core only. No CLI surface.
 
-**Tasks.**
+**Completed work.**
 
-1. `SqlServerE2eMetadata` constants and the reserved-prefix documentation.
-2. Strict key/value grammar (section 8.1) with a specific error for malformed values.
-3. `SqlServerE2eResolutionStatus`, `SqlServerE2eConnectionResolution`, resolution options,
-   and the resolver.
-4. Strict name-required behavior per section 9.1.
-5. Structural-validation integration and permission checks.
-6. Redaction review of every diagnostic string the resolver can emit.
-7. Documented no-connect guarantee, enforced by test.
+1. `SqlServerE2eMetadata`, `SqlServerE2eFlagState`, the two initial E2E flag constants,
+   strict `true`/`false` parsing, and ordinal `ittiger.*` namespace classification.
+2. `SqlServerE2eResolutionStatus`, `SqlServerE2eConnectionResolution`,
+   `SqlServerE2eConnectionResolutionOptions`, and the static resolver API shown in
+   section 9.
+3. Strict name-based selection: explicit name, then host default, with no implicit sole
+   profile selection; duplicate names and multiple unnamed candidates are `Ambiguous`.
+4. Distinct missing-name outcomes: an explicit missing name is `Invalid`; a missing host
+   default is `NotConfigured`; blank supplied names are `Invalid` and do not fall through.
+5. Exact authorization and permission checks, including rejection of every malformed
+   known E2E flag even when the current request does not require that flag.
+6. Forward-compatible reading that tolerates unknown future `ittiger.*` keys while
+   retaining the entire namespace for TigerQuery ownership.
+7. Complete structural validation with `DatabaseOptional` as the default policy and an
+   option for callers to request a different validation policy.
+8. Redacted failure diagnostics, candidate-name diagnostics, and refusal results that
+   never carry a profile.
+9. An inert resolver that loads only the selected store and performs no SQL Server
+   discovery, probing, `SqlConnection` construction, connection attempt, or write.
 
 **Depends on.** Phase 1 (store access). Phases 1–3 are already complete.
 
-**Validation.** Section 15.3, plus a test asserting no `SqlConnection` is constructed
-during resolution.
+**Validation completed.** Section 15.3, including positive-control tests that resolution
+constructs no `SqlConnection`, never contacts a reachable endpoint named by the profile,
+and leaves an absent store absent.
 
-**Risks / open decisions.** Implicit single-profile selection (open question 3);
-reserved-key write rejection (open question 8); how frameworks map `NotConfigured` to
-skip (open question 11).
+**Settled outcomes.** Open questions 3 and 15 are closed: resolution is always name-based,
+never selects a sole authorized profile implicitly, and does not use a bootstrap-identity
+metadata key. Open question 8 is closed: all `ittiger.*` keys are TigerQuery-owned,
+generic metadata write paths must reject them, and only TigerQuery-owned E2E/bootstrap
+operations may write them. Unknown reserved keys remain tolerated on reads for forward
+compatibility. Framework-specific mapping of `NotConfigured` to skip remains open
+question 11.
 
 ### Phase 5 — Bootstrap CLI surface
 
@@ -1529,18 +1583,24 @@ deferred.
    that writes nothing.
 3. E2E-authorization flag on `connections add`, writing the metadata without conferring
    bootstrap identity.
-4. Non-promptable options for every value automation needs (section 10.1).
-5. Resources for both commands in en-US and pl-PL.
-6. Host exit-kind mapping review.
+4. Enforce the binding reserved-write policy from section 8.1: generic metadata commands
+   and APIs reject every `ittiger.*` set/remove request, while these TigerQuery-owned
+   E2E/bootstrap paths may write the reserved keys they own. Read and filter paths remain
+   forward-compatible with unknown reserved keys.
+5. Non-promptable options for every value automation needs (section 10.1).
+6. Resources for both commands in en-US and pl-PL.
+7. Host exit-kind mapping review.
 
 **Depends on.** Phases 2, 3, and 4.
 
-**Validation.** Command-level tests including the no-name failure writing nothing, and a
-test proving an `--e2e`-authorized profile is not selected as the bootstrap.
+**Validation.** Command-level tests including the no-name failure writing nothing, a test
+proving an `--e2e`-authorized profile is not selected as the bootstrap, generic metadata
+set/remove rejection for known and unknown `ittiger.*` keys, and successful writes through
+the TigerQuery-owned E2E/bootstrap path.
 
-**Risks / open decisions.** Exact flag and metadata shape for the `add` path; whether
-bootstrap identity is itself a metadata key or purely a name convention resolved by the
-host default (this needs settling in this phase — see open question 15).
+**Risks / open decisions.** The exact flag and command shape for the TigerQuery-owned
+`add` path remain Phase 5 decisions. They may not weaken the reserved-write rule or add a
+bootstrap-identity metadata key; Phase 4 settled identity as strict name-based selection.
 
 ### Phase 6 — External value references
 
@@ -1633,7 +1693,6 @@ Not in scope for any numbered phase above, and not to be added opportunistically
 - `connections e2e enable | disable | show | validate` and any other E2E lifecycle
   command family;
 - a user-facing global `--default-e2e-connection-name`;
-- implicit single-profile E2E selection;
 - any TigerCli change made on TigerQuery's behalf;
 - store formats other than the existing JSON file;
 - credential providers beyond the existing protector abstraction and the external-value
@@ -1659,12 +1718,13 @@ path replaces only the application default. The contribution still applies the p
 precedence: CLI > environment > application default. No pinned test mode that outranks
 the CLI or environment is needed.
 
-**Rollout order.** Phases 1–3 are complete and deliver
+**Rollout order.** Phases 1–4 are complete and deliver
 `--tq-connection-store-file`, `TIGERQUERY_CONNECTION_STORE_FILE`, and the shared deferred
-store plumbing with no E2E metadata or lifecycle concepts. The host tests prove this
-composition and precedence through `tiger-sqlcmd`; they do not prove the complete E2E
-workflow. Phase 4 is next as a Core capability, Phase 5 adds the bootstrap command surface,
-and Phase 8 supplies the end-to-end proof after the remaining safety contracts exist.
+store plumbing, plus the Core E2E metadata/authorization contract and inert bootstrap
+resolver. The host tests prove store composition and precedence through `tiger-sqlcmd`;
+they do not prove the complete E2E workflow. Phase 5 is next and adds the bootstrap command
+surface under the binding reserved-write policy; Phase 8 supplies the end-to-end proof
+after the remaining safety contracts exist.
 
 ## 19. Open questions
 
@@ -1672,8 +1732,9 @@ and Phase 8 supplies the end-to-end proof after the remaining safety contracts e
    `TIGERQUERY_CONNECTION_STORE_FILE`.
 2. ~~Exact public API names for path resolution.~~ **Settled in Phase 1:** the names shown
    in section 4 are implemented.
-3. Whether E2E resolution may select the only enabled profile when no name is supplied,
-   or must always require a configured/explicit name. Recommended: always require a name.
+3. ~~Selection behavior when no E2E bootstrap name is supplied.~~ **Settled in Phase 4:**
+   selection requires the caller's explicit name or the host-configured default name; a
+   sole authorized profile is not selected implicitly.
 4. ~~Whether the resolution failure surface is an exception or a result type.~~ **Settled
    in Phases 1–2:** Core returns `SqlServerConnectionStorePathResolution`; CliCore maps a
    failed result to a localized `TigerCliValidationResult.Error`.
@@ -1684,8 +1745,10 @@ and Phase 8 supplies the end-to-end proof after the remaining safety contracts e
    construction remains lazy.
 7. Whether TigerCli invokes contribution callbacks on shell-completion paths, and what a
    provider should do if it does not.
-8. Whether Core actively rejects writes to the reserved `ittiger.` metadata prefix from
-   `connections add --metadata`, or merely documents it as reserved.
+8. ~~Whether generic metadata paths reject writes to reserved `ittiger.*` keys.~~
+   **Settled with Phase 4:** the entire namespace is TigerQuery-owned. Generic metadata
+   commands and APIs must reject reserved-key writes; only TigerQuery-owned E2E/bootstrap
+   operations may perform them. Unknown reserved keys remain tolerated when reading.
 9. Database ownership marker used for safe cleanup. Blocks Phase 7.
 10. Whether database lifecycle helpers belong entirely in Core or partly in
     `ItTiger.TigerQuery`.
@@ -1704,9 +1767,10 @@ and Phase 8 supplies the end-to-end proof after the remaining safety contracts e
     or request `descriptionResourceKey` overloads in a future TigerCli. This is a TigerCli
     feature gap, not a TigerQuery design choice, and must not be worked around by making
     TigerCli TigerQuery-aware.
-15. Whether bootstrap identity is recorded as its own metadata key or exists only as
-    "the profile whose name matches the host-configured default". The former survives
-    renames and is inspectable; the latter is simpler. Must be settled in Phase 5.
+15. ~~Whether bootstrap identity is recorded as its own metadata key.~~ **Settled in
+    Phase 4:** it is not. The resolver selects only the caller's explicit name or the
+    host-configured default name; authorization metadata expresses permission, not
+    bootstrap identity.
 16. External-value JSON contract and compatibility strategy.
 17. Supported keyed-file formats in the first version.
 18. Full connection-string versus field-level precedence, if the mutual-exclusion
@@ -1732,7 +1796,13 @@ The design is successful when:
 - local developers need no environment variables;
 - CI/CD can use environment variables and mounted files;
 - E2E profiles require explicit TigerQuery metadata, matched exactly;
-- bootstrap identity is never inferred from name, authorization, or ordering alone;
+- bootstrap selection uses only an explicit caller name or host default name and never
+  infers identity from sole authorization or store ordering;
+- malformed known reserved E2E flags invalidate the profile even when the current request
+  does not require the affected permission;
+- the entire `ittiger.*` namespace is TigerQuery-owned; generic metadata writes reject it,
+  TigerQuery-owned E2E/bootstrap operations are its only writers, and unknown reserved
+  keys are tolerated when reading;
 - no component discovers SQL Server;
 - no unconfigured test run opens a SQL connection or touches the developer's real store;
 - library, tool, and mixed modes use identical contracts;

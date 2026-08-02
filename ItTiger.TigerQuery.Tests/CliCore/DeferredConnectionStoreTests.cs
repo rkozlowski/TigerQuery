@@ -178,22 +178,7 @@ public sealed class DeferredConnectionStoreTests : IDisposable
     }
 
     [Fact]
-    public void ConfiguringBothTheEagerAndDeferredFormsIsRejected()
-    {
-        var options = new TigerQueryCliOptions { DefaultConnectionStoreFile = _default.FilePath };
-
-        var error = Assert.Throws<InvalidOperationException>(() =>
-            BuildGroup(configure =>
-            {
-                configure.Store = Open(_explicitPath.FilePath);
-                configure.TigerQuery = options;
-            }));
-
-        Assert.Contains("not both", error.Message);
-    }
-
-    [Fact]
-    public void ConfiguringNeitherFormIsRejected()
+    public void ConfiguringNoStoreSelectionIsRejected()
     {
         var error = Assert.Throws<InvalidOperationException>(() => BuildGroup(_ => { }));
 
@@ -201,18 +186,18 @@ public sealed class DeferredConnectionStoreTests : IDisposable
     }
 
     [Fact]
-    public void TheEagerFormStillMountsTheGroupForAHostWithNoContribution()
+    public void TheSharedOptionsAreTheOnlyStoreInjectionPath()
     {
-        var store = Open(_explicitPath.FilePath);
+        // The eager `options.Store` form is gone, so a host cannot pin a store that would
+        // ignore whatever the run selected. What remains is one settable store source.
+        var storeProperties = typeof(SqlServerConnectionCommandOptions)
+            .GetProperties()
+            .Where(property => property.PropertyType == typeof(SqlServerConnectionStore))
+            .ToList();
 
-        var app = TigerCliApp.CreateBuilder()
-            .SetApplicationName("tq-eager-test")
-            .UseAppResources(SqlServerConnectionCommands.CreateAppResources())
-            .AddCommandGroup("connections", group =>
-                SqlServerConnectionCommands.Configure(group, options => options.Store = store))
-            .Build();
-
-        Assert.NotNull(app);
+        Assert.Empty(storeProperties);
+        Assert.NotNull(typeof(SqlServerConnectionCommandOptions).GetProperty(
+            nameof(SqlServerConnectionCommandOptions.TigerQuery)));
     }
 
     // ---- Helpers ----

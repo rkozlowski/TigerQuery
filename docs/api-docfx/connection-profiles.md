@@ -51,10 +51,9 @@ TigerQuery deliberately defines no universal default store. The host application
 chooses `Shared(...)`, `AppSpecific(...)`, or an explicit `FilePath` once,
 constructs a single
 [SqlServerConnectionStore](xref:ItTiger.TigerQuery.Core.SqlServerConnectionStore),
-and injects that same instance everywhere it is needed — including into
-`SqlServerConnectionCommandOptions.Store` for the reusable CLI commands. A CLI
-application that instead lets each run pick its own store uses the deferred form
-described below.
+and injects that same instance everywhere it is needed. A CLI application built
+on `ItTiger.TigerQuery.CliCore` instead lets each run pick its own store, using
+the deferred form described below.
 
 Every operation on that instance uses the file it was constructed with. Lookup,
 metadata filtering, copy, add, update, save, and delete never probe a default

@@ -82,10 +82,11 @@ lazily on first use of `TigerQueryCliOptions.Store` and then reused for the rest
 of the run, so the commands, the providers, the `edit` loader, and host services
 all share one instance — one file, one lock, one mutation gate.
 
-`options.Store` remains available for an application that selects one fixed
-store itself and offers no store-path option. It is mutually exclusive with
-`options.TigerQuery`; configuring both is rejected when the group is configured,
-because a fixed store would ignore whatever the run selected. See
+`options.TigerQuery` is the only way to give the group a store. There is
+deliberately no composition-time property that pins an already-constructed
+`SqlServerConnectionStore`, because such a store would ignore whatever the run
+selected; a group configured without it is rejected when the group is
+configured. See
 [Selecting one store](connection-profiles.md#selecting-one-store).
 
 ## Localization and metadata
