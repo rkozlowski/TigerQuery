@@ -42,7 +42,10 @@ public static class SqlServerConnectionCommands
             [.. appResources, SqlServerConnectionCommandStrings.ResourceManager]);
     }
 
-    /// <summary>Mounts the connection providers and list/show/add/edit/delete commands.</summary>
+    /// <summary>
+    /// Mounts the connection providers and list/show/add/add-e2e-bootstrap/edit/delete
+    /// commands.
+    /// </summary>
     /// <param name="group">The TigerCli command group to configure.</param>
     /// <param name="configure">
     /// A callback that supplies the shared
@@ -52,9 +55,11 @@ public static class SqlServerConnectionCommands
     /// <remarks>
     /// <para>
     /// Configuration enables prompting for the group, registers saved-connection
-    /// and live-database providers, and adds the five command handlers. Add and edit
-    /// expose repeatable metadata mutations; list exposes ordinal, case-sensitive
-    /// metadata filters combined with AND semantics.
+    /// and live-database providers, and adds the six command handlers. Add and edit
+    /// expose repeatable generic metadata mutations; list exposes ordinal,
+    /// case-sensitive metadata filters combined with AND semantics. Generic mutations
+    /// reject TigerQuery's reserved namespace, while the add-only E2E switches and
+    /// bootstrap command use the TigerQuery-owned authorization path.
     /// </para>
     /// <para>
     /// Edit begins with the existing profile and preserves application-owned
@@ -91,7 +96,8 @@ public static class SqlServerConnectionCommands
 
         var context = new SqlServerConnectionCommandContext(
             CreateStoreAccessor(options),
-            options.ValidationPolicy ?? throw new InvalidOperationException("A validation policy is required."));
+            options.ValidationPolicy ?? throw new InvalidOperationException("A validation policy is required."),
+            options.TigerQuery!.DefaultE2eBootstrapConnectionName);
 
         group.SetPromptMode(TigerCliPromptMode.Yes);
 
@@ -102,7 +108,7 @@ public static class SqlServerConnectionCommands
         // Database selection is provider-backed and prompted last: it depends on the
         // options needed to open a server connection so the effective server/security
         // settings are known before databases are enumerated.
-        group.AddProvider<SqlServerConnectionSettings, string>(
+        group.AddProvider<SqlServerConnectionInputSettings, string>(
             "databases",
             async (settings, ctx) =>
             {
@@ -138,6 +144,12 @@ public static class SqlServerConnectionCommands
             () => new AddSqlServerConnectionCommand(context),
             "Add a SQL Server connection.",
             descriptionResourceKey: "Cmd_Connections_Add_Description")
+            .SetPromptMode(TigerCliPromptMode.RequiredOnly);
+        group.AddCommand(
+            "add-e2e-bootstrap",
+            () => new AddE2eBootstrapSqlServerConnectionCommand(context),
+            "Add an E2E-authorized bootstrap SQL Server connection.",
+            descriptionResourceKey: "Cmd_Connections_AddE2eBootstrap_Description")
             .SetPromptMode(TigerCliPromptMode.RequiredOnly);
         group.AddCommand(
             "edit",

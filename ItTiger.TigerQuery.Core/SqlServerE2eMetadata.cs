@@ -37,9 +37,9 @@ public static class SqlServerE2eMetadata
 {
     /// <summary>The metadata namespace reserved for TigerQuery: <c>ittiger.</c>.</summary>
     /// <remarks>
-    /// Reserved by documentation and by <see cref="IsReservedKey"/>. Writing to it is not
-    /// blocked by the profile or the store, which stay unopinionated about metadata; a
-    /// host that wants to refuse such writes checks <see cref="IsReservedKey"/> itself.
+    /// Reserved by documentation and by <see cref="IsReservedKey"/>. Generic profile,
+    /// store-copy, and CLI metadata mutations reject writes to it; TigerQuery-owned
+    /// operations such as <see cref="AuthorizeNewProfile"/> are its only writers.
     /// </remarks>
     public const string ReservedKeyPrefix = "ittiger.";
 
@@ -61,6 +61,59 @@ public static class SqlServerE2eMetadata
 
     /// <summary>The only accepted negative value for a reserved Boolean key.</summary>
     public const string False = "false";
+
+    /// <summary>
+    /// Adds the canonical TigerQuery E2E authorization metadata to a newly created
+    /// connection profile.
+    /// </summary>
+    /// <param name="profile">The profile being created.</param>
+    /// <param name="allowDatabaseCreation">
+    /// Whether E2E infrastructure is also authorized to create databases through the
+    /// profile.
+    /// </param>
+    /// <remarks>
+    /// This is the TigerQuery-owned write path for the reserved keys. It records
+    /// authorization only; it does not identify the profile as a bootstrap profile,
+    /// persist it, or open a SQL connection.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="profile"/> is <see langword="null"/>.
+    /// </exception>
+    public static void AuthorizeNewProfile(
+        SqlServerConnectionProfile profile,
+        bool allowDatabaseCreation = false)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        profile.SetReservedMetadata(Enabled, True);
+        if (allowDatabaseCreation)
+            profile.SetReservedMetadata(AllowDatabaseCreation, True);
+    }
+
+    /// <summary>
+    /// Preserves TigerQuery-owned metadata while rebuilding an existing profile through
+    /// an ordinary edit path.
+    /// </summary>
+    /// <param name="source">The existing profile.</param>
+    /// <param name="destination">The replacement profile.</param>
+    /// <remarks>
+    /// Every current or future reserved key is copied verbatim. This supports
+    /// forward-compatible edits without letting generic metadata mutation APIs set or
+    /// remove the namespace.
+    /// </remarks>
+    public static void PreserveReservedMetadata(
+        SqlServerConnectionProfile source,
+        SqlServerConnectionProfile destination)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+
+        foreach (var (key, value) in source.Metadata)
+        {
+            if (IsReservedKey(key))
+                destination.SetReservedMetadata(key, value);
+        }
+    }
 
     /// <summary>Determines whether a metadata key falls in TigerQuery's reserved namespace.</summary>
     /// <param name="key">The key to test.</param>

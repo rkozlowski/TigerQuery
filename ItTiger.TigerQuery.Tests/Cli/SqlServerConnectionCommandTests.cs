@@ -56,7 +56,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
             Authentication = AuthenticationType.Integrated,
             Encrypt = EncryptOption.Mandatory
         };
-        profile.SetMetadata("ittiger.tigerwrap.role", "automated-test-host");
+        profile.SetMetadata("app.tigerwrap.role", "automated-test-host");
         _temp.Store.Add(profile);
 
         var edit = await RunAsync(
@@ -72,18 +72,18 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         Assert.Null(edited.Database);
         Assert.Equal(
             "automated-test-host",
-            edited.Metadata["ittiger.tigerwrap.role"]);
+            edited.Metadata["app.tigerwrap.role"]);
 
         var resolution = SqlServerConnectionResolver.Resolve(_temp.Store, "automation-host");
         Assert.True(resolution.IsSuccess, resolution.ErrorMessage);
         Assert.DoesNotContain("Initial Catalog", resolution.ConnectionString);
-        Assert.DoesNotContain("ittiger.tigerwrap.role", resolution.ConnectionString);
+        Assert.DoesNotContain("app.tigerwrap.role", resolution.ConnectionString);
 
         _temp.Store.AddOrUpdate(edited);
         var resaved = _temp.Store.Find("automation-host")!;
         Assert.Equal(
             "automated-test-host",
-            resaved.Metadata["ittiger.tigerwrap.role"]);
+            resaved.Metadata["app.tigerwrap.role"]);
     }
 
     [Fact]

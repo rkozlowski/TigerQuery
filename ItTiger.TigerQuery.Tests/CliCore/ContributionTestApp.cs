@@ -52,11 +52,13 @@ internal sealed class ContributionTestApp
     public static ContributionTestApp Create(
         string defaultStoreFile,
         Func<string, string?>? environmentReader = null,
-        Func<IConnectionPasswordProtector>? passwordProtectorFactory = null)
+        Func<IConnectionPasswordProtector>? passwordProtectorFactory = null,
+        string? defaultE2eBootstrapConnectionName = null)
     {
         var options = new TigerQueryCliOptions
         {
             DefaultConnectionStoreFile = defaultStoreFile,
+            DefaultE2eBootstrapConnectionName = defaultE2eBootstrapConnectionName,
             EnvironmentReader = environmentReader ?? Unset,
             PasswordProtectorFactory = passwordProtectorFactory
         };

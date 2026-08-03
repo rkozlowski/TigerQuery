@@ -30,7 +30,8 @@ using ItTiger.TigerQuery.Core;
 var tigerQuery = new TigerQueryCliContribution(new TigerQueryCliOptions
 {
     DefaultConnectionStoreFile =
-        SqlServerConnectionStoreOptions.AppSpecific("YourVendor", "your-tool").FilePath
+        SqlServerConnectionStoreOptions.AppSpecific("YourVendor", "your-tool").FilePath,
+    DefaultE2eBootstrapConnectionName = "your-tool-e2e"
 });
 
 var app = TigerCliApp.CreateBuilder()
@@ -98,4 +99,38 @@ pl-PL connection-command strings.
 The add and edit commands accept repeatable metadata mutations. The list
 command accepts repeatable value, key-present, and key-absent filters; every
 filter must match. Metadata is application-owned, case-sensitive, excluded from
-connection strings, and must not contain secrets.
+connection strings, and must not contain secrets. Generic set/remove operations
+reject the lowercase `ittiger.*` namespace because it is reserved for
+TigerQuery-owned metadata; list filters and reads remain forward-compatible with
+unknown reserved keys.
+
+## Creating E2E-authorized profiles
+
+The regular add command can authorize a new profile for E2E use without making
+it the host's bootstrap profile:
+
+```console
+your-tool connections add test-server --server sql01 --e2e
+your-tool connections add test-creator --server sql01 --e2e --allow-database-create
+```
+
+`--e2e` writes exactly `ittiger.e2e.enabled=true`.
+`--allow-database-create` additionally writes exactly
+`ittiger.e2e.allow-database-create=true` and is rejected unless `--e2e` is also
+present. Both are non-promptable switches. Authorization is not bootstrap
+identity: a resolver never selects one of these profiles merely because it is
+the only authorized profile.
+
+The dedicated bootstrap creation command is:
+
+```console
+your-tool connections add-e2e-bootstrap [--name <name>] --server <server>
+```
+
+An explicit `--name` wins. Otherwise CliCore uses the host's
+`DefaultE2eBootstrapConnectionName`. If neither supplies a usable name, the
+command returns a validation error before opening or creating the selected
+store, its directory, or a partial profile. The command always writes the E2E
+authorization flag and accepts the same connection, prompting, validation, and
+persistence options as regular add; `--allow-database-create` remains a
+separate explicit permission.

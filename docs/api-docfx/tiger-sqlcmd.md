@@ -1,4 +1,64 @@
-# `tiger-sqlcmd` output routing
+# `tiger-sqlcmd`
+
+## One-time E2E connection setup
+
+Create the default bootstrap profile with Integrated authentication:
+
+```console
+tiger-sqlcmd connections add-e2e-bootstrap --server sql01
+```
+
+With no `--name`, `tiger-sqlcmd` uses its host-configured default name,
+`tiger-sqlcmd-e2e`. Override it for one invocation when needed:
+
+```console
+tiger-sqlcmd connections add-e2e-bootstrap --name team-bootstrap --server sql01
+```
+
+Add `--allow-database-create` only when test infrastructure is explicitly
+allowed to create databases through that profile. This command creates a
+connection profile only; it never creates or deletes a database.
+
+To create an E2E-authorized profile that is not the bootstrap identity, reuse
+regular add:
+
+```console
+tiger-sqlcmd connections add worker-e2e --server sql01 --e2e
+```
+
+For a non-interactive build agent using Integrated authentication, select its
+writable store explicitly and supply all connection inputs:
+
+```console
+$env:TIGERQUERY_CONNECTION_STORE_FILE = 'C:\agent\state\connections.json'
+tiger-sqlcmd connections add-e2e-bootstrap --non-interactive --server sql01
+```
+
+The store path may instead be supplied as
+`--tq-connection-store-file <path>`. Like every TigerCli option, place it after
+the command path and required positional arguments, for example:
+
+```console
+tiger-sqlcmd connections add worker-e2e --server sql01 --e2e --tq-connection-store-file C:\state\connections.json
+tiger-sqlcmd connections add-e2e-bootstrap --server sql01 --tq-connection-store-file=C:\state\connections.json
+```
+
+Use the `--name=value` or `--tq-connection-store-file=value` form when an option
+value begins with `-`. CLI store selection outranks
+`TIGERQUERY_CONNECTION_STORE_FILE`, which outranks the application default.
+
+> [!WARNING]
+> SQL Server access is not E2E authorization. TigerQuery does not probe local
+> instances, localhost, LocalDB, services, containers, or other profiles. A
+> bootstrap must be selected by its explicit/default name and carry the exact
+> `ittiger.e2e.enabled=true` metadata written by the commands above.
+
+> [!IMPORTANT]
+> On Windows, protected passwords use current-user/current-machine DPAPI. Copying
+> a store file to CI or a container does not make those passwords decryptable
+> there. Phase 5 does not add external secret references.
+
+## Output routing
 
 The advanced `tiger-sqlcmd run` command can send result sets and SQL messages
 to files through TigerQuery's output-routing engine. Routing is opt-in. With no

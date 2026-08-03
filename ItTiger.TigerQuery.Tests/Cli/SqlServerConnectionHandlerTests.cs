@@ -36,7 +36,7 @@ public sealed class SqlServerConnectionHandlerTests : IDisposable
     public async Task MetadataValidation_ReturnsPortableValidationErrorKind()
     {
         var addResult = await new AddSqlServerConnectionCommand(_context)
-            .ExecuteAsync(new SqlServerConnectionSettings
+            .ExecuteAsync(new AddSqlServerConnectionSettings
             {
                 Name = "demo",
                 Server = "srv",
@@ -61,7 +61,7 @@ public sealed class SqlServerConnectionHandlerTests : IDisposable
 
         var success = await handler.ExecuteAsync(ValidSettings());
         var duplicate = await handler.ExecuteAsync(ValidSettings());
-        var invalid = await handler.ExecuteAsync(new SqlServerConnectionSettings
+        var invalid = await handler.ExecuteAsync(new AddSqlServerConnectionSettings
         {
             Name = "invalid",
             Server = "srv",
@@ -131,7 +131,7 @@ public sealed class SqlServerConnectionHandlerTests : IDisposable
         Assert.Equal(TigerCliExitKind.NotFound, missing);
     }
 
-    private static SqlServerConnectionSettings ValidSettings() => new()
+    private static AddSqlServerConnectionSettings ValidSettings() => new()
     {
         Name = "demo",
         Server = "srv"

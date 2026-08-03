@@ -97,7 +97,7 @@ public sealed class SqlServerE2eConnectionResolverTests
     {
         using var temp = new TempStore();
         var profile = Profile(Bootstrap);
-        profile.SetMetadata(SqlServerE2eMetadata.Enabled, value);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, value);
         temp.Seed(profile);
 
         var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
@@ -136,7 +136,7 @@ public sealed class SqlServerE2eConnectionResolverTests
     {
         using var temp = new TempStore();
         var profile = Enabled(Profile(Bootstrap));
-        profile.SetMetadata("ittiger.e2e.something-from-a-later-release", "whatever");
+        profile.SetReservedMetadata("ittiger.e2e.something-from-a-later-release", "whatever");
         temp.Seed(profile);
 
         // Forward compatibility: a store written by a newer TigerQuery must still resolve.
@@ -175,7 +175,7 @@ public sealed class SqlServerE2eConnectionResolverTests
     {
         using var temp = new TempStore();
         var profile = Enabled(Profile(Bootstrap));
-        profile.SetMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, SqlServerE2eMetadata.True);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, SqlServerE2eMetadata.True);
         temp.Seed(profile);
 
         var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
@@ -192,7 +192,7 @@ public sealed class SqlServerE2eConnectionResolverTests
     {
         using var temp = new TempStore();
         var profile = Enabled(Profile(Bootstrap));
-        profile.SetMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, SqlServerE2eMetadata.False);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, SqlServerE2eMetadata.False);
         temp.Seed(profile);
 
         var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
@@ -209,7 +209,7 @@ public sealed class SqlServerE2eConnectionResolverTests
     {
         using var temp = new TempStore();
         var profile = Enabled(Profile(Bootstrap));
-        profile.SetMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, "True");
+        profile.SetReservedMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, "True");
         temp.Seed(profile);
 
         var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
@@ -466,7 +466,7 @@ public sealed class SqlServerE2eConnectionResolverTests
         // The password value in a reserved metadata slot is contrived, but it is the one
         // path by which caller-controlled text reaches a diagnostic, so it is the path the
         // redaction has to survive.
-        profile.SetMetadata(SqlServerE2eMetadata.Enabled, Secret);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, Secret);
         temp.Seed(profile);
 
         var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
@@ -547,7 +547,7 @@ public sealed class SqlServerE2eConnectionResolverTests
 
         var profile = Enabled(Profile(Bootstrap));
         profile.Server = listener.Endpoint;
-        profile.SetMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, SqlServerE2eMetadata.True);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, SqlServerE2eMetadata.True);
         temp.Seed(profile);
 
         var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
@@ -614,7 +614,7 @@ public sealed class SqlServerE2eConnectionResolverTests
 
     private static SqlServerConnectionProfile Enabled(SqlServerConnectionProfile profile)
     {
-        profile.SetMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
         return profile;
     }
 

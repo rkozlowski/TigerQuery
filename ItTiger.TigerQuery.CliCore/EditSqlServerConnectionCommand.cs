@@ -44,7 +44,10 @@ internal sealed class EditSqlServerConnectionCommand(SqlServerConnectionCommandC
             return Task.FromResult(TigerCliExitKind.NotFound);
         }
 
-        var profile = SqlServerConnectionSettingsMapper.ToProfile(settings, existing);
+        var profile = SqlServerConnectionSettingsMapper.ToProfile(
+            settings,
+            settings.Name,
+            existing);
 
         var errors = SqlServerConnectionWriter.Validate(profile, context.ValidationPolicy);
         if (SqlServerConnectionWriter.TryReportErrors(settings, errors))

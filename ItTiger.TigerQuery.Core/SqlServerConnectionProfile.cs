@@ -123,7 +123,9 @@ public sealed class SqlServerConnectionProfile
     /// <param name="key">The non-empty, case-sensitive key.</param>
     /// <param name="value">The opaque string value; an empty value is permitted.</param>
     /// <remarks>
-    /// Keys and values are not trimmed or normalized. Call
+    /// Keys and values are not trimmed or normalized. Keys in TigerQuery's reserved
+    /// <c>ittiger.*</c> namespace are rejected; only TigerQuery-owned operations may
+    /// write them. Call
     /// <see cref="SqlServerConnectionStore.AddOrUpdate"/> to persist the change.
     /// </remarks>
     /// <exception cref="ArgumentException">
@@ -137,20 +139,49 @@ public sealed class SqlServerConnectionProfile
         ArgumentException.ThrowIfNullOrEmpty(key);
         ArgumentNullException.ThrowIfNull(value);
 
+        ThrowIfReservedMetadataKey(key);
+
         metadata[key] = value;
     }
 
     /// <summary>Removes one application-owned metadata value, if present.</summary>
     /// <param name="key">The non-empty, case-sensitive key.</param>
     /// <returns><see langword="true"/> when a value was removed.</returns>
-    /// <remarks>Call <see cref="SqlServerConnectionStore.AddOrUpdate"/> to persist the change.</remarks>
+    /// <remarks>
+    /// Keys in TigerQuery's reserved <c>ittiger.*</c> namespace are rejected; only
+    /// TigerQuery-owned operations may remove them. Call
+    /// <see cref="SqlServerConnectionStore.AddOrUpdate"/> to persist the change.
+    /// </remarks>
     /// <exception cref="ArgumentException">
     /// <paramref name="key"/> is null or empty. The parameter name is <c>key</c>.
     /// </exception>
     public bool RemoveMetadata(string key)
     {
         ArgumentException.ThrowIfNullOrEmpty(key);
+        ThrowIfReservedMetadataKey(key);
         return metadata.Remove(key);
+    }
+
+    /// <summary>Writes metadata on behalf of a TigerQuery-owned operation.</summary>
+    internal void SetReservedMetadata(string key, string value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentNullException.ThrowIfNull(value);
+
+        if (!SqlServerE2eMetadata.IsReservedKey(key))
+            throw new ArgumentException("A TigerQuery-owned metadata key is required.", nameof(key));
+
+        metadata[key] = value;
+    }
+
+    private static void ThrowIfReservedMetadataKey(string key)
+    {
+        if (SqlServerE2eMetadata.IsReservedKey(key))
+        {
+            throw new ArgumentException(
+                $"Metadata keys beginning with '{SqlServerE2eMetadata.ReservedKeyPrefix}' are reserved for TigerQuery.",
+                nameof(key));
+        }
     }
 
     // The serialization proxy keeps the public view read-only, omits empty metadata,

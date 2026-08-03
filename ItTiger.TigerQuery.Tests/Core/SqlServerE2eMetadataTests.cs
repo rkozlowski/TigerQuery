@@ -33,7 +33,7 @@ public sealed class SqlServerE2eMetadataTests
     public void TheCanonicalValuesAreAccepted(string value, SqlServerE2eFlagState expected)
     {
         var profile = Profile();
-        profile.SetMetadata(SqlServerE2eMetadata.Enabled, value);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, value);
 
         Assert.Equal(expected, SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.Enabled));
     }
@@ -54,7 +54,7 @@ public sealed class SqlServerE2eMetadataTests
     public void EveryOtherSpellingIsMalformedRatherThanFalse(string value)
     {
         var profile = Profile();
-        profile.SetMetadata(SqlServerE2eMetadata.Enabled, value);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, value);
 
         // The distinction is the whole point: a typo must fail loudly instead of quietly
         // revoking an authorization its author believed they had written.
@@ -71,7 +71,10 @@ public sealed class SqlServerE2eMetadataTests
     public void AKeyThatDiffersInCaseOrSpacingConfersNothing(string key)
     {
         var profile = Profile();
-        profile.SetMetadata(key, SqlServerE2eMetadata.True);
+        if (SqlServerE2eMetadata.IsReservedKey(key))
+            profile.SetReservedMetadata(key, SqlServerE2eMetadata.True);
+        else
+            profile.SetMetadata(key, SqlServerE2eMetadata.True);
 
         Assert.Equal(
             SqlServerE2eFlagState.Absent,
@@ -82,7 +85,7 @@ public sealed class SqlServerE2eMetadataTests
     public void TheTwoReservedFlagsAreReadIndependently()
     {
         var profile = Profile();
-        profile.SetMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
 
         Assert.Equal(
             SqlServerE2eFlagState.True,
@@ -90,6 +93,36 @@ public sealed class SqlServerE2eMetadataTests
         Assert.Equal(
             SqlServerE2eFlagState.Absent,
             SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.AllowDatabaseCreation));
+    }
+
+    [Theory]
+    [InlineData(SqlServerE2eMetadata.Enabled)]
+    [InlineData("ittiger.future.setting")]
+    public void GenericProfileMutationsRejectKnownAndUnknownReservedKeys(string key)
+    {
+        var profile = Profile();
+        profile.SetReservedMetadata(key, "existing");
+
+        var setError = Assert.Throws<ArgumentException>(() => profile.SetMetadata(key, "new"));
+        var removeError = Assert.Throws<ArgumentException>(() => profile.RemoveMetadata(key));
+
+        Assert.Contains("reserved", setError.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reserved", removeError.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("existing", profile.Metadata[key]);
+    }
+
+    [Fact]
+    public void TigerQueryOwnedAuthorizationWritesOnlyTheCanonicalPermissionKeys()
+    {
+        var profile = Profile();
+
+        SqlServerE2eMetadata.AuthorizeNewProfile(profile, allowDatabaseCreation: true);
+
+        Assert.Equal(2, profile.Metadata.Count);
+        Assert.Equal(SqlServerE2eMetadata.True, profile.Metadata[SqlServerE2eMetadata.Enabled]);
+        Assert.Equal(
+            SqlServerE2eMetadata.True,
+            profile.Metadata[SqlServerE2eMetadata.AllowDatabaseCreation]);
     }
 
     [Theory]

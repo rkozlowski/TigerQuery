@@ -1,12 +1,30 @@
 using ItTiger.TigerCli.Commands;
 using ItTiger.TigerCli.Terminal;
+using ItTiger.TigerQuery.Core;
 
 namespace ItTiger.TigerQuery.CliCore;
 
 internal sealed class AddSqlServerConnectionCommand(SqlServerConnectionCommandContext context)
-    : TigerCliAsyncCommandHandler<SqlServerConnectionSettings, TigerCliExitKind>
+    : TigerCliAsyncCommandHandler<AddSqlServerConnectionSettings, TigerCliExitKind>
 {
-    public override Task<TigerCliExitKind> ExecuteAsync(SqlServerConnectionSettings settings)
+    public override Task<TigerCliExitKind> ExecuteAsync(AddSqlServerConnectionSettings settings) =>
+        SqlServerConnectionCreator.ExecuteAsync(
+            settings,
+            settings.Name,
+            context,
+            authorizeE2e: settings.E2e,
+            allowDatabaseCreation: settings.AllowDatabaseCreation);
+}
+
+/// <summary>Shared creation, validation, and persistence path for both add commands.</summary>
+internal static class SqlServerConnectionCreator
+{
+    public static Task<TigerCliExitKind> ExecuteAsync(
+        SqlServerConnectionInputSettings settings,
+        string name,
+        SqlServerConnectionCommandContext context,
+        bool authorizeE2e,
+        bool allowDatabaseCreation)
     {
         var metadataError = SqlServerConnectionMetadataOptions.ValidateMutations(
             settings.Metadata,
@@ -17,16 +35,26 @@ internal sealed class AddSqlServerConnectionCommand(SqlServerConnectionCommandCo
             return Task.FromResult(TigerCliExitKind.ValidationError);
         }
 
-        if (context.Store.Exists(settings.Name))
+        if (context.Store.Exists(name))
         {
             TigerConsole.MarkupErrorLine(settings.E(
                 "SQL Server connection [Value]{0}[/] already exists. Use [Value]edit[/] to change it.",
-                settings.Name));
+                name));
 
             return Task.FromResult(TigerCliExitKind.AlreadyExists);
         }
 
-        var profile = SqlServerConnectionSettingsMapper.ToProfile(settings, existing: null);
+        var profile = SqlServerConnectionSettingsMapper.ToProfile(
+            settings,
+            name,
+            existing: null);
+
+        if (authorizeE2e)
+        {
+            SqlServerE2eMetadata.AuthorizeNewProfile(
+                profile,
+                allowDatabaseCreation);
+        }
 
         var errors = SqlServerConnectionWriter.Validate(profile, context.ValidationPolicy);
         if (SqlServerConnectionWriter.TryReportErrors(settings, errors))

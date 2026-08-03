@@ -61,6 +61,9 @@ public sealed class SqlServerConnectionCopyOptions
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentException("Metadata keys must not be empty.", parameterName);
 
+            if (SqlServerE2eMetadata.IsReservedKey(key))
+                throw new ArgumentException(ReservedMetadataMessage, parameterName);
+
             if (value is null)
                 throw new ArgumentException(
                     $"The metadata value for key '{key}' must not be null.",
@@ -73,6 +76,9 @@ public sealed class SqlServerConnectionCopyOptions
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentException("Metadata keys must not be empty.", parameterName);
 
+            if (SqlServerE2eMetadata.IsReservedKey(key))
+                throw new ArgumentException(ReservedMetadataMessage, parameterName);
+
             removals.Add(key);
         }
 
@@ -84,4 +90,7 @@ public sealed class SqlServerConnectionCopyOptions
                     parameterName);
         }
     }
+
+    private const string ReservedMetadataMessage =
+        "Metadata keys beginning with 'ittiger.' are reserved for TigerQuery.";
 }

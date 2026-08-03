@@ -55,11 +55,15 @@
   <data name="Cmd_Connections_List_Description" xml:space="preserve"><value>List saved SQL Server connections.</value></data>
   <data name="Cmd_Connections_Show_Description" xml:space="preserve"><value>Show a saved SQL Server connection.</value></data>
   <data name="Cmd_Connections_Add_Description" xml:space="preserve"><value>Add a SQL Server connection.</value></data>
+  <data name="Cmd_Connections_AddE2eBootstrap_Description" xml:space="preserve"><value>Add an E2E-authorized bootstrap SQL Server connection.</value></data>
   <data name="Cmd_Connections_Edit_Description" xml:space="preserve"><value>Edit a SQL Server connection.</value></data>
   <data name="Cmd_Connections_Delete_Description" xml:space="preserve"><value>Delete a saved SQL Server connection.</value></data>
 
   <!-- ── Connection settings metadata (identifier keys) ─────────────── -->
   <data name="Arg_Connection_Name_Description" xml:space="preserve"><value>Connection name.</value></data>
+  <data name="Opt_Connection_BootstrapName_Description" xml:space="preserve"><value>Bootstrap connection name; overrides the host default.</value></data>
+  <data name="Opt_Connection_E2e_Description" xml:space="preserve"><value>Authorize this profile for TigerQuery E2E use.</value></data>
+  <data name="Opt_Connection_AllowDatabaseCreate_Description" xml:space="preserve"><value>Authorize E2E database creation through this profile.</value></data>
   <data name="Opt_Connection_Server_Description" xml:space="preserve"><value>SQL Server host or instance.</value></data>
   <data name="Opt_Connection_Authentication_Description" xml:space="preserve"><value>Authentication mode.</value></data>
   <data name="Opt_Connection_Username_Description" xml:space="preserve"><value>SQL login username.</value></data>
@@ -136,6 +140,9 @@
   <data name="Metadata keys must not be empty." xml:space="preserve"><value>Metadata keys must not be empty.</value></data>
   <data name="A metadata key cannot be set more than once in the same command." xml:space="preserve"><value>A metadata key cannot be set more than once in the same command.</value></data>
   <data name="The same metadata key cannot be both set and removed in one command." xml:space="preserve"><value>The same metadata key cannot be both set and removed in one command.</value></data>
+  <data name="Metadata keys beginning with 'ittiger.' are reserved for TigerQuery." xml:space="preserve"><value>Metadata keys beginning with 'ittiger.' are reserved for TigerQuery.</value></data>
+  <data name="--allow-database-create requires --e2e." xml:space="preserve"><value>--allow-database-create requires --e2e.</value></data>
+  <data name="A bootstrap connection name is required. Use [Value]--name[/] or configure a host default." xml:space="preserve"><value>A bootstrap connection name is required. Use [Value]--name[/] or configure a host default.</value></data>
 
   <!-- ── Connection-store path resolution (source-text keys) ────────── -->
   <data name="The {0} option" xml:space="preserve"><value>The {0} option</value></data>

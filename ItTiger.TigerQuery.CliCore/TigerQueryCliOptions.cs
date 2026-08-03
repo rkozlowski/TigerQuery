@@ -52,8 +52,9 @@ public sealed class TigerQueryCliOptions
     /// null when the host configures none.
     /// </summary>
     /// <remarks>
-    /// Host configuration only: it names a convention, confers no authorization, and is
-    /// not consulted by anything in this release. A profile becomes usable for E2E work
+    /// Host configuration only: it names a convention and is used by
+    /// <c>connections add-e2e-bootstrap</c> when that command receives no
+    /// <c>--name</c>. It confers no authorization; a profile becomes usable for E2E work
     /// through explicit TigerQuery metadata, never through its name.
     /// </remarks>
     public string? DefaultE2eBootstrapConnectionName { get; init; }

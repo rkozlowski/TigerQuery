@@ -38,24 +38,24 @@ public sealed class SqlServerConnectionProfileMetadataTests
     {
         using var temp = new TempStore();
         var profile = ServerProfile();
-        profile.SetMetadata("ittiger.zeta.marker", "last");
-        profile.SetMetadata("ittiger.tigerwrap.role", "automated-test-host");
-        profile.SetMetadata("ittiger.alpha.marker", "first");
+        profile.SetMetadata("example.zeta.marker", "last");
+        profile.SetMetadata("example.tigerwrap.role", "automated-test-host");
+        profile.SetMetadata("example.alpha.marker", "first");
 
         temp.Store.Add(profile);
 
         var json = File.ReadAllText(temp.FilePath);
-        var alphaIndex = json.IndexOf("ittiger.alpha.marker", StringComparison.Ordinal);
-        var tigerWrapIndex = json.IndexOf("ittiger.tigerwrap.role", StringComparison.Ordinal);
-        var zetaIndex = json.IndexOf("ittiger.zeta.marker", StringComparison.Ordinal);
+        var alphaIndex = json.IndexOf("example.alpha.marker", StringComparison.Ordinal);
+        var tigerWrapIndex = json.IndexOf("example.tigerwrap.role", StringComparison.Ordinal);
+        var zetaIndex = json.IndexOf("example.zeta.marker", StringComparison.Ordinal);
         Assert.True(alphaIndex < tigerWrapIndex);
         Assert.True(tigerWrapIndex < zetaIndex);
 
         var loaded = Assert.Single(temp.Store.Load());
         Assert.Equal(3, loaded.Metadata.Count);
-        Assert.Equal("automated-test-host", loaded.Metadata["ittiger.tigerwrap.role"]);
-        Assert.Equal("first", loaded.Metadata["ittiger.alpha.marker"]);
-        Assert.Equal("last", loaded.Metadata["ittiger.zeta.marker"]);
+        Assert.Equal("automated-test-host", loaded.Metadata["example.tigerwrap.role"]);
+        Assert.Equal("first", loaded.Metadata["example.alpha.marker"]);
+        Assert.Equal("last", loaded.Metadata["example.zeta.marker"]);
     }
 
     [Fact]
@@ -73,16 +73,16 @@ public sealed class SqlServerConnectionProfileMetadataTests
     public void MetadataHelpers_ReplaceAndRemoveOneEntry()
     {
         var profile = ServerProfile();
-        profile.SetMetadata("ittiger.app.role", "old");
-        profile.SetMetadata("ittiger.app.other", "preserved");
+        profile.SetMetadata("example.app.role", "old");
+        profile.SetMetadata("example.app.other", "preserved");
 
-        profile.SetMetadata("ittiger.app.role", "new");
-        var removed = profile.RemoveMetadata("ittiger.app.role");
+        profile.SetMetadata("example.app.role", "new");
+        var removed = profile.RemoveMetadata("example.app.role");
 
         Assert.True(removed);
-        Assert.False(profile.RemoveMetadata("ittiger.app.role"));
-        Assert.False(profile.Metadata.ContainsKey("ittiger.app.role"));
-        Assert.Equal("preserved", profile.Metadata["ittiger.app.other"]);
+        Assert.False(profile.RemoveMetadata("example.app.role"));
+        Assert.False(profile.Metadata.ContainsKey("example.app.role"));
+        Assert.Equal("preserved", profile.Metadata["example.app.other"]);
     }
 
     [Fact]
@@ -90,15 +90,15 @@ public sealed class SqlServerConnectionProfileMetadataTests
     {
         using var temp = new TempStore();
         var profile = ServerProfile();
-        profile.SetMetadata("ittiger.app.role", "lower");
+        profile.SetMetadata("example.app.role", "lower");
         profile.SetMetadata("ItTiger.App.Role", "mixed");
-        profile.SetMetadata("ittiger.app.role", "replacement");
+        profile.SetMetadata("example.app.role", "replacement");
 
         temp.Store.Add(profile);
         var loaded = Assert.Single(temp.Store.Load());
 
         Assert.Equal(2, loaded.Metadata.Count);
-        Assert.Equal("replacement", loaded.Metadata["ittiger.app.role"]);
+        Assert.Equal("replacement", loaded.Metadata["example.app.role"]);
         Assert.Equal("mixed", loaded.Metadata["ItTiger.App.Role"]);
     }
 
@@ -107,25 +107,25 @@ public sealed class SqlServerConnectionProfileMetadataTests
     {
         using var temp = new TempStore();
         var profile = ServerProfile();
-        profile.SetMetadata("ittiger.tigerwrap.role", "automated-test-host");
+        profile.SetMetadata("example.tigerwrap.role", "automated-test-host");
         profile.SetMetadata("another.application.setting", "keep-me");
         temp.Store.Add(profile);
 
         var update = temp.Store.Find("host")!;
         update.Server = "updated-server";
-        update.SetMetadata("ittiger.tigerwrap.role", "replacement");
+        update.SetMetadata("example.tigerwrap.role", "replacement");
         temp.Store.AddOrUpdate(update);
 
         var reloaded = temp.Store.Find("host")!;
         Assert.Equal("updated-server", reloaded.Server);
-        Assert.Equal("replacement", reloaded.Metadata["ittiger.tigerwrap.role"]);
+        Assert.Equal("replacement", reloaded.Metadata["example.tigerwrap.role"]);
         Assert.Equal("keep-me", reloaded.Metadata["another.application.setting"]);
 
-        Assert.True(reloaded.RemoveMetadata("ittiger.tigerwrap.role"));
+        Assert.True(reloaded.RemoveMetadata("example.tigerwrap.role"));
         temp.Store.AddOrUpdate(reloaded);
 
         var afterRemoval = temp.Store.Find("host")!;
-        Assert.False(afterRemoval.Metadata.ContainsKey("ittiger.tigerwrap.role"));
+        Assert.False(afterRemoval.Metadata.ContainsKey("example.tigerwrap.role"));
         Assert.Equal("keep-me", afterRemoval.Metadata["another.application.setting"]);
     }
 
@@ -134,7 +134,7 @@ public sealed class SqlServerConnectionProfileMetadataTests
     {
         using var temp = new TempStore();
         var profile = ServerProfile();
-        profile.SetMetadata("ittiger.tigerwrap.role", "automated-test-host");
+        profile.SetMetadata("example.tigerwrap.role", "automated-test-host");
         temp.Store.Add(profile);
 
         var resolution = SqlServerConnectionResolver.Resolve(temp.Store, "host");
@@ -143,7 +143,7 @@ public sealed class SqlServerConnectionProfileMetadataTests
         var builder = new SqlConnectionStringBuilder(resolution.ConnectionString);
         Assert.Equal("test-server", builder.DataSource);
         Assert.Equal(string.Empty, builder.InitialCatalog);
-        Assert.DoesNotContain("ittiger.tigerwrap.role", resolution.ConnectionString);
+        Assert.DoesNotContain("example.tigerwrap.role", resolution.ConnectionString);
         Assert.DoesNotContain("automated-test-host", resolution.ConnectionString);
     }
 

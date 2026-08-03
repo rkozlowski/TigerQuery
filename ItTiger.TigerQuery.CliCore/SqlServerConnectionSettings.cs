@@ -4,20 +4,15 @@ using ItTiger.TigerQuery.Core;
 namespace ItTiger.TigerQuery.CliCore;
 
 /// <summary>
-/// Option surface shared by the <c>add</c> and <c>edit</c> connection commands.
+/// Connection-value option surface shared by the <c>add</c>, <c>edit</c>, and
+/// <c>add-e2e-bootstrap</c> connection commands.
 /// Add treats every value as new input; edit seeds unsupplied values from the
 /// existing profile (TigerCli <c>.AsEdit()</c> merge) so only changed options are
 /// touched. The escape hatch <c>--opt key=value</c> and the non-promptable
 /// first-class options map straight onto <see cref="Microsoft.Data.SqlClient.SqlConnectionStringBuilder"/>.
 /// </summary>
-internal sealed class SqlServerConnectionSettings : TigerCliSettings
+internal abstract class SqlServerConnectionInputSettings : TigerCliSettings
 {
-    [TigerCliArgument(0, Name = "name", Description = "Connection name.",
-        DescriptionResourceKey = "Arg_Connection_Name_Description",
-        MinLength = 1, MaxLength = 40,
-        EditProvider = "connections")]
-    public string Name { get; set; } = string.Empty;
-
     // ── Promptable common options ────────────────────────────────────
 
     // Presence is enforced by the command's domain validation rather than framework
@@ -169,4 +164,61 @@ internal sealed class SqlServerConnectionSettings : TigerCliSettings
 
         return TigerCliValidationResult.Success();
     }
+}
+
+/// <summary>Connection settings with the regular positional profile name.</summary>
+internal class SqlServerConnectionSettings : SqlServerConnectionInputSettings
+{
+    [TigerCliArgument(0, Name = "name", Description = "Connection name.",
+        DescriptionResourceKey = "Arg_Connection_Name_Description",
+        MinLength = 1, MaxLength = 40,
+        EditProvider = "connections")]
+    public string Name { get; set; } = string.Empty;
+}
+
+/// <summary>Add-only settings for explicit E2E authorization.</summary>
+internal sealed class AddSqlServerConnectionSettings : SqlServerConnectionSettings
+{
+    [TigerCliOption("--e2e",
+        Description = "Authorize this profile for TigerQuery E2E use.",
+        DescriptionResourceKey = "Opt_Connection_E2e_Description",
+        Promptable = TigerCliPromptable.No)]
+    public bool E2e { get; set; }
+
+    [TigerCliOption("--allow-database-create",
+        Description = "Authorize E2E database creation through this profile.",
+        DescriptionResourceKey = "Opt_Connection_AllowDatabaseCreate_Description",
+        Promptable = TigerCliPromptable.No)]
+    public bool AllowDatabaseCreation { get; set; }
+
+    public override TigerCliValidationResult Validate()
+    {
+        var result = base.Validate();
+        if (!result.IsValid)
+            return result;
+
+        return AllowDatabaseCreation && !E2e
+            ? TigerCliValidationResult.Error(T(
+                "--allow-database-create requires --e2e."))
+            : TigerCliValidationResult.Success();
+    }
+}
+
+/// <summary>Settings for the dedicated E2E bootstrap creation command.</summary>
+internal sealed class AddE2eBootstrapSqlServerConnectionSettings
+    : SqlServerConnectionInputSettings
+{
+    [TigerCliOption("--name",
+        Description = "Bootstrap connection name; overrides the host default.",
+        DescriptionResourceKey = "Opt_Connection_BootstrapName_Description",
+        Promptable = TigerCliPromptable.No,
+        MinLength = 1,
+        MaxLength = 40)]
+    public string? Name { get; set; }
+
+    [TigerCliOption("--allow-database-create",
+        Description = "Authorize E2E database creation through this profile.",
+        DescriptionResourceKey = "Opt_Connection_AllowDatabaseCreate_Description",
+        Promptable = TigerCliPromptable.No)]
+    public bool AllowDatabaseCreation { get; set; }
 }

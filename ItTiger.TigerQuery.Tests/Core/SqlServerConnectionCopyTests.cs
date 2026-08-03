@@ -9,6 +9,34 @@ namespace ItTiger.TigerQuery.Tests.Core;
 /// </summary>
 public sealed class SqlServerConnectionCopyTests
 {
+    [Theory]
+    [InlineData(SqlServerE2eMetadata.Enabled)]
+    [InlineData("ittiger.future.setting")]
+    public void Copy_RejectsReservedMetadataAssignmentsAndRemovals(string key)
+    {
+        using var temp = new TempStore();
+        temp.Store.Add(FullyPopulatedProfile("source"));
+
+        var setError = Assert.Throws<ArgumentException>(() => temp.Store.Copy(
+            "source",
+            new SqlServerConnectionCopyOptions
+            {
+                TargetName = "set-target",
+                MetadataToSet = new Dictionary<string, string> { [key] = "value" }
+            }));
+        var removeError = Assert.Throws<ArgumentException>(() => temp.Store.Copy(
+            "source",
+            new SqlServerConnectionCopyOptions
+            {
+                TargetName = "remove-target",
+                MetadataToRemove = [key]
+            }));
+
+        Assert.Contains("reserved", setError.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reserved", removeError.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(temp.Store.Find("set-target"));
+        Assert.Null(temp.Store.Find("remove-target"));
+    }
     [Fact]
     public void Copy_IntegratedAuthenticationPreservesEveryPersistedField()
     {

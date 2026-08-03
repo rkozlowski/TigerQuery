@@ -9,7 +9,8 @@ namespace ItTiger.TigerQuery.CliCore;
 /// </summary>
 internal sealed class SqlServerConnectionCommandContext(
     Func<SqlServerConnectionStore> storeAccessor,
-    SqlServerConnectionValidationPolicy validationPolicy)
+    SqlServerConnectionValidationPolicy validationPolicy,
+    string? defaultE2eBootstrapConnectionName = null)
 {
     /// <summary>Gets the store for the current run.</summary>
     /// <remarks>
@@ -19,4 +20,8 @@ internal sealed class SqlServerConnectionCommandContext(
     public SqlServerConnectionStore Store => storeAccessor();
 
     public SqlServerConnectionValidationPolicy ValidationPolicy { get; } = validationPolicy;
+
+    /// <summary>Gets the host's optional bootstrap-name convention.</summary>
+    public string? DefaultE2eBootstrapConnectionName { get; } =
+        defaultE2eBootstrapConnectionName;
 }

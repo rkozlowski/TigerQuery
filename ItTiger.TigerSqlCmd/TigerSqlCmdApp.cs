@@ -29,6 +29,9 @@ internal static class TigerSqlCmdApp
     public static string DefaultConnectionStoreFile =>
         SqlServerConnectionStoreOptions.Shared("ItTiger.net").FilePath;
 
+    /// <summary>The profile name used by <c>connections add-e2e-bootstrap</c> by default.</summary>
+    public const string DefaultE2eBootstrapConnectionName = "tiger-sqlcmd-e2e";
+
     /// <summary>
     /// Resolves a saved connection name to a connection string via the run's store and the
     /// shared resolver. On failure, prints a clean error (never the connection string) and
@@ -91,6 +94,7 @@ internal static class TigerSqlCmdApp
         var tigerQuery = new TigerQueryCliContribution(new TigerQueryCliOptions
         {
             DefaultConnectionStoreFile = defaultConnectionStoreFile,
+            DefaultE2eBootstrapConnectionName = DefaultE2eBootstrapConnectionName,
             EnvironmentReader = environmentReader
         });
         var connections = tigerQuery.Options;

@@ -13,14 +13,15 @@ internal static class SqlServerConnectionSettingsMapper
     /// supplied, and opaque application metadata is always carried forward.
     /// </summary>
     public static SqlServerConnectionProfile ToProfile(
-        SqlServerConnectionSettings settings,
+        SqlServerConnectionInputSettings settings,
+        string name,
         SqlServerConnectionProfile? existing)
     {
         var isSqlPassword = settings.Authentication == AuthenticationType.SqlPassword;
 
         var profile = new SqlServerConnectionProfile
         {
-            Name = settings.Name,
+            Name = name,
             Server = settings.Server,
             Database = settings.Database,
             Authentication = settings.Authentication,
@@ -48,7 +49,12 @@ internal static class SqlServerConnectionSettingsMapper
         if (existing is not null)
         {
             foreach (var (key, value) in existing.Metadata)
-                profile.SetMetadata(key, value);
+            {
+                if (!SqlServerE2eMetadata.IsReservedKey(key))
+                    profile.SetMetadata(key, value);
+            }
+
+            SqlServerE2eMetadata.PreserveReservedMetadata(existing, profile);
         }
 
         SqlServerConnectionMetadataOptions.ApplyMutations(
@@ -61,7 +67,7 @@ internal static class SqlServerConnectionSettingsMapper
 
     /// <summary>
     /// Resolves the password for a SQL-authentication profile. The password is prompt-only (never
-    /// command-line) and the edit loader seeds <see cref="SqlServerConnectionSettings.Password"/>
+    /// command-line) and the edit loader seeds <see cref="SqlServerConnectionInputSettings.Password"/>
     /// with the decrypted secret when it is available, so a non-empty value covers both a freshly
     /// typed password and an unchanged seeded one (Enter) — either way it is re-protected on save.
     /// An empty value can only occur when no decrypted password was available (Integrated, or a
@@ -70,7 +76,7 @@ internal static class SqlServerConnectionSettingsMapper
     /// </summary>
     private static void ApplySqlPassword(
         SqlServerConnectionProfile profile,
-        SqlServerConnectionSettings settings,
+        SqlServerConnectionInputSettings settings,
         SqlServerConnectionProfile? existing)
     {
         if (!string.IsNullOrEmpty(settings.Password))
@@ -105,7 +111,7 @@ internal static class SqlServerConnectionSettingsMapper
 
     /// <summary>
     /// Seeds an edit's settings from an existing profile. The decrypted password (when the store
-    /// was able to load/decrypt it) is surfaced into <see cref="SqlServerConnectionSettings.Password"/>
+    /// was able to load/decrypt it) is surfaced into <see cref="SqlServerConnectionInputSettings.Password"/>
     /// so the secret prompt shows the masked existing value and Enter keeps it, and so the
     /// database-selection provider can connect with the effective password before the user retypes.
     /// When the password could not be decrypted, <see cref="SqlServerConnectionProfile.PlainPassword"/>
@@ -140,9 +146,9 @@ internal static class SqlServerConnectionSettingsMapper
     /// Builds a probe profile (no target database) used to enumerate databases for the
     /// selection provider from the connection/security options gathered so far.
     /// </summary>
-    public static SqlServerConnectionProfile ToProbeProfile(SqlServerConnectionSettings settings)
+    public static SqlServerConnectionProfile ToProbeProfile(SqlServerConnectionInputSettings settings)
     {
-        var profile = ToProfile(settings, existing: null);
+        var profile = ToProfile(settings, "probe", existing: null);
         profile.Database = null;
         return profile;
     }

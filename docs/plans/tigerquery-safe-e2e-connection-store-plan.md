@@ -1,6 +1,6 @@
 # TigerQuery connection-store resolution and safe E2E foundation
 
-Status: Phases 1–4 completed; Phases 5–8 proposed
+Status: Phases 1–5 completed; Phases 6–8 proposed
 
 Scope:
 
@@ -710,7 +710,11 @@ Bootstrap identity is separate from general E2E authorization. The regular
 profile as E2E-authorized, but that does not make the profile the bootstrap
 profile. The resolver selects a bootstrap profile only by the caller's explicit name or
 the host-configured default name. Authorization metadata, a hard-coded naming convention,
-and store ordering never select one. The exact Phase 5 flag and command shape remain open.
+and store ordering never select one. Phase 5 settled the regular-add shape as the
+non-promptable `--e2e` switch, with a separate non-promptable
+`--allow-database-create` switch that requires `--e2e`. The bootstrap command always
+supplies E2E authorization and accepts the same separate database-creation permission
+switch.
 
 Note that `--name` here is an ordinary command option on the `add-e2e-bootstrap`
 settings type, bindable and promptable like any other. It is unrelated to the
@@ -1566,7 +1570,7 @@ operations may write them. Unknown reserved keys remain tolerated on reads for f
 compatibility. Framework-specific mapping of `NotConfigured` to skip remains open
 question 11.
 
-### Phase 5 — Bootstrap CLI surface
+### Phase 5 — Bootstrap CLI surface — **Completed**
 
 **Difficulty: Medium.** Small command surface, but it is the place where bootstrap
 identity and general E2E authorization must stay distinct, and where the
@@ -1598,9 +1602,11 @@ proving an `--e2e`-authorized profile is not selected as the bootstrap, generic 
 set/remove rejection for known and unknown `ittiger.*` keys, and successful writes through
 the TigerQuery-owned E2E/bootstrap path.
 
-**Risks / open decisions.** The exact flag and command shape for the TigerQuery-owned
-`add` path remain Phase 5 decisions. They may not weaken the reserved-write rule or add a
-bootstrap-identity metadata key; Phase 4 settled identity as strict name-based selection.
+**Settled outcome.** Regular `connections add` uses non-promptable `--e2e` and
+`--allow-database-create` switches; the latter requires the former. The dedicated
+bootstrap command always writes E2E authorization and shares the database-creation
+permission switch. Neither path writes a bootstrap-identity key, and strict name-based
+selection remains unchanged.
 
 ### Phase 6 — External value references
 

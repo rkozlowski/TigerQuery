@@ -16,6 +16,8 @@ internal static class SqlServerConnectionMetadataOptions
         "A metadata key cannot be set more than once in the same command.";
     public const string ConflictingMutation =
         "The same metadata key cannot be both set and removed in one command.";
+    public const string ReservedMutation =
+        "Metadata keys beginning with 'ittiger.' are reserved for TigerQuery.";
 
     public static string? ValidateMutations(
         IReadOnlyList<string> assignments,
@@ -27,6 +29,12 @@ internal static class SqlServerConnectionMetadataOptions
 
         if (removals.Any(string.IsNullOrEmpty))
             return EmptyKey;
+
+        if (parsed.Any(entry => SqlServerE2eMetadata.IsReservedKey(entry.Key))
+            || removals.Any(SqlServerE2eMetadata.IsReservedKey))
+        {
+            return ReservedMutation;
+        }
 
         var removedKeys = removals.ToHashSet(StringComparer.Ordinal);
         return parsed.Any(entry => removedKeys.Contains(entry.Key))
@@ -58,6 +66,12 @@ internal static class SqlServerConnectionMetadataOptions
         var error = TryParseAssignments(assignments, rejectDuplicateKeys: true, out var parsed);
         if (error is not null)
             throw new ArgumentException(error, nameof(assignments));
+
+        if (parsed.Any(entry => SqlServerE2eMetadata.IsReservedKey(entry.Key))
+            || removals.Any(SqlServerE2eMetadata.IsReservedKey))
+        {
+            throw new ArgumentException(ReservedMutation, nameof(assignments));
+        }
 
         foreach (var (key, value) in parsed)
             profile.SetMetadata(key, value);
