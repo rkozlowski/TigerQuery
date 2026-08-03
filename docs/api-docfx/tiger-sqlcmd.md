@@ -34,6 +34,41 @@ $env:TIGERQUERY_CONNECTION_STORE_FILE = 'C:\agent\state\connections.json'
 tiger-sqlcmd connections add-e2e-bootstrap --non-interactive --server sql01
 ```
 
+For fully non-interactive SQL authentication, keep the secret out of argv and
+the writable store by supplying reference JSON. This PowerShell example uses an
+environment variable for the server, a keyed JSON file for the username, and a
+whole text file for the password:
+
+```powershell
+$env:TIGERQUERY_CONNECTION_STORE_FILE = 'C:\agent\state\connections.json'
+$env:TQ_E2E_SQL_SERVER = 'sql01'
+tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+  --authentication SqlPassword `
+  --server-reference '{"Source":"EnvironmentVariable","Name":"TQ_E2E_SQL_SERVER"}' `
+  --username-reference '{"Source":"File","Path":"C:\\secrets\\sql-auth.json","Format":"Json","Key":"username"}' `
+  --password-reference '{"Source":"File","Path":"C:\\secrets\\sql-password","Format":"Text"}'
+```
+
+The JSON file must be a top-level object and the exact keyed property must be a
+string. A text file is read whole with no trimming, so include a trailing newline
+only when it is part of the intended value.
+
+Alternatively, reference one complete connection string and do not supply any
+individual connection fields:
+
+```powershell
+tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+  --connection-string-reference '{"Source":"EnvironmentVariable","Name":"TQ_E2E_SQL_CONNECTION_STRING"}'
+```
+
+The five reference options are `--server-reference`, `--database-reference`,
+`--username-reference`, `--password-reference`, and
+`--connection-string-reference`. They accept only reference objects, never
+literal JSON strings. Full connection-string and field modes are mutually
+exclusive and a mixed invocation fails before modifying the store. The regular
+`connections add <name>` flow accepts the same options, including alongside
+`--e2e`.
+
 The store path may instead be supplied as
 `--tq-connection-store-file <path>`. Like every TigerCli option, place it after
 the command path and required positional arguments, for example:
@@ -56,7 +91,10 @@ value begins with `-`. CLI store selection outranks
 > [!IMPORTANT]
 > On Windows, protected passwords use current-user/current-machine DPAPI. Copying
 > a store file to CI or a container does not make those passwords decryptable
-> there. Phase 5 does not add external secret references.
+> there. Prefer an environment or mounted-file password reference for portable
+> automation. `show` and `list` print reference locators, not resolved values;
+> file paths and variable names are therefore visible and should be named with
+> that in mind.
 
 ## Output routing
 

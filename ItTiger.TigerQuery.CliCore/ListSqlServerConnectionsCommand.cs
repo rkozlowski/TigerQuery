@@ -83,9 +83,15 @@ internal sealed class ListSqlServerConnectionsCommand(SqlServerConnectionCommand
         {
             table.AddRecord(
                 profile.Name,
-                profile.Server,
-                profile.Authentication,
-                profile.Database);
+                profile.UsesFullConnectionString
+                    ? profile.DescribeConnectionString()
+                    : profile.DescribeServer(),
+                profile.UsesFullConnectionString
+                    ? "ConnectionString"
+                    : profile.Authentication,
+                profile.UsesFullConnectionString
+                    ? null
+                    : profile.DescribeDatabase());
         }
         TigerConsole.Render(table);
         return Task.FromResult(TigerCliExitKind.Success);

@@ -1,6 +1,6 @@
 # TigerQuery connection-store resolution and safe E2E foundation
 
-Status: Phases 1–5 completed; Phases 6–8 proposed
+Status: Phases 1–6 completed; Phases 7–8 proposed
 
 Scope:
 
@@ -1608,7 +1608,7 @@ bootstrap command always writes E2E authorization and shares the database-creati
 permission switch. Neither path writes a bootstrap-identity key, and strict name-based
 selection remains unchanged.
 
-### Phase 6 — External value references
+### Phase 6 — External value references — **Completed**
 
 **Difficulty: High.** A persisted-format change plus secret handling. Compatibility,
 redaction, and copy semantics all have to be right simultaneously, and mistakes are
@@ -1629,12 +1629,21 @@ non-interactively.
 
 **Depends on.** Phases 1–3 (a selected store) and Phase 4 (profiles worth protecting).
 
-**Validation.** Section 15.7 redaction and non-persistence tests, plus round-trip tests
-against stores written by the previous format version.
+**Validation completed.** Section 15.7 redaction and non-persistence cases, focused
+Core/CLI tests, round trips of the previous literal-string store shape, copy/edit
+preservation tests, and non-interactive SQL-auth bootstrap creation through references.
 
-**Risks / open decisions.** JSON contract and compatibility (open question 6 in the
-original numbering, now 16); keyed-file formats (open question 17); whether file-path
-values are themselves sensitive.
+**Settled outcome.** A profile value is a legacy-compatible JSON string literal or an
+explicit tagged object. Version one supports `EnvironmentVariable`, whole UTF-8 `File`
+with `Format=Text` and no trimming, and exact case-sensitive top-level string lookup with
+`Format=Json` plus `Key`. Known properties and discriminators are strict; unknown object
+properties are tolerated for forward compatibility. Full connection-string and
+field-based modes are strictly mutually exclusive. References resolve only while the
+effective connection is built, are preserved through store copy and CLI edit, and are
+never written back. Reference locators are displayable (and documented as potentially
+sensitive), while resolved passwords, literal full connection strings, and sensitive
+free-form option values are redacted. The CLI adds only five non-promptable JSON-reference
+options and rejects literal values or sensitive `--opt` keys on argv.
 
 ### Phase 7 — Safe database lifecycle
 
@@ -1728,9 +1737,10 @@ the CLI or environment is needed.
 `--tq-connection-store-file`, `TIGERQUERY_CONNECTION_STORE_FILE`, and the shared deferred
 store plumbing, plus the Core E2E metadata/authorization contract and inert bootstrap
 resolver. The host tests prove store composition and precedence through `tiger-sqlcmd`;
-they do not prove the complete E2E workflow. Phase 5 is next and adds the bootstrap command
-surface under the binding reserved-write policy; Phase 8 supplies the end-to-end proof
-after the remaining safety contracts exist.
+they do not prove the complete E2E workflow. Phase 5 added the bootstrap command surface
+under the binding reserved-write policy, and Phase 6 added portable external values
+without resolving them during authorization. Phase 8 supplies the end-to-end proof after
+the remaining safety contracts exist.
 
 ## 19. Open questions
 
@@ -1777,10 +1787,14 @@ after the remaining safety contracts exist.
     Phase 4:** it is not. The resolver selects only the caller's explicit name or the
     host-configured default name; authorization metadata expresses permission, not
     bootstrap identity.
-16. External-value JSON contract and compatibility strategy.
-17. Supported keyed-file formats in the first version.
-18. Full connection-string versus field-level precedence, if the mutual-exclusion
-    recommendation in section 11.3 is rejected.
+16. ~~External-value JSON contract and compatibility strategy.~~ **Settled in Phase 6:**
+    a plain JSON string remains a literal; an external value is an explicit tagged object
+    with strict known discriminators and tolerated unknown properties.
+17. ~~Supported keyed-file formats in the first version.~~ **Settled in Phase 6:** exact,
+    case-sensitive top-level JSON string properties only. Whole text files are the other
+    file form and are returned without trimming.
+18. ~~Full connection-string versus field-level precedence.~~ **Settled in Phase 6:**
+    there is no precedence. Mixed mode is invalid and rejected before persistence.
 
 ## 20. Acceptance criteria
 
@@ -1801,6 +1815,9 @@ The design is successful when:
   post-Phase 3 cleanup;
 - local developers need no environment variables;
 - CI/CD can use environment variables and mounted files;
+- persisted literals remain compatible, while external values resolve lazily and are
+  never written back or exposed through CLI inspection and failure diagnostics;
+- full connection strings and individual fields cannot be combined;
 - E2E profiles require explicit TigerQuery metadata, matched exactly;
 - bootstrap selection uses only an explicit caller name or host default name and never
   infers identity from sole authorization or store ordering;

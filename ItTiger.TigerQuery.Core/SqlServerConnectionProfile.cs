@@ -23,6 +23,7 @@ public sealed class SqlServerConnectionProfile
 {
     private readonly Dictionary<string, string> metadata = new(StringComparer.Ordinal);
     private readonly IReadOnlyDictionary<string, string> readOnlyMetadata;
+    private SqlServerConnectionValue serverValue = SqlServerConnectionValue.Literal(string.Empty);
 
     /// <summary>Initializes an empty mutable connection profile.</summary>
     public SqlServerConnectionProfile()
@@ -33,20 +34,58 @@ public sealed class SqlServerConnectionProfile
     /// <summary>Gets or sets the store-unique profile name.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the SQL Server host, instance, or endpoint.</summary>
-    public string Server { get; set; } = string.Empty;
+    /// <summary>Gets or sets the literal SQL Server host, instance, or endpoint.</summary>
+    /// <remarks>
+    /// Assigning a literal replaces any <see cref="ServerValue"/> reference. When the
+    /// persisted value is external this compatibility property returns an empty string;
+    /// use <see cref="ServerValue"/> to inspect the reference.
+    /// </remarks>
+    [JsonIgnore]
+    public string Server
+    {
+        get => ServerValue.LiteralValue ?? string.Empty;
+        set => ServerValue = SqlServerConnectionValue.Literal(value ?? string.Empty);
+    }
+
+    /// <summary>Gets or sets the literal or external server value.</summary>
+    [JsonPropertyName(nameof(Server))]
+    public SqlServerConnectionValue ServerValue
+    {
+        get => serverValue;
+        set => serverValue = value ?? SqlServerConnectionValue.Literal(string.Empty);
+    }
 
     /// <summary>
     /// Gets or sets the optional initial database.
     /// </summary>
     /// <remarks>Null, empty, or whitespace values produce a server-level connection.</remarks>
-    public string? Database { get; set; }
+    [JsonIgnore]
+    public string? Database
+    {
+        get => DatabaseValue?.LiteralValue;
+        set => DatabaseValue = value is null ? null : SqlServerConnectionValue.Literal(value);
+    }
+
+    /// <summary>Gets or sets the optional literal or external initial catalog.</summary>
+    [JsonPropertyName(nameof(Database))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SqlServerConnectionValue? DatabaseValue { get; set; }
 
     /// <summary>Gets or sets the authentication mechanism.</summary>
     public AuthenticationType Authentication { get; set; }
 
-    /// <summary>Gets or sets the SQL login name used by SQL-password authentication.</summary>
-    public string? Username { get; set; }
+    /// <summary>Gets or sets the literal SQL login name used by SQL-password authentication.</summary>
+    [JsonIgnore]
+    public string? Username
+    {
+        get => UsernameValue?.LiteralValue;
+        set => UsernameValue = value is null ? null : SqlServerConnectionValue.Literal(value);
+    }
+
+    /// <summary>Gets or sets the optional literal or external SQL login name.</summary>
+    [JsonPropertyName(nameof(Username))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SqlServerConnectionValue? UsernameValue { get; set; }
 
     /// <summary>Gets or sets the persisted protected-password value.</summary>
     /// <remarks>
@@ -65,6 +104,27 @@ public sealed class SqlServerConnectionProfile
     /// </remarks>
     [JsonIgnore]
     public string? PlainPassword { get; set; }
+
+    /// <summary>
+    /// Gets or sets an explicitly persisted literal or external password value.
+    /// </summary>
+    /// <remarks>
+    /// CLI commands accept only the external-reference form. Existing prompted-password
+    /// behavior continues to use <see cref="PlainPassword"/> and
+    /// <see cref="EncryptedPassword"/> so old stores and password protectors remain
+    /// compatible.
+    /// </remarks>
+    [JsonPropertyName("Password")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SqlServerConnectionValue? PasswordValue { get; set; }
+
+    /// <summary>
+    /// Gets or sets the complete connection string used instead of all field-based
+    /// settings.
+    /// </summary>
+    [JsonPropertyName("ConnectionString")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SqlServerConnectionValue? ConnectionStringValue { get; set; }
 
     /// <summary>Gets or sets the transport encryption policy.</summary>
     public EncryptOption Encrypt { get; set; }
@@ -252,19 +312,236 @@ public sealed class SqlServerConnectionProfile
     /// persisted <see cref="EncryptedPassword"/>.
     /// </para>
     /// </remarks>
+    /// <param name="externalValues">
+    /// Optional readers used only for external references; null uses the process
+    /// environment and UTF-8 file reads.
+    /// </param>
     /// <exception cref="ArgumentException">
     /// A free-form option name or value is rejected by
     /// <see cref="SqlConnectionStringBuilder"/>.
     /// </exception>
-    public SqlConnectionStringBuilder BuildConnectionStringBuilder()
+    public SqlConnectionStringBuilder BuildConnectionStringBuilder(
+        SqlServerExternalValueResolutionOptions? externalValues = null)
+    {
+        if (ConnectionStringValue is not null)
+        {
+            if (HasIndividualConnectionSettings())
+            {
+                throw new InvalidOperationException(
+                    "A full connection string cannot be combined with individual connection fields.");
+            }
+
+            var connectionString = SqlServerExternalValueResolver.Resolve(
+                ConnectionStringValue,
+                "connection string",
+                allowEmpty: false,
+                externalValues);
+            try
+            {
+                return new SqlConnectionStringBuilder(connectionString);
+            }
+            catch (Exception ex) when (ex is ArgumentException or FormatException)
+            {
+                throw new SqlServerExternalValueException(
+                    "The configured full connection string is not valid.");
+            }
+        }
+
+        if (Authentication != AuthenticationType.SqlPassword
+            && (UsernameValue?.IsReference == true || PasswordValue?.IsReference == true))
+        {
+            throw new InvalidOperationException(
+                "External username and password references require SQL password authentication.");
+        }
+
+        if (PasswordValue is not null
+            && (!string.IsNullOrEmpty(PlainPassword) || !string.IsNullOrEmpty(EncryptedPassword)))
+        {
+            throw new InvalidOperationException(
+                "A password value cannot be combined with a protected or in-memory password.");
+        }
+
+        var server = SqlServerExternalValueResolver.Resolve(
+            ServerValue,
+            "server",
+            allowEmpty: false,
+            externalValues);
+        var database = DatabaseValue is null
+            ? null
+            : SqlServerExternalValueResolver.Resolve(
+                DatabaseValue,
+                "database",
+                allowEmpty: true,
+                externalValues);
+        var username = Authentication != AuthenticationType.SqlPassword || UsernameValue is null
+            ? null
+            : SqlServerExternalValueResolver.Resolve(
+                UsernameValue,
+                "username",
+                allowEmpty: false,
+                externalValues);
+        var password = Authentication != AuthenticationType.SqlPassword
+            ? null
+            : PasswordValue is null
+                ? PlainPassword
+                : SqlServerExternalValueResolver.Resolve(
+                    PasswordValue,
+                    "password",
+                    allowEmpty: false,
+                    externalValues);
+
+        var hasExternalValues = ServerValue.IsReference
+            || DatabaseValue?.IsReference == true
+            || UsernameValue?.IsReference == true
+            || PasswordValue?.IsReference == true;
+
+        try
+        {
+            return BuildFieldConnectionStringBuilder(server, database, username, password);
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            if (hasExternalValues || GetSensitiveLiteralValues().Count > 0)
+            {
+                throw new SqlServerExternalValueException(
+                    "The configured connection fields are not valid.");
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>Builds the SqlClient connection string represented by this profile.</summary>
+    /// <param name="externalValues">
+    /// Optional readers used only for external references; null uses the process
+    /// environment and UTF-8 file reads.
+    /// </param>
+    /// <returns>The normalized connection string.</returns>
+    /// <exception cref="ArgumentException">
+    /// A free-form option name or value is rejected by
+    /// <see cref="SqlConnectionStringBuilder"/>.
+    /// </exception>
+    public string BuildConnectionString(
+        SqlServerExternalValueResolutionOptions? externalValues = null) =>
+        BuildConnectionStringBuilder(externalValues).ConnectionString;
+
+    internal void ValidateConnectionStringCompatibility()
+    {
+        if (ConnectionStringValue is not null)
+        {
+            if (!ConnectionStringValue.IsReference && !HasIndividualConnectionSettings())
+                _ = BuildConnectionStringBuilder();
+            return;
+        }
+
+        if (PasswordValue is not null
+            && (!string.IsNullOrEmpty(PlainPassword) || !string.IsNullOrEmpty(EncryptedPassword)))
+        {
+            return;
+        }
+
+        _ = BuildFieldConnectionStringBuilder(
+            ServerValue.IsReference ? "validation-server" : ServerValue.LiteralValue ?? string.Empty,
+            DatabaseValue?.IsReference == true ? "validation-database" : DatabaseValue?.LiteralValue,
+            UsernameValue?.IsReference == true ? "validation-user" : UsernameValue?.LiteralValue,
+            PasswordValue?.IsReference == true ? "validation-password" : PasswordValue?.LiteralValue ?? PlainPassword);
+    }
+
+    /// <summary>Gets whether this profile uses complete connection-string mode.</summary>
+    [JsonIgnore]
+    public bool UsesFullConnectionString => ConnectionStringValue is not null;
+
+    /// <summary>Returns the safe server display without resolving a reference.</summary>
+    public string DescribeServer() => ServerValue.Describe();
+
+    /// <summary>Returns the safe database display without resolving a reference.</summary>
+    public string? DescribeDatabase() => DatabaseValue?.Describe();
+
+    /// <summary>Returns the safe username display without resolving a reference.</summary>
+    public string? DescribeUsername() => UsernameValue?.Describe();
+
+    /// <summary>Returns a safe full-connection-string description.</summary>
+    public string? DescribeConnectionString() => ConnectionStringValue?.Describe(sensitive: true);
+
+    internal bool HasIndividualConnectionSettings()
+    {
+        return IsConfigured(ServerValue)
+            || DatabaseValue is not null
+            || UsernameValue is not null
+            || PasswordValue is not null
+            || !string.IsNullOrEmpty(PlainPassword)
+            || !string.IsNullOrEmpty(EncryptedPassword)
+            || PasswordEncryption != PasswordEncryptionType.NotApplicable
+            || Authentication != AuthenticationType.Integrated
+            || Encrypt != EncryptOption.Optional
+            || TrustServerCertificate is not null
+            || ApplicationIntent is not null
+            || ConnectTimeout is not null
+            || MultiSubnetFailover is not null
+            || PersistSecurityInfo is not null
+            || Pooling is not null
+            || MinPoolSize is not null
+            || MaxPoolSize is not null
+            || Options is not null;
+    }
+
+    internal string RedactSensitiveValues(string message)
+    {
+        var redacted = message;
+        foreach (var secret in GetSensitiveLiteralValues())
+            redacted = redacted.Replace(secret, "<redacted>", StringComparison.Ordinal);
+        return redacted;
+    }
+
+    private IReadOnlyList<string> GetSensitiveLiteralValues()
+    {
+        var values = new List<string>();
+        AddIfNonempty(values, PlainPassword);
+        AddIfNonempty(values, EncryptedPassword);
+        AddIfNonempty(values, PasswordValue?.LiteralValue);
+        AddIfNonempty(values, ConnectionStringValue?.LiteralValue);
+
+        if (Options is not null)
+        {
+            foreach (var (key, value) in Options)
+            {
+                if (IsSensitiveConnectionStringOption(key))
+                    AddIfNonempty(values, value);
+            }
+        }
+
+        return values;
+    }
+
+    private static bool IsConfigured(SqlServerConnectionValue value) =>
+        value.IsReference || !string.IsNullOrWhiteSpace(value.LiteralValue);
+
+    private static void AddIfNonempty(List<string> values, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            values.Add(value);
+    }
+
+    /// <summary>Determines whether a connection-string option value must be redacted.</summary>
+    public static bool IsSensitiveConnectionStringOption(string key) =>
+        key.Equals("Password", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("Pwd", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("Access Token", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("AccessToken", StringComparison.OrdinalIgnoreCase);
+
+    private SqlConnectionStringBuilder BuildFieldConnectionStringBuilder(
+        string server,
+        string? database,
+        string? username,
+        string? password)
     {
         var builder = new SqlConnectionStringBuilder
         {
-            DataSource = Server
+            DataSource = server
         };
 
-        if (!string.IsNullOrWhiteSpace(Database))
-            builder.InitialCatalog = Database;
+        if (!string.IsNullOrWhiteSpace(database))
+            builder.InitialCatalog = database;
 
         builder.Encrypt = Encrypt switch
         {
@@ -284,8 +561,8 @@ public sealed class SqlServerConnectionProfile
         }
         else if (Authentication == AuthenticationType.SqlPassword)
         {
-            builder.UserID = Username ?? string.Empty;
-            builder.Password = PlainPassword ?? string.Empty;
+            builder.UserID = username ?? string.Empty;
+            builder.Password = password ?? string.Empty;
         }
 
         if (ApplicationIntent is { } intent)
@@ -323,14 +600,6 @@ public sealed class SqlServerConnectionProfile
 
         return builder;
     }
-
-    /// <summary>Builds the SqlClient connection string represented by this profile.</summary>
-    /// <returns>The normalized connection string.</returns>
-    /// <exception cref="ArgumentException">
-    /// A free-form option name or value is rejected by
-    /// <see cref="SqlConnectionStringBuilder"/>.
-    /// </exception>
-    public string BuildConnectionString() => BuildConnectionStringBuilder().ConnectionString;
 
     // Lets the escape hatch accept the property-style key (e.g. "PacketSize") in addition
     // to SqlClient's canonical spaced keyword ("Packet Size"), whose synonym coverage is

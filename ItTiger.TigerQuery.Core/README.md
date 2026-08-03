@@ -6,7 +6,8 @@ Intended consumers are tool and application developers: define profiles once (se
 
 ## Key types
 
-- `SqlServerConnectionProfile` — a named profile with first-class options (server, database, authentication, encryption, trust, application intent, timeouts, pooling), a free-form options escape hatch, and optional namespaced application metadata; builds a `SqlConnectionStringBuilder` / connection string.
+- `SqlServerConnectionProfile` — a named profile with first-class options (server, database, authentication, encryption, trust, application intent, timeouts, pooling), external-value references, a free-form options escape hatch, and optional namespaced application metadata; builds a `SqlConnectionStringBuilder` / connection string.
+- `SqlServerConnectionValue` / `SqlServerExternalValueReference` / `SqlServerExternalValueResolutionOptions` — legacy-compatible literal strings plus lazy environment, whole-file, and keyed-JSON values with injectable readers.
 - `SqlServerConnectionStore` / `SqlServerConnectionStoreOptions` — JSON file storage with `Shared(vendor)` (a per-user vendor store shared across tools) and `AppSpecific(vendor, app)` locations, or any explicit `FilePath`; `QueryByMetadata(...)` applies reusable metadata filters and `Copy(...)` duplicates a saved connection inside the same store.
 - `SqlServerConnectionCopyOptions` — the controlled overrides a copy may apply: target name, initial catalog, and selected metadata entries.
 - `SqlServerConnectionStorePathResolver` / `SqlServerConnectionStorePathOptions` / `SqlServerConnectionStorePathResolution` — the standard precedence for *which* store file to use: explicit path, then the `TIGERQUERY_CONNECTION_STORE_FILE` environment variable (`SqlServerConnectionStoreEnvironment`), then the application default; reports the winning source and never silently falls back.
@@ -82,6 +83,33 @@ var automationProfiles = store.QueryByMetadata(
 ```
 
 For a real shared store, prefer `SqlServerConnectionStoreOptions.Shared("YourVendor")` (per-user application-data location on Windows, `~/.config` elsewhere) so multiple tools see the same connections.
+
+## External values for CI and containers
+
+Server, database, SQL username, SQL password, and a complete connection string
+can be stored as explicit references instead of literals. Existing JSON strings
+remain literals, so old stores need no migration.
+
+```json
+{
+  "Server": { "Source": "EnvironmentVariable", "Name": "TQ_SQL_SERVER" },
+  "Password": { "Source": "File", "Path": "/run/secrets/sql-password", "Format": "Text" }
+}
+```
+
+A keyed file uses `"Format":"Json"` plus an exact, case-sensitive top-level
+`"Key"`; its value must be a JSON string. Text files are read whole and are not
+trimmed. References resolve only while building the effective connection, are
+preserved by copy/edit, and are never written back as resolved values. Missing
+variables/files, malformed JSON, absent keys, and unknown sources fail without
+including resolved secret material in errors.
+
+Profiles use either a full `ConnectionString` value or the individual fields,
+never both. The validator rejects mixed mode rather than choosing precedence.
+Literal passwords and full connection strings are sensitive; inspection and
+diagnostics redact them. Reference descriptions display their environment name
+or file path/key without reading the source, so choose locators with the
+understanding that those names and paths are visible.
 
 ## Copying a saved connection
 

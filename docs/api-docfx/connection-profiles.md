@@ -94,7 +94,98 @@ command line.
 > The default Windows password protector is DPAPI-scoped to the current user
 > and machine. Pointing a store path at a file created elsewhere does not make
 > its protected passwords readable; supply the credentials on that machine
-> instead of copying the store.
+> instead of copying the store, or use an external value reference as described
+> below.
+
+## External profile values
+
+A persisted connection value can be either a literal JSON string (the original
+store contract) or a tagged external reference object. Existing stores therefore
+load unchanged, while CI jobs and containers can keep credentials outside the
+writable store. References are supported for server, database, SQL username,
+SQL password, and a complete connection string.
+
+```json
+{
+  "Name": "ci-fields",
+  "Server": { "Source": "EnvironmentVariable", "Name": "TQ_SQL_SERVER" },
+  "Database": { "Source": "File", "Path": "/config/sql.json", "Format": "Json", "Key": "database" },
+  "Authentication": 1,
+  "Username": { "Source": "File", "Path": "/run/secrets/sql-auth.json", "Format": "Json", "Key": "username" },
+  "Password": { "Source": "File", "Path": "/run/secrets/sql-password", "Format": "Text" },
+  "Encrypt": 1
+}
+```
+
+The supported reference forms are deliberately explicit:
+
+- `{"Source":"EnvironmentVariable","Name":"NAME"}` reads the named
+  environment variable. An unset variable fails; a required field also rejects
+  an empty or whitespace-only result.
+- `{"Source":"File","Path":"path","Format":"Text"}` reads the entire
+  UTF-8 text file exactly. No newline or whitespace trimming is performed.
+- `{"Source":"File","Path":"path","Format":"Json","Key":"name"}`
+  reads an exact, case-sensitive top-level property from a JSON object. The
+  property must exist and be a JSON string; nested paths are not interpreted.
+
+Relative file paths are resolved by the normal .NET file APIs against the
+process working directory at effective-connection build time.
+
+Unknown sources, incompatible properties, unreadable files, malformed JSON,
+missing keys, and non-string keyed values fail clearly. Extra object properties
+are tolerated so newer writers can extend the reference contract, but every
+known discriminator and required source-specific property remains strict.
+
+References are resolved only by `BuildConnectionStringBuilder`,
+`BuildConnectionString`, or `SqlServerConnectionResolver` when an effective
+connection is requested. Loading, validation, E2E authorization, copying,
+editing, `show`, and `list` do not read the referenced environment or files.
+Resolution never replaces a reference or writes its result back to the store,
+and `Copy` preserves the reference object.
+
+Library tests and hosts can inject deterministic readers without changing the
+process environment:
+
+```csharp
+var effective = profile.BuildConnectionStringBuilder(
+    new SqlServerExternalValueResolutionOptions
+    {
+        EnvironmentReader = name => testEnvironment[name],
+        FileReader = path => testFiles[path]
+    });
+```
+
+### Full connection-string mode
+
+A profile may instead supply only a complete connection string:
+
+```json
+{
+  "Name": "ci-full",
+  "ConnectionString": {
+    "Source": "EnvironmentVariable",
+    "Name": "TQ_SQL_CONNECTION_STRING"
+  }
+}
+```
+
+Full-string mode and field mode are strictly mutually exclusive. A profile that
+combines `ConnectionString` with server, database, authentication, encryption,
+credentials, pooling, or free-form options fails validation; neither side takes
+precedence. A legacy/plain string is also accepted by the Core model for
+compatibility, although CLI setup accepts only reference objects for a complete
+connection string so a secret is never required on the command line.
+
+### Diagnostics and sensitivity
+
+Passwords and complete literal connection strings are sensitive. Resolver
+failures, exceptions, logs, and CLI inspection output never include their raw
+values. `connections show` and `connections list` render references by source
+description (environment-variable name or file path/key) and never resolve
+them. Server, database, and username references use the same behavior even
+though those destination fields are normally non-sensitive. File paths and
+environment-variable names are intentionally displayable; treat the locator
+itself as potentially sensitive when naming secrets in your environment.
 
 ## Copying a connection
 
@@ -117,6 +208,8 @@ var copy = store.Copy("bootstrap", new SqlServerConnectionCopyOptions
 
 - Every persisted field is preserved by default, carried through the profile's
   own JSON contract so that fields added in later releases copy automatically.
+- External-value references remain references; copying never reads them and
+  never persists a resolved value.
 - Only the profile name, the initial catalog, and the named metadata entries can
   be overridden. `InitialCatalogOverride` is `null` to preserve, `""` to clear,
   or a database name to replace. Unrelated metadata survives untouched, and

@@ -6,6 +6,8 @@ This package is for **developers building [TigerCli](https://www.nuget.org/packa
 
 - `list` / `show` — structured table and details output, including metadata filters and a separate metadata section
 - `add` / `edit` — parser-driven prompting, provider-backed selection (including live database enumeration), shared connection-value options, TigerCli `.AsEdit()` merge semantics, and repeatable metadata mutations
+- Five non-promptable external-value options for server, database, SQL username,
+  SQL password, and a complete connection string
 - `add-e2e-bootstrap [--name <name>]` and add-only `--e2e` / `--allow-database-create` switches for explicit E2E setup
 - `delete`
 - Domain validation with clear errors and portable `TigerCliExitKind` outcomes
@@ -90,6 +92,33 @@ Supplying it twice is an error — TigerCli does not take the last value — and
 TigerCli invokes the contribution once per run, before command settings are bound, so a bad path fails cleanly ahead of any handler. That applies to every command, including ones that never open the store: a malformed `TIGERQUERY_CONNECTION_STORE_FILE` fails the whole run, deliberately. Help rendering invokes no callbacks, so `ResolvedStorePath` is null and `Store` throws during help; help text that wants to name a location must use `DefaultConnectionStoreFile`, which is known at build time.
 
 The store itself is constructed lazily on first access to `TigerQueryCliOptions.Store` and then reused for the rest of the run, so the commands, both providers, the `edit` loader, and your own services share one instance — one file, one lock, one mutation gate. `store.FilePath` reports the normalized absolute path it settled on. Sequential runs of one built app re-resolve and replace the store rather than accumulate; `TigerQueryCliOptions` is not thread-safe and parallel in-process runs of a single app instance are not supported.
+
+### External-value options
+
+`add`, `edit`, and `add-e2e-bootstrap` share this minimal, non-promptable
+surface:
+
+```text
+--server-reference <json>
+--database-reference <json>
+--username-reference <json>
+--password-reference <json>
+--connection-string-reference <json>
+```
+
+Each value is the same explicit reference object persisted by Core, for example
+`{"Source":"EnvironmentVariable","Name":"TQ_SQL_SERVER"}` or
+`{"Source":"File","Path":"/run/secrets/password","Format":"Text"}`.
+A JSON string literal is rejected: reference options never provide a route for
+putting plaintext secrets on argv. Sensitive `Password`, `Pwd`, and access-token
+keys are likewise rejected through `--opt`.
+
+Use either `--connection-string-reference` alone or field options. Mixing the
+full connection string with any server, database, authentication, encryption,
+credential, pooling, or free-form field fails before the store is changed.
+Unrelated edits preserve existing reference objects. Inspection commands show
+only reference descriptions and redact literal full connection strings and
+sensitive free-form option values; they never read external sources.
 
 ### Copying stores between machines
 

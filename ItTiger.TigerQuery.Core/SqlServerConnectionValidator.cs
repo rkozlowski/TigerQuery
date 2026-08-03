@@ -26,10 +26,27 @@ public static class SqlServerConnectionValidator
         if (string.IsNullOrWhiteSpace(profile.Name))
             errors.Add("Name is required.");
 
-        if (string.IsNullOrWhiteSpace(profile.Server))
-            errors.Add("Server is required.");
+        if (profile.ConnectionStringValue is not null)
+        {
+            if (profile.HasIndividualConnectionSettings())
+            {
+                errors.Add(
+                    "A full connection string cannot be combined with individual connection fields.");
+            }
 
-        if (policy.RequireDatabase && string.IsNullOrWhiteSpace(profile.Database))
+            AddValueDefinitionErrors(
+                errors,
+                "Connection string",
+                profile.ConnectionStringValue,
+                required: true);
+            return errors;
+        }
+
+        AddValueDefinitionErrors(errors, "Server", profile.ServerValue, required: true);
+
+        if (profile.DatabaseValue is not null)
+            AddValueDefinitionErrors(errors, "Database", profile.DatabaseValue, policy.RequireDatabase);
+        else if (policy.RequireDatabase)
             errors.Add("Database is required.");
 
         return errors;
@@ -71,29 +88,75 @@ public static class SqlServerConnectionValidator
     {
         var errors = Validate(profile, policy).ToList();
 
-        if (profile.Authentication == AuthenticationType.SqlPassword)
+        if (profile.ConnectionStringValue is null
+            && profile.Authentication == AuthenticationType.SqlPassword)
         {
-            if (string.IsNullOrWhiteSpace(profile.Username))
+            if (profile.UsernameValue is null)
                 errors.Add("Username is required for SQL password authentication.");
+            else
+                AddValueDefinitionErrors(errors, "Username", profile.UsernameValue, required: true);
 
             if (string.IsNullOrEmpty(profile.PlainPassword) &&
-                string.IsNullOrEmpty(profile.EncryptedPassword))
+                string.IsNullOrEmpty(profile.EncryptedPassword) &&
+                profile.PasswordValue is null)
             {
                 errors.Add("Password is required for SQL password authentication.");
             }
+            else if (profile.PasswordValue is not null)
+            {
+                AddValueDefinitionErrors(errors, "Password", profile.PasswordValue, required: true);
+                if (!string.IsNullOrEmpty(profile.PlainPassword)
+                    || !string.IsNullOrEmpty(profile.EncryptedPassword))
+                {
+                    errors.Add(
+                        "A password value cannot be combined with a protected or in-memory password.");
+                }
+            }
+        }
+        else if (profile.ConnectionStringValue is null
+                 && (profile.UsernameValue?.IsReference == true
+                     || profile.PasswordValue?.IsReference == true))
+        {
+            errors.Add(
+                "External username and password references require SQL password authentication.");
         }
 
         // Let SqlConnectionStringBuilder validate the option surface (unknown --opt keys,
         // out-of-range pool sizes, malformed values, ...).
         try
         {
-            _ = profile.BuildConnectionString();
+            profile.ValidateConnectionStringCompatibility();
         }
         catch (Exception ex) when (ex is ArgumentException or FormatException)
         {
+            errors.Add(profile.RedactSensitiveValues(ex.Message));
+        }
+        catch (SqlServerExternalValueException ex)
+        {
             errors.Add(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            errors.Add(profile.RedactSensitiveValues(ex.Message));
         }
 
         return errors;
+    }
+
+    private static void AddValueDefinitionErrors(
+        List<string> errors,
+        string fieldName,
+        SqlServerConnectionValue value,
+        bool required)
+    {
+        if (value.Reference is not null)
+        {
+            foreach (var error in value.Reference.Validate())
+                errors.Add($"{fieldName} reference is invalid: {error}");
+            return;
+        }
+
+        if (required && string.IsNullOrWhiteSpace(value.LiteralValue))
+            errors.Add($"{fieldName} is required.");
     }
 }

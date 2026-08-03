@@ -338,15 +338,6 @@ public static class SqlServerE2eConnectionResolver
         if (profile is null)
             return message;
 
-        const string Placeholder = "***";
-        var redacted = message;
-
-        if (!string.IsNullOrEmpty(profile.PlainPassword))
-            redacted = redacted.Replace(profile.PlainPassword, Placeholder, StringComparison.Ordinal);
-
-        if (!string.IsNullOrEmpty(profile.EncryptedPassword))
-            redacted = redacted.Replace(profile.EncryptedPassword, Placeholder, StringComparison.Ordinal);
-
-        return redacted;
+        return profile.RedactSensitiveValues(message);
     }
 }

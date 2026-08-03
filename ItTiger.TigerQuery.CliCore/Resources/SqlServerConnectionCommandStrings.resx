@@ -72,6 +72,11 @@
   <data name="Opt_Connection_TrustServerCertificate_Description" xml:space="preserve"><value>Trust the server certificate.</value></data>
   <data name="Opt_Connection_ApplicationIntent_Description" xml:space="preserve"><value>Application intent.</value></data>
   <data name="Opt_Connection_Database_Description" xml:space="preserve"><value>Initial database.</value></data>
+  <data name="Opt_Connection_ServerReference_Description" xml:space="preserve"><value>External server reference as JSON.</value></data>
+  <data name="Opt_Connection_DatabaseReference_Description" xml:space="preserve"><value>External initial-database reference as JSON.</value></data>
+  <data name="Opt_Connection_UsernameReference_Description" xml:space="preserve"><value>External SQL username reference as JSON.</value></data>
+  <data name="Opt_Connection_PasswordReference_Description" xml:space="preserve"><value>External SQL password reference as JSON.</value></data>
+  <data name="Opt_Connection_ConnectionStringReference_Description" xml:space="preserve"><value>External full connection-string reference as JSON.</value></data>
   <data name="Opt_Connection_ConnectTimeout_Description" xml:space="preserve"><value>Connection timeout in seconds.</value></data>
   <data name="Opt_Connection_MultiSubnetFailover_Description" xml:space="preserve"><value>Enable multi-subnet failover.</value></data>
   <data name="Opt_Connection_PersistSecurityInfo_Description" xml:space="preserve"><value>Persist security info.</value></data>
@@ -125,6 +130,7 @@
   <data name="Trust Server Certificate:" xml:space="preserve"><value>Trust Server Certificate:</value></data>
   <data name="Application Intent:" xml:space="preserve"><value>Application Intent:</value></data>
   <data name="Database:" xml:space="preserve"><value>Database:</value></data>
+  <data name="Connection String:" xml:space="preserve"><value>Connection String:</value></data>
   <data name="Connect Timeout:" xml:space="preserve"><value>Connect Timeout:</value></data>
   <data name="Multi Subnet Failover:" xml:space="preserve"><value>Multi Subnet Failover:</value></data>
   <data name="Persist Security Info:" xml:space="preserve"><value>Persist Security Info:</value></data>
@@ -143,6 +149,11 @@
   <data name="Metadata keys beginning with 'ittiger.' are reserved for TigerQuery." xml:space="preserve"><value>Metadata keys beginning with 'ittiger.' are reserved for TigerQuery.</value></data>
   <data name="--allow-database-create requires --e2e." xml:space="preserve"><value>--allow-database-create requires --e2e.</value></data>
   <data name="A bootstrap connection name is required. Use [Value]--name[/] or configure a host default." xml:space="preserve"><value>A bootstrap connection name is required. Use [Value]--name[/] or configure a host default.</value></data>
+  <data name="External-value options require a reference JSON object, not a literal value." xml:space="preserve"><value>External-value options require a reference JSON object, not a literal value.</value></data>
+  <data name="An external-value option contains a malformed reference JSON object." xml:space="preserve"><value>An external-value option contains a malformed reference JSON object.</value></data>
+  <data name="A full connection string cannot be combined with individual connection fields." xml:space="preserve"><value>A full connection string cannot be combined with individual connection fields.</value></data>
+  <data name="External username and password references require SQL password authentication." xml:space="preserve"><value>External username and password references require SQL password authentication.</value></data>
+  <data name="Sensitive connection-string options cannot be supplied through --opt; use an external reference." xml:space="preserve"><value>Sensitive connection-string options cannot be supplied through --opt; use an external reference.</value></data>
 
   <!-- ── Connection-store path resolution (source-text keys) ────────── -->
   <data name="The {0} option" xml:space="preserve"><value>The {0} option</value></data>

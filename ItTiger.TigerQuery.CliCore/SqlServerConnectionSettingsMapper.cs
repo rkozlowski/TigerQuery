@@ -17,15 +17,68 @@ internal static class SqlServerConnectionSettingsMapper
         string name,
         SqlServerConnectionProfile? existing)
     {
+        var explicitConnectionStringValue =
+            SqlServerExternalValueCliParser.Parse(settings.ConnectionStringReference);
+        var connectionStringValue = explicitConnectionStringValue
+            ?? existing?.ConnectionStringValue;
+        if (connectionStringValue is not null)
+        {
+            var fullProfile = new SqlServerConnectionProfile
+            {
+                Name = name,
+                ConnectionStringValue = connectionStringValue
+            };
+
+            // Preserve strict mode exclusion when an edit attempts to cross from one
+            // mode to the other. TigerCli's edit merge carries public option values,
+            // but intentionally does not carry the internal reference-preservation
+            // fields, so the handler's freshly loaded existing profile is the final
+            // source of truth here.
+            if (HasIndividualInput(settings)
+                || (explicitConnectionStringValue is not null
+                    && existing is not null
+                    && !existing.UsesFullConnectionString))
+            {
+                fullProfile.ServerValue =
+                    SqlServerExternalValueCliParser.Parse(settings.ServerReference)
+                    ?? (!string.IsNullOrWhiteSpace(settings.Server)
+                        ? SqlServerConnectionValue.Literal(settings.Server)
+                        : existing is { UsesFullConnectionString: false }
+                            ? existing.ServerValue
+                            : SqlServerConnectionValue.Literal("individual-mode-input"));
+            }
+
+            ApplyMetadata(fullProfile, settings, existing);
+            return fullProfile;
+        }
+
         var isSqlPassword = settings.Authentication == AuthenticationType.SqlPassword;
+
+        var serverValue = SqlServerExternalValueCliParser.Parse(settings.ServerReference)
+            ?? SelectValue(
+                settings.Server,
+                existing?.ServerValue,
+                required: true);
+        var databaseValue = SqlServerExternalValueCliParser.Parse(settings.DatabaseReference)
+            ?? SelectValue(
+                settings.Database,
+                existing?.DatabaseValue,
+                required: false);
+        var usernameValue = isSqlPassword
+            ? SqlServerExternalValueCliParser.Parse(settings.UsernameReference)
+                ?? SelectValue(
+                    settings.Username,
+                    existing?.UsernameValue,
+                    required: false)
+            : null;
 
         var profile = new SqlServerConnectionProfile
         {
             Name = name,
-            Server = settings.Server,
-            Database = settings.Database,
+            ServerValue = serverValue!,
+            DatabaseValue = databaseValue,
             Authentication = settings.Authentication,
-            Username = isSqlPassword ? settings.Username : null,
+            UsernameValue = usernameValue,
             Encrypt = settings.Encrypt,
             TrustServerCertificate = settings.Encrypt == EncryptOption.Strict
                 ? null
@@ -41,26 +94,17 @@ internal static class SqlServerConnectionSettingsMapper
         };
 
         if (isSqlPassword)
-            ApplySqlPassword(profile, settings, existing);
+        {
+            profile.PasswordValue = SqlServerExternalValueCliParser.Parse(settings.PasswordReference)
+                ?? existing?.PasswordValue;
+            if (profile.PasswordValue is null)
+                ApplySqlPassword(profile, settings, existing);
+        }
         // When authentication is not SqlPassword (e.g. switched to Integrated), Username is already
         // null and the SQL credential metadata above is left at its defaults (PlainPassword null,
         // EncryptedPassword null, PasswordEncryption NotApplicable), clearing the stored credentials.
 
-        if (existing is not null)
-        {
-            foreach (var (key, value) in existing.Metadata)
-            {
-                if (!SqlServerE2eMetadata.IsReservedKey(key))
-                    profile.SetMetadata(key, value);
-            }
-
-            SqlServerE2eMetadata.PreserveReservedMetadata(existing, profile);
-        }
-
-        SqlServerConnectionMetadataOptions.ApplyMutations(
-            profile,
-            settings.Metadata,
-            settings.RemoveMetadata);
+        ApplyMetadata(profile, settings, existing);
 
         return profile;
     }
@@ -119,7 +163,7 @@ internal static class SqlServerConnectionSettingsMapper
     /// </summary>
     public static SqlServerConnectionSettings FromProfile(SqlServerConnectionProfile profile)
     {
-        return new SqlServerConnectionSettings
+        var settings = new SqlServerConnectionSettings
         {
             Name = profile.Name,
             Server = profile.Server,
@@ -140,6 +184,29 @@ internal static class SqlServerConnectionSettingsMapper
                 ? []
                 : [.. profile.Options.Select(o => new KeyValuePair<string, string>(o.Key, o.Value))]
         };
+
+        if (profile.ConnectionStringValue is not null)
+        {
+            // Keep the normal settings defaults inert in full-string mode. The original
+            // value above is what the mapper preserves.
+            settings.Server = string.Empty;
+            settings.Database = null;
+            settings.Username = null;
+            settings.Password = null;
+            settings.Authentication = AuthenticationType.Integrated;
+            settings.Encrypt = EncryptOption.Mandatory;
+            settings.TrustServerCertificate = null;
+            settings.ApplicationIntent = null;
+            settings.ConnectTimeout = null;
+            settings.MultiSubnetFailover = null;
+            settings.PersistSecurityInfo = null;
+            settings.Pooling = null;
+            settings.MinPoolSize = null;
+            settings.MaxPoolSize = null;
+            settings.Opt = [];
+        }
+
+        return settings;
     }
 
     /// <summary>
@@ -166,5 +233,68 @@ internal static class SqlServerConnectionSettingsMapper
         }
 
         return options.Count == 0 ? null : options;
+    }
+
+    private static SqlServerConnectionValue? SelectValue(
+        string? literal,
+        SqlServerConnectionValue? original,
+        bool required)
+    {
+        if (original is not null
+            && string.Equals(
+                literal,
+                original.LiteralValue ?? (required ? string.Empty : null),
+                StringComparison.Ordinal))
+        {
+            return original;
+        }
+
+        if (literal is not null)
+            return SqlServerConnectionValue.Literal(literal);
+
+        return original;
+    }
+
+    private static bool HasIndividualInput(SqlServerConnectionInputSettings settings) =>
+        !string.IsNullOrWhiteSpace(settings.Server)
+        || settings.ServerReference is not null
+        || settings.Database is not null
+        || settings.DatabaseReference is not null
+        || settings.Username is not null
+        || settings.UsernameReference is not null
+        || !string.IsNullOrEmpty(settings.Password)
+        || settings.PasswordReference is not null
+        || settings.Authentication != AuthenticationType.Integrated
+        || settings.Encrypt != EncryptOption.Mandatory
+        || settings.TrustServerCertificate is not null
+        || settings.ApplicationIntent is not null
+        || settings.ConnectTimeout is not null
+        || settings.MultiSubnetFailover is not null
+        || settings.PersistSecurityInfo is not null
+        || settings.Pooling is not null
+        || settings.MinPoolSize is not null
+        || settings.MaxPoolSize is not null
+        || settings.Opt.Count > 0;
+
+    private static void ApplyMetadata(
+        SqlServerConnectionProfile profile,
+        SqlServerConnectionInputSettings settings,
+        SqlServerConnectionProfile? existing)
+    {
+        if (existing is not null)
+        {
+            foreach (var (key, value) in existing.Metadata)
+            {
+                if (!SqlServerE2eMetadata.IsReservedKey(key))
+                    profile.SetMetadata(key, value);
+            }
+
+            SqlServerE2eMetadata.PreserveReservedMetadata(existing, profile);
+        }
+
+        SqlServerConnectionMetadataOptions.ApplyMutations(
+            profile,
+            settings.Metadata,
+            settings.RemoveMetadata);
     }
 }

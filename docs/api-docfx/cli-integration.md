@@ -134,3 +134,35 @@ store, its directory, or a partial profile. The command always writes the E2E
 authorization flag and accepts the same connection, prompting, validation, and
 persistence options as regular add; `--allow-database-create` remains a
 separate explicit permission.
+
+## Configuring external values
+
+The three connection-writing flows (`add`, `edit`, and
+`add-e2e-bootstrap`) expose exactly five non-promptable reference options:
+
+```text
+--server-reference <json>
+--database-reference <json>
+--username-reference <json>
+--password-reference <json>
+--connection-string-reference <json>
+```
+
+Their JSON is Core's persisted reference object, not a value wrapper invented
+by the CLI. Environment-variable, whole-text-file, and keyed-JSON-file forms are
+documented under [External profile values](connection-profiles.md#external-profile-values).
+Reference options reject JSON string literals, and sensitive connection-string
+keys cannot be supplied through `--opt`, so the automation path does not expose
+plaintext credentials in process arguments.
+
+For a fully non-interactive SQL-auth bootstrap:
+
+```console
+your-tool connections add-e2e-bootstrap --non-interactive --authentication SqlPassword --server-reference {environment-reference-json} --username-reference {keyed-file-reference-json} --password-reference {text-file-reference-json}
+```
+
+Use `--connection-string-reference` by itself for full-string mode. It is
+strictly mutually exclusive with field-based settings, including authentication,
+encryption, pooling, and `--opt`. Validation failures occur before persistence.
+Unrelated edits preserve reference objects, and inspection renders only source
+descriptions without resolving external values.

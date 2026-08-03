@@ -72,6 +72,11 @@
   <data name="Opt_Connection_TrustServerCertificate_Description" xml:space="preserve"><value>Ufaj certyfikatowi serwera.</value></data>
   <data name="Opt_Connection_ApplicationIntent_Description" xml:space="preserve"><value>Intencja aplikacji (rodzaj obciążenia).</value></data>
   <data name="Opt_Connection_Database_Description" xml:space="preserve"><value>Początkowa baza danych.</value></data>
+  <data name="Opt_Connection_ServerReference_Description" xml:space="preserve"><value>Zewnętrzne odwołanie do serwera w formacie JSON.</value></data>
+  <data name="Opt_Connection_DatabaseReference_Description" xml:space="preserve"><value>Zewnętrzne odwołanie do początkowej bazy danych w formacie JSON.</value></data>
+  <data name="Opt_Connection_UsernameReference_Description" xml:space="preserve"><value>Zewnętrzne odwołanie do nazwy użytkownika SQL w formacie JSON.</value></data>
+  <data name="Opt_Connection_PasswordReference_Description" xml:space="preserve"><value>Zewnętrzne odwołanie do hasła SQL w formacie JSON.</value></data>
+  <data name="Opt_Connection_ConnectionStringReference_Description" xml:space="preserve"><value>Zewnętrzne odwołanie do pełnych parametrów połączenia w formacie JSON.</value></data>
   <data name="Opt_Connection_ConnectTimeout_Description" xml:space="preserve"><value>Limit czasu połączenia w sekundach.</value></data>
   <data name="Opt_Connection_MultiSubnetFailover_Description" xml:space="preserve"><value>Włącz przełączanie awaryjne między podsieciami.</value></data>
   <data name="Opt_Connection_PersistSecurityInfo_Description" xml:space="preserve"><value>Zachowuj informacje zabezpieczeń.</value></data>
@@ -125,6 +130,7 @@
   <data name="Trust Server Certificate:" xml:space="preserve"><value>Ufaj certyfikatowi serwera:</value></data>
   <data name="Application Intent:" xml:space="preserve"><value>Intencja aplikacji:</value></data>
   <data name="Database:" xml:space="preserve"><value>Baza danych:</value></data>
+  <data name="Connection String:" xml:space="preserve"><value>Parametry połączenia:</value></data>
   <data name="Connect Timeout:" xml:space="preserve"><value>Limit czasu połączenia:</value></data>
   <data name="Multi Subnet Failover:" xml:space="preserve"><value>Przełączanie awaryjne między podsieciami:</value></data>
   <data name="Persist Security Info:" xml:space="preserve"><value>Zachowywanie informacji zabezpieczeń:</value></data>
@@ -143,6 +149,11 @@
   <data name="Metadata keys beginning with 'ittiger.' are reserved for TigerQuery." xml:space="preserve"><value>Klucze metadanych zaczynające się od „ittiger.” są zarezerwowane dla TigerQuery.</value></data>
   <data name="--allow-database-create requires --e2e." xml:space="preserve"><value>Opcja --allow-database-create wymaga --e2e.</value></data>
   <data name="A bootstrap connection name is required. Use [Value]--name[/] or configure a host default." xml:space="preserve"><value>Wymagana jest nazwa połączenia startowego. Użyj [Value]--name[/] lub skonfiguruj domyślną nazwę hosta.</value></data>
+  <data name="External-value options require a reference JSON object, not a literal value." xml:space="preserve"><value>Opcje wartości zewnętrznych wymagają obiektu odwołania JSON, a nie wartości literałowej.</value></data>
+  <data name="An external-value option contains a malformed reference JSON object." xml:space="preserve"><value>Opcja wartości zewnętrznej zawiera nieprawidłowy obiekt odwołania JSON.</value></data>
+  <data name="A full connection string cannot be combined with individual connection fields." xml:space="preserve"><value>Pełnych parametrów połączenia nie można łączyć z pojedynczymi polami połączenia.</value></data>
+  <data name="External username and password references require SQL password authentication." xml:space="preserve"><value>Zewnętrzne odwołania do nazwy użytkownika i hasła wymagają uwierzytelniania hasłem SQL.</value></data>
+  <data name="Sensitive connection-string options cannot be supplied through --opt; use an external reference." xml:space="preserve"><value>Wrażliwych opcji parametrów połączenia nie można podawać przez --opt; użyj odwołania zewnętrznego.</value></data>
 
   <!-- ── Connection-store path resolution (source-text keys) ────────── -->
   <data name="The {0} option" xml:space="preserve"><value>Opcja {0}</value></data>

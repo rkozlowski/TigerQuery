@@ -98,6 +98,44 @@ internal abstract class SqlServerConnectionInputSettings : TigerCliSettings
         ValidateAgainstProvider = false)]
     public string? Database { get; set; }
 
+    // External values use the same explicit JSON object shape as the store. These options
+    // are non-promptable and reject JSON strings, so secrets cannot be smuggled onto argv
+    // under a "reference" option.
+    [TigerCliOption("--server-reference",
+        Description = "External server reference as JSON.",
+        DescriptionResourceKey = "Opt_Connection_ServerReference_Description",
+        ValueName = "json",
+        Promptable = TigerCliPromptable.No)]
+    public string? ServerReference { get; set; }
+
+    [TigerCliOption("--database-reference",
+        Description = "External initial-database reference as JSON.",
+        DescriptionResourceKey = "Opt_Connection_DatabaseReference_Description",
+        ValueName = "json",
+        Promptable = TigerCliPromptable.No)]
+    public string? DatabaseReference { get; set; }
+
+    [TigerCliOption("--username-reference",
+        Description = "External SQL username reference as JSON.",
+        DescriptionResourceKey = "Opt_Connection_UsernameReference_Description",
+        ValueName = "json",
+        Promptable = TigerCliPromptable.No)]
+    public string? UsernameReference { get; set; }
+
+    [TigerCliOption("--password-reference",
+        Description = "External SQL password reference as JSON.",
+        DescriptionResourceKey = "Opt_Connection_PasswordReference_Description",
+        ValueName = "json",
+        Promptable = TigerCliPromptable.No)]
+    public string? PasswordReference { get; set; }
+
+    [TigerCliOption("--connection-string-reference",
+        Description = "External full connection-string reference as JSON.",
+        DescriptionResourceKey = "Opt_Connection_ConnectionStringReference_Description",
+        ValueName = "json",
+        Promptable = TigerCliPromptable.No)]
+    public string? ConnectionStringReference { get; set; }
+
     // ── Non-promptable first-class options ───────────────────────────
 
     [TigerCliOption("--connect-timeout", Description = "Connection timeout in seconds.",
@@ -162,8 +200,73 @@ internal abstract class SqlServerConnectionInputSettings : TigerCliSettings
                 "--min-pool-size and --max-pool-size cannot be used when pooling is disabled (--pooling false)."));
         }
 
+        foreach (var reference in new[]
+                 {
+                     ServerReference,
+                     DatabaseReference,
+                     UsernameReference,
+                     PasswordReference,
+                     ConnectionStringReference
+                 })
+        {
+            var referenceError = SqlServerExternalValueCliParser.Validate(reference);
+            if (referenceError is not null)
+                return TigerCliValidationResult.Error(T(referenceError));
+        }
+
+        if (ConnectionStringReference is not null)
+        {
+            if (HasIndividualConnectionInput())
+            {
+                return TigerCliValidationResult.Error(T(
+                    "A full connection string cannot be combined with individual connection fields."));
+            }
+        }
+
+        if ((PasswordReference is not null || UsernameReference is not null)
+            && Authentication != AuthenticationType.SqlPassword)
+        {
+            return TigerCliValidationResult.Error(T(
+                "External username and password references require SQL password authentication."));
+        }
+
+        if (Opt.Any(option => IsSensitiveOption(option.Key)))
+        {
+            return TigerCliValidationResult.Error(T(
+                "Sensitive connection-string options cannot be supplied through --opt; use an external reference."));
+        }
+
         return TigerCliValidationResult.Success();
     }
+
+    private bool HasIndividualConnectionInput()
+    {
+        return !string.IsNullOrWhiteSpace(Server)
+            || ServerReference is not null
+            || Database is not null
+            || DatabaseReference is not null
+            || Username is not null
+            || UsernameReference is not null
+            || !string.IsNullOrEmpty(Password)
+            || PasswordReference is not null
+            || Authentication != AuthenticationType.Integrated
+            || Encrypt != EncryptOption.Mandatory
+            || TrustServerCertificate is not null
+            || ApplicationIntent is not null
+            || ConnectTimeout is not null
+            || MultiSubnetFailover is not null
+            || PersistSecurityInfo is not null
+            || Pooling is not null
+            || MinPoolSize is not null
+            || MaxPoolSize is not null
+            || Opt.Count > 0;
+    }
+
+    private static bool IsSensitiveOption(string key) =>
+        key.Equals("Password", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("Pwd", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("Access Token", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("AccessToken", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>Connection settings with the regular positional profile name.</summary>

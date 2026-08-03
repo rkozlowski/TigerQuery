@@ -3,6 +3,7 @@ using ItTiger.TigerCli.Enums;
 using ItTiger.TigerCli.Primitives;
 using ItTiger.TigerCli.Rendering;
 using ItTiger.TigerCli.Terminal;
+using ItTiger.TigerQuery.Core;
 
 namespace ItTiger.TigerQuery.CliCore;
 
@@ -33,26 +34,39 @@ internal sealed class ShowSqlServerConnectionCommand(SqlServerConnectionCommandC
         var details = new CliDetails()
             .ApplyPreset(CliTableStylePreset.Lucca)
             .AddTitle(s.T("SQL Server connection"))
-            .Add(s.T("Name:"), profile.Name)
-            .Add(s.T("Server:"), profile.Server)
-            .Add(s.T("Authentication:"), profile.Authentication)
-            .AddWhen(profile.Authentication == Core.AuthenticationType.SqlPassword,
-                s.T("Username:"), profile.Username)
-            .Add(s.T("Encrypt:"), profile.Encrypt)
-            .AddOptional(s.T("Trust Server Certificate:"), profile.TrustServerCertificate)
-            .AddOptional(s.T("Application Intent:"), profile.ApplicationIntent)
-            .AddOptional(s.T("Database:"), profile.Database)
-            .AddOptional(s.T("Connect Timeout:"), profile.ConnectTimeout)
-            .AddOptional(s.T("Multi Subnet Failover:"), profile.MultiSubnetFailover)
-            .AddOptional(s.T("Persist Security Info:"), profile.PersistSecurityInfo)
-            .AddOptional(s.T("Pooling:"), profile.Pooling)
-            .AddOptional(s.T("Min Pool Size:"), profile.MinPoolSize)
-            .AddOptional(s.T("Max Pool Size:"), profile.MaxPoolSize);
+            .Add(s.T("Name:"), profile.Name);
+
+        if (profile.UsesFullConnectionString)
+        {
+            details.Add(s.T("Connection String:"), profile.DescribeConnectionString());
+        }
+        else
+        {
+            details
+                .Add(s.T("Server:"), profile.DescribeServer())
+                .Add(s.T("Authentication:"), profile.Authentication)
+                .AddWhen(profile.Authentication == Core.AuthenticationType.SqlPassword,
+                    s.T("Username:"), profile.DescribeUsername())
+                .Add(s.T("Encrypt:"), profile.Encrypt)
+                .AddOptional(s.T("Trust Server Certificate:"), profile.TrustServerCertificate)
+                .AddOptional(s.T("Application Intent:"), profile.ApplicationIntent)
+                .AddOptional(s.T("Database:"), profile.DescribeDatabase())
+                .AddOptional(s.T("Connect Timeout:"), profile.ConnectTimeout)
+                .AddOptional(s.T("Multi Subnet Failover:"), profile.MultiSubnetFailover)
+                .AddOptional(s.T("Persist Security Info:"), profile.PersistSecurityInfo)
+                .AddOptional(s.T("Pooling:"), profile.Pooling)
+                .AddOptional(s.T("Min Pool Size:"), profile.MinPoolSize)
+                .AddOptional(s.T("Max Pool Size:"), profile.MaxPoolSize);
+        }
 
         if (profile.Options != null)
         {
             foreach (var option in profile.Options)
-                details.Add(option.Key, option.Value);
+                details.Add(
+                    option.Key,
+                    SqlServerConnectionProfile.IsSensitiveConnectionStringOption(option.Key)
+                        ? "<redacted>"
+                        : option.Value);
         }
 
         TigerConsole.Render(details);
