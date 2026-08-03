@@ -92,8 +92,16 @@ value begins with `-`. CLI store selection outranks
 > [!WARNING]
 > SQL Server access is not E2E authorization. TigerQuery does not probe local
 > instances, localhost, LocalDB, services, containers, or other profiles. A
-> bootstrap must be selected by its explicit/default name and carry the exact
-> `ittiger.e2e.enabled=true` metadata written by the commands above.
+> bootstrap must be selected by its explicit/default name and carry both exact
+> `ittiger.e2e.enabled=true` and `ittiger.e2e.bootstrap=true` metadata. The name
+> identifies the expected profile; metadata authorizes it as bootstrap; both
+> are required.
+
+Bootstrap profiles created by an older `tiger-sqlcmd` build lack
+`ittiger.e2e.bootstrap=true` and are now rejected. After preserving any settings
+still needed, delete and recreate the profile with `connections
+add-e2e-bootstrap`; regular `connections add --e2e` and generic `--metadata`
+writes do not add the bootstrap authorization.
 
 > [!IMPORTANT]
 > On Windows, protected passwords use current-user/current-machine DPAPI. Copying

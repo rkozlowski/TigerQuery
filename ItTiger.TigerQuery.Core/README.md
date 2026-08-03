@@ -12,7 +12,7 @@ Intended consumers are tool and application developers: define profiles once (se
 - `SqlServerConnectionCopyOptions` — the controlled overrides a copy may apply: target name, initial catalog, and selected metadata entries.
 - `SqlServerConnectionStorePathResolver` / `SqlServerConnectionStorePathOptions` / `SqlServerConnectionStorePathResolution` — the standard precedence for *which* store file to use: explicit path, then the `TIGERQUERY_CONNECTION_STORE_FILE` environment variable (`SqlServerConnectionStoreEnvironment`), then the application default; reports the winning source and never silently falls back.
 - `SqlServerConnectionResolver` / `SqlServerConnectionResolution` — name → connection string with clean failure messages.
-- `SqlServerE2eMetadata` / `SqlServerE2eConnectionResolver` — the reserved metadata that authorizes a profile for end-to-end testing, and the resolver that finds the bootstrap profile by name without opening a connection.
+- `SqlServerE2eMetadata` / `SqlServerE2eConnectionResolver` — the reserved metadata that authorizes general E2E use and bootstrap use, and the resolver that requires both the expected name and bootstrap authorization without opening a connection.
 - `SqlServerConnectionValidator` / `SqlServerConnectionValidationPolicy` — profile validation (e.g. database required vs. optional); `ValidateComplete(...)` also checks credential presence and connection-string compatibility.
 - `IConnectionPasswordProtector` — password-at-rest strategy: `DpapiConnectionPasswordProtector`, `NonPersistingConnectionPasswordProtector`, `NoOpConnectionPasswordProtector`, and `ConnectionPasswordProtector.CreateDefault()`.
 - `SqlServerDatabaseLister` — async database enumeration for a profile.
@@ -229,10 +229,11 @@ instances, ports, services, and containers are never tried, a reachable server i
 taken as consent, and "the first profile that works" is not a selection rule. A machine
 with no marked profile resolves to `NotConfigured`, and a test suite skips.
 
-Two reserved metadata keys carry the authorization:
+Three reserved metadata keys carry E2E and bootstrap authorization:
 
 ```text
 ittiger.e2e.enabled=true                 # this profile may be used for E2E work
+ittiger.e2e.bootstrap=true               # this expected profile may act as bootstrap
 ittiger.e2e.allow-database-create=true   # …and E2E work may create databases through it
 ```
 
@@ -250,10 +251,16 @@ because profile metadata is compared ordinally:
 
 ```csharp
 var profile = store.Find("tiger-sqlcmd-e2e")!;
-profile.SetMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
-profile.SetMetadata(SqlServerE2eMetadata.AllowDatabaseCreation, SqlServerE2eMetadata.True);
+SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(
+    profile,
+    allowDatabaseCreation: true);
 store.AddOrUpdate(profile);
 ```
+
+`AuthorizeNewProfile(...)` writes general E2E authorization and never writes the
+bootstrap flag. `AuthorizeNewBootstrapProfile(...)` is the TigerQuery-owned path that
+writes both authorization flags and the optional database-creation permission. Generic
+metadata APIs reject all `ittiger.*` writes.
 
 ### Resolving the bootstrap connection
 
@@ -282,21 +289,27 @@ switch (resolution.Status)
 }
 ```
 
-**Identity is separate from authorization.** The keys above say what a profile is *allowed*
-to be used for; they never say which profile *is* the bootstrap connection. That is chosen
-by name — the caller's `ConnectionName`, otherwise the host's `DefaultConnectionName` —
-and by nothing else. A store holding exactly one authorized profile still resolves nothing
-when no name is supplied, and a profile is never nominated by its name alone, by its
-metadata, or by where it sits in the file.
+**Name and metadata have separate, required roles.** The caller's `ConnectionName`, or the
+host's `DefaultConnectionName`, identifies the expected profile. Exact
+`ittiger.e2e.bootstrap=true` metadata authorizes that selected profile to act as bootstrap.
+Both are required. A store holding exactly one authorized bootstrap profile still resolves
+nothing when no name is supplied, and an expected name without the bootstrap flag is
+`Invalid`; store order never supplies either decision.
 
 The four outcomes:
 
 | Status | When |
 | --- | --- |
-| `Resolved` | one profile matched the name, is marked `enabled=true`, holds every requested permission, and passes `ValidateComplete`. The only status carrying a `Profile`. |
+| `Resolved` | one profile matched the name, is marked `enabled=true` and `bootstrap=true`, holds every requested permission, and passes `ValidateComplete`. The only status carrying a `Profile`. |
 | `NotConfigured` | no name was supplied; or the host's `DefaultConnectionName` names a profile that does not exist yet. A skip, not a fault. |
 | `Ambiguous` | several profiles share the requested name, or no name was supplied and several profiles are authorized. Never settled by taking the first. |
 | `Invalid` | a name the *caller* supplied does not exist; the profile is not authorized; reserved metadata is malformed; a requested permission is missing; the profile fails validation; or the store file could not be read. |
+
+Bootstrap profiles created by older TigerQuery builds do not contain
+`ittiger.e2e.bootstrap=true` and now resolve as `Invalid`. After preserving any settings
+you still need, delete and recreate them with `connections add-e2e-bootstrap`, or upgrade
+them through `AuthorizeNewBootstrapProfile(...)` and persist the profile. Generic metadata
+mutation is intentionally not a migration path.
 
 `ConnectionName` and `DefaultConnectionName` are separate because they fail differently: a
 caller who names a missing profile made a mistake and gets `Invalid`, while a host

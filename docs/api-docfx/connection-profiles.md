@@ -264,15 +264,18 @@ The exact authorization grammar is:
 
 ```text
 ittiger.e2e.enabled=true
+ittiger.e2e.bootstrap=true
 ittiger.e2e.allow-database-create=true
 ```
 
 Keys and values are ordinal and case-sensitive: for example, `True`, `1`, and
 surrounding whitespace are invalid flag values. Server reachability and a valid
 ordinary profile do not authorize E2E work. Bootstrap selection is strictly by
-an explicit caller name or the host-configured default name; TigerQuery never
-discovers SQL Server instances, infers a bootstrap from store order, or selects
-the sole authorized profile.
+an explicit caller name or the host-configured default name, and the selected
+profile must also carry exact `ittiger.e2e.bootstrap=true` authorization. The
+name identifies the expected profile; metadata authorizes it as bootstrap; both
+are required. TigerQuery never discovers SQL Server instances, infers a
+bootstrap from store order, or selects the sole authorized profile.
 
 A copy preserves all metadata, then applies the removals and assignments in
 `SqlServerConnectionCopyOptions` by exact key. Empty keys, null values, and a key

@@ -1,6 +1,6 @@
 # TigerQuery connection-store resolution and safe E2E foundation
 
-Status: Phases 1–7 completed; Phase 8 implemented with gated live validation pending
+Status: Complete — Phases 1–8 implemented and validated
 
 Scope:
 
@@ -701,6 +701,7 @@ Requirements:
 - Core does not invent an application-specific name;
 - no implicit selection occurs when the host has not configured one;
 - the profile must still carry explicit TigerQuery E2E authorization metadata;
+- the profile must carry explicit TigerQuery bootstrap authorization metadata;
 - profile name alone is not authorization;
 - the failure case writes nothing — no file creation, no partial profile, no directory
   creation — and returns a validation-error outcome.
@@ -721,9 +722,12 @@ the explicit per-invocation override.
 Bootstrap identity is separate from general E2E authorization. The regular
 `connections add <name>` command may support a flag that marks a newly created
 profile as E2E-authorized, but that does not make the profile the bootstrap
-profile. The resolver selects a bootstrap profile only by the caller's explicit name or
-the host-configured default name. Authorization metadata, a hard-coded naming convention,
-and store ordering never select one. Phase 5 settled the regular-add shape as the
+profile. The resolver first selects the expected profile by the caller's explicit name or
+the host-configured default name, then requires `ittiger.e2e.bootstrap=true` to authorize
+that selected profile as bootstrap. Name identifies the expected profile; metadata
+authorizes it as bootstrap; both are required. A hard-coded naming convention, bootstrap
+metadata without an expected name, and store ordering never select one. Phase 5 settled
+the regular-add shape as the
 non-promptable `--e2e` switch, with a separate non-promptable
 `--allow-database-create` switch that requires `--e2e`. The bootstrap command always
 supplies E2E authorization and accepts the same separate database-creation permission
@@ -739,6 +743,7 @@ Phase 4 implemented the Core-owned reserved metadata contract:
 
 ```text
 ittiger.e2e.enabled=true
+ittiger.e2e.bootstrap=true
 ittiger.e2e.allow-database-create=true
 ```
 
@@ -761,10 +766,17 @@ public static class SqlServerE2eMetadata
 {
     public const string ReservedKeyPrefix = "ittiger.";
     public const string Enabled = "ittiger.e2e.enabled";
+    public const string Bootstrap = "ittiger.e2e.bootstrap";
     public const string AllowDatabaseCreation = "ittiger.e2e.allow-database-create";
     public const string True = "true";
     public const string False = "false";
 
+    public static void AuthorizeNewProfile(
+        SqlServerConnectionProfile profile,
+        bool allowDatabaseCreation = false);
+    public static void AuthorizeNewBootstrapProfile(
+        SqlServerConnectionProfile profile,
+        bool allowDatabaseCreation = false);
     public static bool IsReservedKey(string key);
     public static SqlServerE2eFlagState ReadFlag(
         SqlServerConnectionProfile profile,
@@ -810,6 +822,8 @@ A profile qualifies as an E2E bootstrap profile only when:
 
 - `ittiger.e2e.enabled` is present;
 - its value is exactly `true` per section 8.1;
+- `ittiger.e2e.bootstrap` is present;
+- its value is exactly `true` per section 8.1;
 - the profile passes complete structural validation;
 - any requested operation is explicitly allowed.
 
@@ -820,6 +834,11 @@ ittiger.e2e.allow-database-create=true
 ```
 
 Ordinary profiles are ignored, even when they are valid and connect successfully.
+Profiles created by an older `add-e2e-bootstrap` implementation carry the expected name
+and `ittiger.e2e.enabled=true` but not `ittiger.e2e.bootstrap=true`; they no longer resolve.
+They must be recreated with the corrected bootstrap command or upgraded through the
+TigerQuery-owned bootstrap metadata API. Re-creation requires preserving any needed
+settings before deleting the old profile. Generic metadata writes remain forbidden.
 
 ### 8.3 No connection during resolution
 
@@ -917,13 +936,15 @@ has not been configured on that machine. More than one stored profile with the s
 name is `Ambiguous`, including duplicates introduced by a hand edit or direct `Save`; the
 resolver never takes the first match.
 
-After finding exactly one named profile, the resolver requires
-`ittiger.e2e.enabled=true`, checks any requested database-creation permission, and runs
-complete structural validation. The default validation policy is `DatabaseOptional`;
-callers may request another policy. Malformed values for either known reserved E2E flag
-make the profile `Invalid` regardless of which permission the request needs. Unknown
-future `ittiger.*` keys are ignored while reading. An absent store is `NotConfigured`; an
-existing unreadable or malformed store is `Invalid`.
+After finding exactly one named profile, the resolver requires both
+`ittiger.e2e.enabled=true` and `ittiger.e2e.bootstrap=true`, checks any requested
+database-creation permission, and runs complete structural validation. The name identifies
+the expected profile and the bootstrap metadata authorizes it; neither is sufficient alone.
+The default validation policy is `DatabaseOptional`; callers may request another policy.
+Malformed values for any known reserved E2E flag make the profile `Invalid` regardless of
+which permission the request needs. Unknown future `ittiger.*` keys are ignored while
+reading. An absent store is `NotConfigured`; an existing unreadable or malformed store is
+`Invalid`.
 
 ## 10. CLI commands for easy developer setup
 
@@ -1108,7 +1129,7 @@ can all resolve the standard E2E profile without environment variables.
 No profile means no E2E access.
 
 `TIGERQUERY_CONNECTION_STORE_FILE` is not required for this workflow and is not the E2E
-enable switch. The expected bootstrap name plus exact E2E authorization and
+enable switch. The expected bootstrap name plus exact E2E and bootstrap authorization and
 database-creation permission in the normal application store are the local opt-in.
 
 ### 12.2 Alternate local store
@@ -1289,7 +1310,8 @@ It must not:
 
 - discover SQL Server;
 - connect to SQL Server unless the selected store contains the host's expected bootstrap
-  name with exact E2E authorization and database-creation permission;
+  name with exact E2E authorization, bootstrap authorization, and database-creation
+  permission;
 - create databases without that same explicit opt-in;
 - modify existing databases;
 - use ordinary connection profiles as E2E profiles;
@@ -1345,11 +1367,13 @@ Test, per section 4.3:
 
 ### 15.3 E2E metadata
 
-Phase 4 validation completed:
+Phase 4 validation completed and was extended for corrected bootstrap identity:
 
 - ordinary profile ignored;
-- enabled profile accepted;
+- enabled profile without bootstrap authorization rejected;
+- enabled bootstrap profile accepted;
 - non-canonical Boolean metadata (`True`, `1`, `yes`, ` true `) rejected with a specific error rather than silently false;
+- malformed bootstrap metadata rejected;
 - malformed `allow-database-create` rejected even when database creation is not requested;
 - wrong-case metadata key confers nothing;
 - unknown future `ittiger.*` metadata tolerated when reading;
@@ -1607,7 +1631,7 @@ implementation here silently reintroduces "reachable means allowed."
 
 **Completed work.**
 
-1. `SqlServerE2eMetadata`, `SqlServerE2eFlagState`, the two initial E2E flag constants,
+1. `SqlServerE2eMetadata`, `SqlServerE2eFlagState`, the three E2E flag constants,
    strict `true`/`false` parsing, and ordinal `ittiger.*` namespace classification.
 2. `SqlServerE2eResolutionStatus`, `SqlServerE2eConnectionResolution`,
    `SqlServerE2eConnectionResolutionOptions`, and the static resolver API shown in
@@ -1634,8 +1658,10 @@ constructs no `SqlConnection`, never contacts a reachable endpoint named by the 
 and leaves an absent store absent.
 
 **Settled outcomes.** Open questions 3 and 15 are closed: resolution is always name-based,
-never selects a sole authorized profile implicitly, and does not use a bootstrap-identity
-metadata key. Open question 8 is closed: all `ittiger.*` keys are TigerQuery-owned,
+never selects a sole authorized profile implicitly, and additionally requires the exact
+bootstrap-authorization metadata on the selected profile. Name identifies the expected
+profile and metadata authorizes it as bootstrap; both are required. Open question 8 is
+closed: all `ittiger.*` keys are TigerQuery-owned,
 generic metadata write paths must reject them, and only TigerQuery-owned E2E/bootstrap
 operations may write them. Unknown reserved keys remain tolerated on reads for forward
 compatibility. Production resolution remains test-framework neutral; the repository's
@@ -1657,15 +1683,18 @@ deferred.
 1. `add-e2e-bootstrap` command mounted through `SqlServerConnectionCommands.Configure`.
 2. Name resolution: `--name` wins, then the host-configured default, then a clean failure
    that writes nothing.
-3. E2E-authorization flag on `connections add`, writing the metadata without conferring
-   bootstrap identity.
-4. Enforce the binding reserved-write policy from section 8.1: generic metadata commands
+3. The bootstrap command writes both `ittiger.e2e.enabled=true` and
+   `ittiger.e2e.bootstrap=true`; its database-creation switch additionally writes
+   `ittiger.e2e.allow-database-create=true`.
+4. E2E-authorization flag on `connections add`, writing the metadata without conferring
+   bootstrap authorization.
+5. Enforce the binding reserved-write policy from section 8.1: generic metadata commands
    and APIs reject every `ittiger.*` set/remove request, while these TigerQuery-owned
    E2E/bootstrap paths may write the reserved keys they own. Read and filter paths remain
    forward-compatible with unknown reserved keys.
-5. Non-promptable options for every value automation needs (section 10.1).
-6. Resources for both commands in en-US and pl-PL.
-7. Host exit-kind mapping review.
+6. Non-promptable options for every value automation needs (section 10.1).
+7. Resources for both commands in en-US and pl-PL.
+8. Host exit-kind mapping review.
 
 **Depends on.** Phases 2, 3, and 4.
 
@@ -1675,10 +1704,10 @@ set/remove rejection for known and unknown `ittiger.*` keys, and successful writ
 the TigerQuery-owned E2E/bootstrap path.
 
 **Settled outcome.** Regular `connections add` uses non-promptable `--e2e` and
-`--allow-database-create` switches; the latter requires the former. The dedicated
-bootstrap command always writes E2E authorization and shares the database-creation
-permission switch. Neither path writes a bootstrap-identity key, and strict name-based
-selection remains unchanged.
+`--allow-database-create` switches; the latter requires the former. It never writes the
+bootstrap flag. The dedicated bootstrap command always writes E2E and bootstrap
+authorization and shares the database-creation permission switch. Strict expected-name
+selection remains, with bootstrap metadata as the additional authorization requirement.
 
 ### Phase 6 — External value references — **Completed**
 
@@ -1765,7 +1794,7 @@ signal. The lifecycle exposes no orphan-deletion API. Human-approved deletion re
 separate administrative process documented for callers rather than an automatic lifecycle
 operation.
 
-### Phase 8 — Repository E2E migration and hardening
+### Phase 8 — Repository E2E migration and hardening — **Completed**
 
 **Difficulty: High.** The phase where the safety claims are actually proven, through one
 host and an external-process test surface.
@@ -1795,16 +1824,37 @@ host and an external-process test surface.
 **Depends on.** Phases 4 and 7 for the interesting cases; the inertness work can start
 after Phase 4.
 
-**Validation status.** Offline, external-process redaction, missing-bootstrap inertness,
-build, and documentation validation are part of every normal run. Section 15.7 must also
-execute in full on a machine with SQL Server installed and reachable through both the
-regular application-default store and an environment-selected alternate store. A
-`NotConfigured` runtime skip is not proof of either live workflow and is why this phase
-is not yet marked completed. Phase 3 proved only connection-store composition and
-precedence.
+**Validation completed.** Section 15.7 executed in full on a machine with SQL Server
+reachable through both required store-selection workflows:
 
-**Risks / implementation details.** How much of the existing live-test surface must be
-rewritten rather than adapted. Framework coupling is confined to the test project.
+1. **Regular application-default store.** With
+   `TIGERQUERY_CONNECTION_STORE_FILE` unset, the harness used
+   `%APPDATA%\ItTiger.net\sqlserver-connections.json`, resolved the expected
+   `tiger-sqlcmd-e2e` bootstrap, and required the exact metadata
+   `ittiger.e2e.enabled=true`, `ittiger.e2e.bootstrap=true`, and
+   `ittiger.e2e.allow-database-create=true`.
+2. **Environment-selected alternate store.** With
+   `TIGERQUERY_CONNECTION_STORE_FILE` pointing to an isolated store, environment
+   selection overrode the application default. The alternate store independently
+   satisfied the same expected-name and exact authorization requirements.
+
+The default-store live suite completed with 26 passed tests and one intentional
+integrated-authentication-only skip because the configured profile used SQL
+authentication. The environment-selected live suite produced the same result: 26 passed
+and one intentional integrated-authentication-only skip. The full unconfigured suite
+completed with 665 passed tests and 28 expected `NotConfigured` runtime skips; its missing
+selected store was not created.
+The Release build completed with zero warnings and zero errors, and DocFX completed with
+zero warnings and zero errors. The final implementation introduces no SQL Server
+discovery, probing, fallback, or automatic orphan deletion. A `NotConfigured` runtime
+skip remains evidence only of safe inert behavior, while the two successful live runs
+prove the complete workflow in both supported store-selection modes.
+
+Phase 8 and this TigerQuery plan are complete.
+
+**Implementation details.** The existing live-test surface was adapted where practical,
+with one full child-process workflow added where process isolation is material. Framework
+coupling remains confined to the test project.
 
 ### Explicitly deferred
 
@@ -1838,17 +1888,18 @@ path replaces only the application default. The contribution still applies the p
 precedence: CLI > environment > application default. No pinned test mode that outranks
 the CLI or environment is needed.
 
-**Rollout order.** Phases 1–4 are complete and deliver
+**Rollout completion.** Phases 1–4 delivered
 `--tq-connection-store-file`, `TIGERQUERY_CONNECTION_STORE_FILE`, and the shared deferred
 store plumbing, plus the Core E2E metadata/authorization contract and inert bootstrap
 resolver. The host tests prove store composition and precedence through `tiger-sqlcmd`;
-they do not prove the complete E2E workflow. Phase 5 added the bootstrap command surface
-under the binding reserved-write policy, and Phase 6 added portable external values
-without resolving them during authorization. Phase 7 added exact-instance database
+Phase 5 added the bootstrap command surface under the binding reserved-write policy, and
+Phase 6 added portable external values without resolving them during authorization.
+Phase 7 added exact-instance database
 ownership, generated naming, guarded cleanup, setup/teardown execution, profile copying,
-and report-only orphan detection in `ItTiger.TigerQuery`. Phase 8 has supplied the
-repository migration, hardening, and gated end-to-end proof surface over those lifecycle
-APIs; completion still requires executing the live gate against reachable SQL Server.
+and report-only orphan detection in `ItTiger.TigerQuery`. Phase 8 supplied and validated
+the repository migration, hardening, and complete external-process workflow through both
+the regular application-default and environment-selected stores. All numbered phases are
+complete.
 
 ## 19. Settled decisions and remaining implementation questions
 
@@ -1900,10 +1951,11 @@ APIs; completion still requires executing the live gate against reachable SQL Se
     supplies CliCore resource keys through its released localization overloads. English
     remains the fallback; en-US and pl-PL help are resolved at render time. No
     TigerQuery-specific workaround exists.
-15. ~~Whether bootstrap identity is recorded as its own metadata key.~~ **Settled in
-    Phase 4:** it is not. The resolver selects only the caller's explicit name or the
-    host-configured default name; authorization metadata expresses permission, not
-    bootstrap identity.
+15. ~~Whether bootstrap identity is recorded as its own metadata key.~~ **Settled by the
+    bootstrap identity correction:** yes: `ittiger.e2e.bootstrap=true` authorizes the selected
+    profile to act as bootstrap. The resolver selects only the caller's explicit name or
+    host-configured default name, then requires this flag. Name identifies the expected
+    profile; metadata authorizes it as bootstrap; both are required.
 16. ~~External-value JSON contract and compatibility strategy.~~ **Settled in Phase 6:**
     a plain JSON string remains a literal; an external value is an explicit tagged object
     with strict known discriminators and tolerated unknown properties.
@@ -1947,8 +1999,9 @@ The design is successful when:
   never written back or exposed through CLI inspection and failure diagnostics;
 - full connection strings and individual fields cannot be combined;
 - E2E profiles require explicit TigerQuery metadata, matched exactly;
-- bootstrap selection uses only an explicit caller name or host default name and never
-  infers identity from sole authorization or store ordering;
+- bootstrap selection uses an explicit caller name or host default name to identify the
+  expected profile and exact bootstrap metadata to authorize it; both are required, and
+  identity is never inferred from sole authorization or store ordering;
 - malformed known reserved E2E flags invalidate the profile even when the current request
   does not require the affected permission;
 - the entire `ittiger.*` namespace is TigerQuery-owned; generic metadata writes reject it,
@@ -1968,7 +2021,8 @@ The design is successful when:
   domain-specific workaround;
 - no component discovers SQL Server;
 - with no store-path override, live tests read the normal `tiger-sqlcmd` user store and
-  require the host-default bootstrap name plus exact E2E and database-creation metadata;
+  require the host-default bootstrap name plus exact E2E, bootstrap, and
+  database-creation metadata;
 - `TIGERQUERY_CONNECTION_STORE_FILE` overrides that default but never enables E2E by
   itself;
 - no `NotConfigured` test run opens a SQL connection or modifies the selected store;

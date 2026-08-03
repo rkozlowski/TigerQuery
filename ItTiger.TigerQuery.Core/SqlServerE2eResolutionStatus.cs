@@ -20,8 +20,8 @@ public enum SqlServerE2eResolutionStatus
     NotConfigured = 0,
 
     /// <summary>
-    /// One profile was named, found, and fully authorized. It is the only status that
-    /// carries a profile.
+    /// One profile was named, found, explicitly authorized as a bootstrap, and fully
+    /// qualified for the requested operation. It is the only status that carries a profile.
     /// </summary>
     Resolved = 1,
 
@@ -33,8 +33,8 @@ public enum SqlServerE2eResolutionStatus
 
     /// <summary>
     /// A specific profile was identified but cannot be used: it does not exist, it is not
-    /// E2E-authorized, its reserved metadata is malformed, it lacks a requested
-    /// permission, or it fails structural validation.
+    /// E2E-authorized or bootstrap-authorized, its reserved metadata is malformed, it lacks
+    /// a requested permission, or it fails structural validation.
     /// </summary>
     Invalid = 3
 }

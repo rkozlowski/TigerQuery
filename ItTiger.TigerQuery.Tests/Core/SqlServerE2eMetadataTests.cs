@@ -14,6 +14,7 @@ public sealed class SqlServerE2eMetadataTests
     {
         Assert.Equal("ittiger.", SqlServerE2eMetadata.ReservedKeyPrefix);
         Assert.Equal("ittiger.e2e.enabled", SqlServerE2eMetadata.Enabled);
+        Assert.Equal("ittiger.e2e.bootstrap", SqlServerE2eMetadata.Bootstrap);
         Assert.Equal("ittiger.e2e.allow-database-create", SqlServerE2eMetadata.AllowDatabaseCreation);
         Assert.Equal("true", SqlServerE2eMetadata.True);
         Assert.Equal("false", SqlServerE2eMetadata.False);
@@ -82,7 +83,7 @@ public sealed class SqlServerE2eMetadataTests
     }
 
     [Fact]
-    public void TheTwoReservedFlagsAreReadIndependently()
+    public void TheReservedFlagsAreReadIndependently()
     {
         var profile = Profile();
         profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
@@ -92,11 +93,15 @@ public sealed class SqlServerE2eMetadataTests
             SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.Enabled));
         Assert.Equal(
             SqlServerE2eFlagState.Absent,
+            SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.Bootstrap));
+        Assert.Equal(
+            SqlServerE2eFlagState.Absent,
             SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.AllowDatabaseCreation));
     }
 
     [Theory]
     [InlineData(SqlServerE2eMetadata.Enabled)]
+    [InlineData(SqlServerE2eMetadata.Bootstrap)]
     [InlineData("ittiger.future.setting")]
     public void GenericProfileMutationsRejectKnownAndUnknownReservedKeys(string key)
     {
@@ -120,6 +125,23 @@ public sealed class SqlServerE2eMetadataTests
 
         Assert.Equal(2, profile.Metadata.Count);
         Assert.Equal(SqlServerE2eMetadata.True, profile.Metadata[SqlServerE2eMetadata.Enabled]);
+        Assert.Equal(
+            SqlServerE2eMetadata.True,
+            profile.Metadata[SqlServerE2eMetadata.AllowDatabaseCreation]);
+    }
+
+    [Fact]
+    public void TigerQueryOwnedBootstrapAuthorizationWritesAllCanonicalBootstrapKeys()
+    {
+        var profile = Profile();
+
+        SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(
+            profile,
+            allowDatabaseCreation: true);
+
+        Assert.Equal(3, profile.Metadata.Count);
+        Assert.Equal(SqlServerE2eMetadata.True, profile.Metadata[SqlServerE2eMetadata.Enabled]);
+        Assert.Equal(SqlServerE2eMetadata.True, profile.Metadata[SqlServerE2eMetadata.Bootstrap]);
         Assert.Equal(
             SqlServerE2eMetadata.True,
             profile.Metadata[SqlServerE2eMetadata.AllowDatabaseCreation]);

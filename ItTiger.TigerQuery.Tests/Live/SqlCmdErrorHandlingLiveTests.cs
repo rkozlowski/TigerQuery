@@ -10,6 +10,7 @@ namespace ItTiger.TigerQuery.Tests.Live;
 /// SQL side effects its script produced so that "later batches did not run" is asserted
 /// rather than assumed.
 /// </summary>
+[Collection(LiveTestCollection.Name)]
 public sealed class SqlCmdErrorHandlingLiveTests
 {
     [Theory]

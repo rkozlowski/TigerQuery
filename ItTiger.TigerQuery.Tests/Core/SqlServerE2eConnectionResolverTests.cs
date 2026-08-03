@@ -6,8 +6,8 @@ using ItTiger.TigerQuery.Core;
 namespace ItTiger.TigerQuery.Tests.Core;
 
 /// <summary>
-/// Covers the E2E authorization boundary: that a profile is eligible only because it says
-/// so, that the bootstrap connection is chosen by name and never inferred, that every
+/// Covers the E2E authorization boundary: that a profile is selected by the expected name
+/// and eligible only with explicit bootstrap metadata, that neither is inferred, and that every
 /// refusal is a distinguishable outcome rather than a silent one, and that resolving
 /// contacts no server.
 /// </summary>
@@ -37,7 +37,27 @@ public sealed class SqlServerE2eConnectionResolverTests
     }
 
     [Fact]
-    public void AnEnabledProfileNamedExplicitlyResolves()
+    public void AnExpectedNameEnabledWithoutBootstrapAuthorizationIsRefused()
+    {
+        using var temp = new TempStore();
+        var profile = Profile(Bootstrap);
+        SqlServerE2eMetadata.AuthorizeNewProfile(profile);
+        temp.Seed(profile);
+
+        var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
+        {
+            ConnectionName = Bootstrap
+        });
+
+        AssertRefused(SqlServerE2eResolutionStatus.Invalid, resolution);
+        Assert.Contains(
+            resolution.Errors,
+            error => error.Contains(SqlServerE2eMetadata.Bootstrap, StringComparison.Ordinal));
+        Assert.Empty(resolution.CandidateNames);
+    }
+
+    [Fact]
+    public void AnEnabledBootstrapProfileNamedExplicitlyResolves()
     {
         using var temp = new TempStore();
         temp.Seed(Enabled(Profile(Bootstrap)));
@@ -98,6 +118,7 @@ public sealed class SqlServerE2eConnectionResolverTests
         using var temp = new TempStore();
         var profile = Profile(Bootstrap);
         profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, value);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Bootstrap, SqlServerE2eMetadata.True);
         temp.Seed(profile);
 
         var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
@@ -112,6 +133,32 @@ public sealed class SqlServerE2eConnectionResolverTests
         var error = Assert.Single(resolution.Errors);
         Assert.Contains("neither", error, StringComparison.Ordinal);
         Assert.Contains(SqlServerE2eMetadata.Enabled, error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("True")]
+    [InlineData("TRUE")]
+    [InlineData("1")]
+    [InlineData("yes")]
+    [InlineData(" true ")]
+    [InlineData("")]
+    public void NonCanonicalBootstrapMetadataIsRejectedWithItsOwnError(string value)
+    {
+        using var temp = new TempStore();
+        var profile = Profile(Bootstrap);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
+        profile.SetReservedMetadata(SqlServerE2eMetadata.Bootstrap, value);
+        temp.Seed(profile);
+
+        var resolution = Resolve(temp, new SqlServerE2eConnectionResolutionOptions
+        {
+            ConnectionName = Bootstrap
+        });
+
+        AssertRefused(SqlServerE2eResolutionStatus.Invalid, resolution);
+        var error = Assert.Single(resolution.Errors);
+        Assert.Contains("neither", error, StringComparison.Ordinal);
+        Assert.Contains(SqlServerE2eMetadata.Bootstrap, error, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -614,7 +661,7 @@ public sealed class SqlServerE2eConnectionResolverTests
 
     private static SqlServerConnectionProfile Enabled(SqlServerConnectionProfile profile)
     {
-        profile.SetReservedMetadata(SqlServerE2eMetadata.Enabled, SqlServerE2eMetadata.True);
+        SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(profile);
         return profile;
     }
 

@@ -49,8 +49,8 @@ unique suffix. A host can supply a different prefix through
 `SqlServerE2eDatabaseLifecycleOptions.DatabasePrefix`. Prefixes are validated so
 the generated SQL Server identifier remains within 128 characters.
 
-Creation is refused unless the selected profile currently has both
-`ittiger.e2e.enabled=true` and
+Creation is refused unless the selected profile currently has
+`ittiger.e2e.enabled=true`, `ittiger.e2e.bootstrap=true`, and
 `ittiger.e2e.allow-database-create=true`. Before creation, the lifecycle rechecks
 the explicitly selected name in its own store; after creation it retains that
 authorized profile for setup and exact-owned cleanup even if the store is edited.
@@ -100,9 +100,10 @@ The environment variable is optional. With no
 `TIGERQUERY_CONNECTION_STORE_FILE`, the live-test harness reads the normal
 `tiger-sqlcmd` application-default user store and looks only for the host's expected
 `tiger-sqlcmd-e2e` bootstrap name. The local opt-in is that exact named profile carrying
-both `ittiger.e2e.enabled=true` and
-`ittiger.e2e.allow-database-create=true`; server reachability and ordinary profiles do
-not enable E2E work.
+`ittiger.e2e.enabled=true`, `ittiger.e2e.bootstrap=true`, and
+`ittiger.e2e.allow-database-create=true`; server reachability and ordinary profiles do not
+enable E2E work. The name identifies the expected profile and metadata authorizes it as
+bootstrap; both are required.
 
 If the expected bootstrap is absent, resolution returns `NotConfigured` and xUnit
 runtime-skips before discovering or probing SQL Server, opening a connection, creating a
@@ -147,6 +148,11 @@ than command-line literals. A job that needs the zero-connection assertion shoul
 the environment override at a missing or empty job-specific store, then run the live
 workflow separately after creating its authorized bootstrap. Always publish the test
 log: a cleanup failure names the exact database left behind for manual investigation.
+
+An older bootstrap profile without `ittiger.e2e.bootstrap=true` now fails live-test
+resolution as invalid rather than being used. After preserving any settings still needed,
+delete and recreate it with `connections add-e2e-bootstrap`; regular `add --e2e` does not
+migrate it.
 
 For containers, mount both the writable store location and any referenced secret files,
 and use paths as seen inside the test container. DPAPI-protected values are not portable

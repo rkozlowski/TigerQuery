@@ -34,8 +34,8 @@ public sealed class E2eBootstrapCommandTests
             "--non-interactive", "--server", "srv");
 
         Assert.Equal((int)ContributionExitCode.Ok, result.ExitCode);
-        Assert.Equal(
-            SqlServerE2eMetadata.True,
-            app.Options.Store.Find("host-bootstrap")!.Metadata[SqlServerE2eMetadata.Enabled]);
+        var metadata = app.Options.Store.Find("host-bootstrap")!.Metadata;
+        Assert.Equal(SqlServerE2eMetadata.True, metadata[SqlServerE2eMetadata.Enabled]);
+        Assert.Equal(SqlServerE2eMetadata.True, metadata[SqlServerE2eMetadata.Bootstrap]);
     }
 }

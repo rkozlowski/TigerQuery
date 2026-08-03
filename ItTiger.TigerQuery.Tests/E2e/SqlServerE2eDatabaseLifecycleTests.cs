@@ -256,7 +256,7 @@ public sealed class SqlServerE2eDatabaseLifecycleTests
                     Name = "TQ_BOOTSTRAP"
                 })
         };
-        SqlServerE2eMetadata.AuthorizeNewProfile(profile, allowDatabaseCreation: true);
+        SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(profile, allowDatabaseCreation: true);
         temp.Store.Add(profile);
         var resolution = Resolve(temp, profile.Name, requireCreate: true);
         var reads = 0;
@@ -424,7 +424,7 @@ public sealed class SqlServerE2eDatabaseLifecycleTests
             SqlServerConnectionProfile profile,
             bool allowCreate)
         {
-            SqlServerE2eMetadata.AuthorizeNewProfile(profile, allowCreate);
+            SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(profile, allowCreate);
             Store.Add(profile);
             return Resolve(this, profile.Name, requireCreate: false);
         }

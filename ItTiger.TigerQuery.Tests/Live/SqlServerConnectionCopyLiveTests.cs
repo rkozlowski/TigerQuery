@@ -8,6 +8,7 @@ namespace ItTiger.TigerQuery.Tests.Live;
 /// well-formed JSON entry: the copy is resolved by name from the same store and opened
 /// against the real server.
 /// </summary>
+[Collection(LiveTestCollection.Name)]
 public sealed class SqlServerConnectionCopyLiveTests
 {
     [Fact]
@@ -82,10 +83,18 @@ public sealed class SqlServerConnectionCopyLiveTests
         Assert.True(resolution.IsSuccess, resolution.ErrorMessage);
 
         await using var connection = new SqlConnection(resolution.ConnectionString);
-        await connection.OpenAsync(TestContext.Current.CancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT DB_NAME();";
-        return (string)(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
+        try
+        {
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT DB_NAME();";
+            return (string)(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
+        }
+        finally
+        {
+            await connection.CloseAsync();
+            SqlConnection.ClearPool(connection);
+        }
     }
 
     private static SqlServerConnectionProfile ProfileFrom(string name, SqlConnectionStringBuilder builder) => new()
@@ -95,7 +104,7 @@ public sealed class SqlServerConnectionCopyLiveTests
         Authentication = builder.IntegratedSecurity ? AuthenticationType.Integrated : AuthenticationType.SqlPassword,
         Username = builder.IntegratedSecurity ? null : builder.UserID,
         PlainPassword = builder.IntegratedSecurity ? null : builder.Password,
-        Encrypt = Enum.Parse<EncryptOption>(builder.Encrypt.ToString()),
+        Encrypt = SqlClientTestConversions.ToTigerQueryEncryptOption(builder.Encrypt),
         TrustServerCertificate = builder.TrustServerCertificate,
         ConnectTimeout = builder.ConnectTimeout
     };

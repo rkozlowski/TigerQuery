@@ -13,6 +13,7 @@ internal sealed class AddSqlServerConnectionCommand(SqlServerConnectionCommandCo
             settings.Name,
             context,
             authorizeE2e: settings.E2e,
+            authorizeBootstrap: false,
             allowDatabaseCreation: settings.AllowDatabaseCreation);
 }
 
@@ -24,6 +25,7 @@ internal static class SqlServerConnectionCreator
         string name,
         SqlServerConnectionCommandContext context,
         bool authorizeE2e,
+        bool authorizeBootstrap,
         bool allowDatabaseCreation)
     {
         var metadataError = SqlServerConnectionMetadataOptions.ValidateMutations(
@@ -49,7 +51,13 @@ internal static class SqlServerConnectionCreator
             name,
             existing: null);
 
-        if (authorizeE2e)
+        if (authorizeBootstrap)
+        {
+            SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(
+                profile,
+                allowDatabaseCreation);
+        }
+        else if (authorizeE2e)
         {
             SqlServerE2eMetadata.AuthorizeNewProfile(
                 profile,

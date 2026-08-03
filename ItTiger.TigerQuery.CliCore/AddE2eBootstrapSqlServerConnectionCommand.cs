@@ -23,6 +23,7 @@ internal sealed class AddE2eBootstrapSqlServerConnectionCommand(
             name,
             context,
             authorizeE2e: true,
+            authorizeBootstrap: true,
             allowDatabaseCreation: settings.AllowDatabaseCreation);
     }
 }

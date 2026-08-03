@@ -13,10 +13,10 @@ namespace ItTiger.TigerQuery.Core;
 /// the store.
 /// </para>
 /// <para>
-/// Authorization is also not identity. These keys say what a profile is <i>allowed</i> to
-/// be used for; they never say which profile is <i>the</i> bootstrap connection. That
-/// choice is made by name, by the caller or by host configuration — see
-/// <see cref="SqlServerE2eConnectionResolver"/>.
+/// General E2E authorization is not bootstrap authorization. A bootstrap profile must be
+/// selected by the caller's or host's expected name and must also carry
+/// <see cref="Bootstrap"/><c>=true</c>. Neither the name nor the metadata is sufficient on
+/// its own — see <see cref="SqlServerE2eConnectionResolver"/>.
 /// </para>
 /// <para>
 /// Profile metadata is compared ordinally and case-sensitively, so the grammar is exact:
@@ -48,6 +48,13 @@ public static class SqlServerE2eMetadata
     /// infrastructure. Required, and required to be exactly <see cref="True"/>.
     /// </summary>
     public const string Enabled = "ittiger.e2e.enabled";
+
+    /// <summary>
+    /// <c>ittiger.e2e.bootstrap</c> — the profile is authorized to act as an E2E bootstrap
+    /// connection. Required, and required to be exactly <see cref="True"/>, in addition to
+    /// selecting the profile by its expected name and requiring <see cref="Enabled"/>.
+    /// </summary>
+    public const string Bootstrap = "ittiger.e2e.bootstrap";
 
     /// <summary>
     /// <c>ittiger.e2e.allow-database-create</c> — E2E workflows may create databases
@@ -88,6 +95,31 @@ public static class SqlServerE2eMetadata
         profile.SetReservedMetadata(Enabled, True);
         if (allowDatabaseCreation)
             profile.SetReservedMetadata(AllowDatabaseCreation, True);
+    }
+
+    /// <summary>
+    /// Adds the canonical TigerQuery E2E and bootstrap authorization metadata to a newly
+    /// created connection profile.
+    /// </summary>
+    /// <param name="profile">The bootstrap profile being created.</param>
+    /// <param name="allowDatabaseCreation">
+    /// Whether E2E infrastructure is also authorized to create databases through the
+    /// profile.
+    /// </param>
+    /// <remarks>
+    /// This is the TigerQuery-owned bootstrap write path. The profile name identifies the
+    /// expected profile during resolution; <see cref="Bootstrap"/><c>=true</c> authorizes
+    /// the selected profile to act as the bootstrap. Both are required.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="profile"/> is <see langword="null"/>.
+    /// </exception>
+    public static void AuthorizeNewBootstrapProfile(
+        SqlServerConnectionProfile profile,
+        bool allowDatabaseCreation = false)
+    {
+        AuthorizeNewProfile(profile, allowDatabaseCreation);
+        profile.SetReservedMetadata(Bootstrap, True);
     }
 
     /// <summary>

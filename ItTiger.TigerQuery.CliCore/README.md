@@ -133,8 +133,11 @@ filters; every filter must match. Metadata remains opaque, application-owned,
 case-sensitive string data, is never included in connection strings, and must
 not contain secrets. Generic mutations reject the reserved lowercase
 `ittiger.*` namespace. The E2E creation switches are the TigerQuery-owned path
-that writes its exact authorization keys; they never create bootstrap identity
-metadata, and an authorized profile is never selected implicitly.
+that writes their exact authorization keys. Regular `add --e2e` writes
+`ittiger.e2e.enabled=true` but never the bootstrap flag. `add-e2e-bootstrap`
+also writes `ittiger.e2e.bootstrap=true`. Resolution requires both the expected
+name and that bootstrap authorization; an authorized profile is never selected
+implicitly.
 
 ## Localization
 

@@ -20,7 +20,8 @@ namespace ItTiger.TigerQuery.Core;
 /// <para>
 /// Selection is always by name — <see cref="SqlServerE2eConnectionResolutionOptions.ConnectionName"/>,
 /// then <see cref="SqlServerE2eConnectionResolutionOptions.DefaultConnectionName"/> — and
-/// never implicit. With no name, a store holding exactly one authorized profile still
+/// the selected profile must carry explicit bootstrap authorization metadata. With no
+/// name, a store holding exactly one authorized bootstrap profile still
 /// resolves nothing: implicit single-profile selection can be added later without breaking
 /// a caller, while removing it later would be a silent safety regression. Ambiguity is
 /// reported, never settled by taking the first candidate.
@@ -87,6 +88,8 @@ public static class SqlServerE2eConnectionResolver
 
         var candidateNames = profiles
             .Where(profile => SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.Enabled)
+                == SqlServerE2eFlagState.True
+                && SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.Bootstrap)
                 == SqlServerE2eFlagState.True)
             .Select(profile => profile.Name)
             .Distinct(StringComparer.Ordinal)
@@ -213,7 +216,8 @@ public static class SqlServerE2eConnectionResolver
                 candidateNames,
                 [
                     $"No E2E bootstrap connection name was supplied and {candidateNames.Count} profiles "
-                    + $"are marked {SqlServerE2eMetadata.Enabled}={SqlServerE2eMetadata.True}. "
+                    + $"are marked {SqlServerE2eMetadata.Enabled}={SqlServerE2eMetadata.True} and "
+                    + $"{SqlServerE2eMetadata.Bootstrap}={SqlServerE2eMetadata.True}. "
                     + "TigerQuery never picks one for you; name the connection explicitly or "
                     + "configure a default bootstrap name."
                 ]);
@@ -223,10 +227,12 @@ public static class SqlServerE2eConnectionResolver
         // at it is a permanent invitation to run E2E work against the wrong server.
         var detail = candidateNames.Count == 1
             ? $"One profile ('{candidateNames[0]}') is marked "
-                + $"{SqlServerE2eMetadata.Enabled}={SqlServerE2eMetadata.True}, but TigerQuery never "
+                + $"{SqlServerE2eMetadata.Enabled}={SqlServerE2eMetadata.True} and "
+                + $"{SqlServerE2eMetadata.Bootstrap}={SqlServerE2eMetadata.True}, but TigerQuery never "
                 + "selects a bootstrap connection implicitly."
-            : $"No profile in the connection store is marked "
-                + $"{SqlServerE2eMetadata.Enabled}={SqlServerE2eMetadata.True}.";
+            : $"No profile in the connection store is marked with both "
+                + $"{SqlServerE2eMetadata.Enabled}={SqlServerE2eMetadata.True} and "
+                + $"{SqlServerE2eMetadata.Bootstrap}={SqlServerE2eMetadata.True}.";
 
         return Failed(
             SqlServerE2eResolutionStatus.NotConfigured,
@@ -266,6 +272,29 @@ public static class SqlServerE2eConnectionResolver
 
             default:
                 errors.Add(MalformedFlag(profile, SqlServerE2eMetadata.Enabled));
+                break;
+        }
+
+        switch (SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.Bootstrap))
+        {
+            case SqlServerE2eFlagState.True:
+                break;
+
+            case SqlServerE2eFlagState.Absent:
+                errors.Add(
+                    $"The connection '{name}' is not authorized as the TigerQuery E2E bootstrap: "
+                    + $"metadata '{SqlServerE2eMetadata.Bootstrap}' is not set. The expected profile "
+                    + "name identifies a candidate but does not authorize it as bootstrap.");
+                break;
+
+            case SqlServerE2eFlagState.False:
+                errors.Add(
+                    $"The connection '{name}' sets '{SqlServerE2eMetadata.Bootstrap}' to "
+                    + $"'{SqlServerE2eMetadata.False}', which withholds bootstrap authorization.");
+                break;
+
+            default:
+                errors.Add(MalformedFlag(profile, SqlServerE2eMetadata.Bootstrap));
                 break;
         }
 

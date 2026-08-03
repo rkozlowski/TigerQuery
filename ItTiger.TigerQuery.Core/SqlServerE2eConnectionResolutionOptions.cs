@@ -8,8 +8,9 @@ namespace ItTiger.TigerQuery.Core;
 /// A bootstrap profile is always chosen <b>by name</b>: <see cref="ConnectionName"/> from
 /// the caller, otherwise <see cref="DefaultConnectionName"/> from host configuration. When
 /// neither is supplied nothing is selected, however many authorized profiles the store
-/// holds. Authorization metadata, profile naming conventions, and store order never
-/// nominate a profile on their own.
+/// holds. The selected profile must also carry
+/// <see cref="SqlServerE2eMetadata.Bootstrap"/><c>=true</c>; the name identifies the
+/// expected profile and metadata authorizes it as bootstrap, so neither works alone.
 /// </para>
 /// <para>
 /// The two names are separate rather than one pre-merged value because they fail

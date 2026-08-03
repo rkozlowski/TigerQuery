@@ -6,6 +6,7 @@ using Microsoft.Data.SqlClient;
 
 namespace ItTiger.TigerQuery.Tests.Live;
 
+[Collection(LiveTestCollection.Name)]
 public sealed class TigerSqlCmdE2eWorkflowLiveTests : IDisposable
 {
     private const string BootstrapName = "phase8-external-bootstrap";
@@ -32,7 +33,9 @@ public sealed class TigerSqlCmdE2eWorkflowLiveTests : IDisposable
             new SqlServerConnectionStoreOptions { FilePath = storePath },
             new NoOpConnectionPasswordProtector());
         var bootstrap = ExternalBootstrap(effectiveBootstrap);
-        SqlServerE2eMetadata.AuthorizeNewProfile(bootstrap, allowDatabaseCreation: true);
+        SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(
+            bootstrap,
+            allowDatabaseCreation: true);
         store.Add(bootstrap);
 
         var resolution = SqlServerE2eConnectionResolver.Resolve(
@@ -201,7 +204,7 @@ public sealed class TigerSqlCmdE2eWorkflowLiveTests : IDisposable
             Authentication = builder.IntegratedSecurity
                 ? AuthenticationType.Integrated
                 : AuthenticationType.SqlPassword,
-            Encrypt = Enum.Parse<EncryptOption>(builder.Encrypt.ToString()),
+            Encrypt = SqlClientTestConversions.ToTigerQueryEncryptOption(builder.Encrypt),
             TrustServerCertificate = builder.TrustServerCertificate,
             ConnectTimeout = builder.ConnectTimeout,
             MultiSubnetFailover = builder.MultiSubnetFailover,

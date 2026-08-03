@@ -2,6 +2,7 @@ using ItTiger.TigerQuery.E2e;
 
 namespace ItTiger.TigerQuery.Tests.Live;
 
+[Collection(LiveTestCollection.Name)]
 public sealed class SqlServerE2eDatabaseLifecycleLiveTests
 {
     [Fact]

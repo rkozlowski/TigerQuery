@@ -35,8 +35,8 @@ public sealed class SqlServerE2eConnectionResolution
     public SqlServerConnectionProfile? Profile { get; init; }
 
     /// <summary>
-    /// Gets the names of the store's E2E-authorized profiles, in store order, as a hint
-    /// about what could have been meant. Empty on
+    /// Gets the names of the store's E2E- and bootstrap-authorized profiles, in store
+    /// order, as a hint about what could have been meant. Empty on
     /// <see cref="SqlServerE2eResolutionStatus.Resolved"/>.
     /// </summary>
     /// <remarks>

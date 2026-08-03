@@ -12,6 +12,7 @@ namespace ItTiger.TigerQuery.Tests.Live;
 /// Path handling, CSV escaping, naming, and failure classification are proved by the
 /// fast unit and probe tests; these stay narrow on purpose.
 /// </remarks>
+[Collection(LiveTestCollection.Name)]
 public sealed class OutputRoutingLiveTests : IDisposable
 {
     private readonly string _directory;

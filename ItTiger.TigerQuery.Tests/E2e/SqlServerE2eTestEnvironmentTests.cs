@@ -143,7 +143,7 @@ public sealed class SqlServerE2eTestEnvironmentTests
             Server = "ordinary-server",
             Authentication = AuthenticationType.Integrated
         };
-        SqlServerE2eMetadata.AuthorizeNewProfile(
+        SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(
             bootstrap,
             allowDatabaseCreation: false);
         applicationDefault.Store.Add(bootstrap);
@@ -156,6 +156,34 @@ public sealed class SqlServerE2eTestEnvironmentTests
         var exception = Assert.Throws<FailException>(
             () => SqlServerTestEnvironment.RequireResolved(result.Store!, result.Resolution));
 
+        Assert.Contains("Invalid", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExpectedNameWithoutBootstrapFlagIsAnInvalidFailureRatherThanASkip()
+    {
+        using var applicationDefault = new TempStore();
+        var profile = new SqlServerConnectionProfile
+        {
+            Name = TigerSqlCmdApp.DefaultE2eBootstrapConnectionName,
+            Server = "ordinary-server",
+            Authentication = AuthenticationType.Integrated
+        };
+        SqlServerE2eMetadata.AuthorizeNewProfile(profile, allowDatabaseCreation: true);
+        applicationDefault.Store.Add(profile);
+
+        var result = SqlServerTestEnvironment.Resolve(
+            applicationDefault.Store.FilePath,
+            _ => null,
+            OpenStore,
+            requireDatabaseCreation: true);
+
+        Assert.Equal(SqlServerE2eResolutionStatus.Invalid, result.Resolution.Status);
+        Assert.Contains(
+            result.Resolution.Errors,
+            error => error.Contains(SqlServerE2eMetadata.Bootstrap, StringComparison.Ordinal));
+        var exception = Assert.Throws<FailException>(
+            () => SqlServerTestEnvironment.RequireResolved(result.Store!, result.Resolution));
         Assert.Contains("Invalid", exception.Message, StringComparison.Ordinal);
     }
 
@@ -248,7 +276,7 @@ public sealed class SqlServerE2eTestEnvironmentTests
             Server = server,
             Authentication = AuthenticationType.Integrated
         };
-        SqlServerE2eMetadata.AuthorizeNewProfile(profile, allowDatabaseCreation: true);
+        SqlServerE2eMetadata.AuthorizeNewBootstrapProfile(profile, allowDatabaseCreation: true);
         return profile;
     }
 

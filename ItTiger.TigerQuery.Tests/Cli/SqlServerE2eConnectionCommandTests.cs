@@ -24,6 +24,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         var profile = temp.Store.Find("general-e2e")!;
         Assert.Equal(SqlServerE2eMetadata.True, profile.Metadata[SqlServerE2eMetadata.Enabled]);
+        Assert.False(profile.Metadata.ContainsKey(SqlServerE2eMetadata.Bootstrap));
         Assert.False(profile.Metadata.ContainsKey(SqlServerE2eMetadata.AllowDatabaseCreation));
 
         var resolution = SqlServerE2eConnectionResolver.Resolve(
@@ -49,6 +50,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         var metadata = temp.Store.Find("database-e2e")!.Metadata;
         Assert.Equal(SqlServerE2eMetadata.True, metadata[SqlServerE2eMetadata.Enabled]);
+        Assert.False(metadata.ContainsKey(SqlServerE2eMetadata.Bootstrap));
         Assert.Equal(
             SqlServerE2eMetadata.True,
             metadata[SqlServerE2eMetadata.AllowDatabaseCreation]);
@@ -76,7 +78,8 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         var profile = temp.Store.Find(TigerSqlCmdApp.DefaultE2eBootstrapConnectionName)!;
         Assert.Equal(SqlServerE2eMetadata.True, profile.Metadata[SqlServerE2eMetadata.Enabled]);
-        Assert.Single(profile.Metadata);
+        Assert.Equal(SqlServerE2eMetadata.True, profile.Metadata[SqlServerE2eMetadata.Bootstrap]);
+        Assert.Equal(2, profile.Metadata.Count);
     }
 
     [Fact]
@@ -91,9 +94,26 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
         Assert.Null(temp.Store.Find(TigerSqlCmdApp.DefaultE2eBootstrapConnectionName));
         var metadata = temp.Store.Find("explicit-bootstrap")!.Metadata;
         Assert.Equal(SqlServerE2eMetadata.True, metadata[SqlServerE2eMetadata.Enabled]);
+        Assert.Equal(SqlServerE2eMetadata.True, metadata[SqlServerE2eMetadata.Bootstrap]);
         Assert.Equal(
             SqlServerE2eMetadata.True,
             metadata[SqlServerE2eMetadata.AllowDatabaseCreation]);
+    }
+
+    [Fact]
+    public async Task BootstrapMetadataIsShownWithExistingMetadata()
+    {
+        var add = await RunAsync(
+            "connections", "add-e2e-bootstrap",
+            "--non-interactive", "--name", "shown-bootstrap", "--server", "srv");
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
+
+        var show = await RunAsync(
+            "connections", "show", "shown-bootstrap", "--non-interactive");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, show.ExitCode);
+        Assert.Contains(SqlServerE2eMetadata.Enabled, show.StdOut, StringComparison.Ordinal);
+        Assert.Contains(SqlServerE2eMetadata.Bootstrap, show.StdOut, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -120,6 +140,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
 
     [Theory]
     [InlineData(SqlServerE2eMetadata.Enabled)]
+    [InlineData(SqlServerE2eMetadata.Bootstrap)]
     [InlineData("ittiger.future.setting")]
     public async Task GenericMetadataSetRejectsKnownAndUnknownReservedKeys(string key)
     {
@@ -134,6 +155,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
 
     [Theory]
     [InlineData(SqlServerE2eMetadata.Enabled)]
+    [InlineData(SqlServerE2eMetadata.Bootstrap)]
     [InlineData("ittiger.future.setting")]
     public async Task GenericMetadataRemoveRejectsKnownAndUnknownReservedKeys(string key)
     {

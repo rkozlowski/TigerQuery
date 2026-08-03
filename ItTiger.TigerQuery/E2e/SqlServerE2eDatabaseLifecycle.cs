@@ -31,8 +31,9 @@ public sealed class SqlServerE2eDatabaseLifecycle
     /// <summary>Initializes a lifecycle from an explicitly resolved bootstrap profile.</summary>
     /// <param name="store">The same store that owns the bootstrap profile and any generated copy.</param>
     /// <param name="bootstrapResolution">
-    /// The result of explicit, name-based E2E bootstrap resolution. Creation rechecks the
-    /// database-creation permission rather than trusting how the result was requested.
+    /// The result of expected-name and metadata-authorized E2E bootstrap resolution.
+    /// Creation rechecks bootstrap authorization and the database-creation permission
+    /// rather than trusting how the result was requested.
     /// </param>
     /// <param name="options">Optional host prefix and external-value readers.</param>
     public SqlServerE2eDatabaseLifecycle(
@@ -80,8 +81,9 @@ public sealed class SqlServerE2eDatabaseLifecycle
     /// <param name="cancellationToken">A token observed while resolving and executing SQL.</param>
     /// <returns>The exact generated database name.</returns>
     /// <exception cref="InvalidOperationException">
-    /// The bootstrap resolution is not resolved and E2E-authorized, database creation is
-    /// not explicitly allowed, or this instance has already created a database.
+    /// The bootstrap resolution is not resolved and explicitly bootstrap-authorized,
+    /// database creation is not explicitly allowed, or this instance has already created
+    /// a database.
     /// </exception>
     public async Task<string> CreateDatabaseAsync(CancellationToken cancellationToken = default)
     {

@@ -123,9 +123,9 @@ your-tool connections add test-creator --server sql01 --e2e --allow-database-cre
 `--e2e` writes exactly `ittiger.e2e.enabled=true`.
 `--allow-database-create` additionally writes exactly
 `ittiger.e2e.allow-database-create=true` and is rejected unless `--e2e` is also
-present. Both are non-promptable switches. Authorization is not bootstrap
-identity: a resolver never selects one of these profiles merely because it is
-the only authorized profile.
+present. Both are non-promptable switches. Regular `--e2e` never writes
+`ittiger.e2e.bootstrap`. A resolver therefore rejects one of these profiles as
+bootstrap even when its name matches the expected name.
 
 The dedicated bootstrap creation command is:
 
@@ -137,9 +137,16 @@ An explicit `--name` wins. Otherwise CliCore uses the host's
 `DefaultE2eBootstrapConnectionName`. If neither supplies a usable name, the
 command returns a validation error before opening or creating the selected
 store, its directory, or a partial profile. The command always writes the E2E
-authorization flag and accepts the same connection, prompting, validation, and
-persistence options as regular add; `--allow-database-create` remains a
-separate explicit permission.
+authorization flag and `ittiger.e2e.bootstrap=true`, and accepts the same
+connection, prompting, validation, and persistence options as regular add;
+`--allow-database-create` remains a separate explicit permission. The name
+identifies the expected profile and metadata authorizes it as bootstrap; both
+are required during resolution.
+
+Bootstrap profiles created by older builds lack the new bootstrap flag and now
+fail resolution as invalid. After preserving any settings still needed, delete
+and recreate such a profile with `add-e2e-bootstrap`; generic `--metadata`
+writes cannot add the flag because all `ittiger.*` keys remain reserved.
 
 ## Configuring external values
 
