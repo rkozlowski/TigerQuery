@@ -1,21 +1,21 @@
 using ItTiger.TigerQuery.Core;
 using ItTiger.TigerQuery.E2e;
+using ItTiger.TigerSqlCmd;
 
 namespace ItTiger.TigerQuery.Tests.Live;
 
 /// <summary>
-/// Resolves the explicitly configured TigerQuery E2E store and bootstrap profile for
+/// Resolves TigerQuery's selected E2E store and the host-configured bootstrap profile for
 /// SQL-backed tests. It never discovers, probes, or falls back to a SQL Server instance.
 /// </summary>
 internal static class SqlServerTestEnvironment
 {
-    internal const string DefaultBootstrapConnectionName = "tiger-sqlcmd-e2e";
-
     /// <summary>Gets an authorized bootstrap profile or applies the test-only status mapping.</summary>
     public static SqlServerE2eTestConfiguration RequireConfiguration(
-        bool requireDatabaseCreation = false)
+        bool requireDatabaseCreation = true)
     {
         var result = Resolve(
+            TigerSqlCmdApp.DefaultConnectionStoreFile,
             Environment.GetEnvironmentVariable,
             path => new SqlServerConnectionStore(
                 new SqlServerConnectionStoreOptions { FilePath = path }),
@@ -92,41 +92,20 @@ internal static class SqlServerTestEnvironment
 
     /// <summary>Resolves test configuration without applying any test-framework outcome.</summary>
     internal static SqlServerE2eTestResolution Resolve(
+        string defaultStorePath,
         Func<string, string?> environmentReader,
         Func<string, SqlServerConnectionStore> storeFactory,
-        bool requireDatabaseCreation = false)
+        bool requireDatabaseCreation = true)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(defaultStorePath);
         ArgumentNullException.ThrowIfNull(environmentReader);
         ArgumentNullException.ThrowIfNull(storeFactory);
-
-        var configuredStorePath = environmentReader(
-            SqlServerConnectionStoreEnvironment.ConnectionStoreFile);
-        if (configuredStorePath is null)
-        {
-            return new SqlServerE2eTestResolution(
-                null,
-                new SqlServerE2eConnectionResolution
-                {
-                    Status = SqlServerE2eResolutionStatus.NotConfigured,
-                    Errors =
-                    [
-                        $"Set {SqlServerConnectionStoreEnvironment.ConnectionStoreFile} to an isolated "
-                        + "TigerQuery E2E store to run SQL-backed tests."
-                    ]
-                });
-        }
 
         var path = SqlServerConnectionStorePathResolver.Resolve(
             new SqlServerConnectionStorePathOptions
             {
-                DefaultFilePath = Path.Combine(
-                    Path.GetTempPath(),
-                    "TigerQueryE2eTests",
-                    "unselected-default.json"),
-                EnvironmentReader = name =>
-                    name == SqlServerConnectionStoreEnvironment.ConnectionStoreFile
-                        ? configuredStorePath
-                        : null
+                DefaultFilePath = defaultStorePath,
+                EnvironmentReader = environmentReader
             });
         if (!path.IsSuccess)
         {
@@ -144,7 +123,7 @@ internal static class SqlServerTestEnvironment
             store,
             new SqlServerE2eConnectionResolutionOptions
             {
-                DefaultConnectionName = DefaultBootstrapConnectionName,
+                DefaultConnectionName = TigerSqlCmdApp.DefaultE2eBootstrapConnectionName,
                 RequireDatabaseCreationPermission = requireDatabaseCreation,
                 ValidationPolicy = SqlServerConnectionValidationPolicy.DatabaseOptional
             });

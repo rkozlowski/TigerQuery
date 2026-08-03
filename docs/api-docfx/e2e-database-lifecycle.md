@@ -96,21 +96,27 @@ automatic age-based sweeper.
 
 ## Running the repository E2E workflow
 
-The normal test suite is deliberately inert. When
-`TIGERQUERY_CONNECTION_STORE_FILE` is absent, the test-only resolver returns
-`NotConfigured` and xUnit runtime-skips live tests without constructing a store,
-discovering or probing SQL Server, opening a connection, or creating a database. It
-never falls back to the shared user-profile store. `Invalid` and `Ambiguous` are test
-failures rather than skips.
+The environment variable is optional. With no
+`TIGERQUERY_CONNECTION_STORE_FILE`, the live-test harness reads the normal
+`tiger-sqlcmd` application-default user store and looks only for the host's expected
+`tiger-sqlcmd-e2e` bootstrap name. The local opt-in is that exact named profile carrying
+both `ittiger.e2e.enabled=true` and
+`ittiger.e2e.allow-database-create=true`; server reachability and ordinary profiles do
+not enable E2E work.
 
-For a local live run, create an isolated store and its explicitly named
-`tiger-sqlcmd-e2e` bootstrap profile. The profile must carry both exact permissions:
-`ittiger.e2e.enabled=true` and `ittiger.e2e.allow-database-create=true`.
+If the expected bootstrap is absent, resolution returns `NotConfigured` and xUnit
+runtime-skips before discovering or probing SQL Server, opening a connection, creating a
+database, or modifying the store. An unreadable store, duplicate expected name,
+malformed metadata, missing permission, or invalid profile is a failure rather than a
+skip.
+
+For the normal local workflow, create the bootstrap in the regular user store once and
+then run the tests without an environment variable:
 
 ```powershell
-$env:TIGERQUERY_CONNECTION_STORE_FILE = 'C:\temp\tigerquery-e2e.json'
 tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
   --server localhost --allow-database-create
+Remove-Item Env:TIGERQUERY_CONNECTION_STORE_FILE -ErrorAction Ignore
 dotnet test ItTiger.TigerQuery.Tests\ItTiger.TigerQuery.Tests.csproj `
   --filter 'FullyQualifiedName~TigerSqlCmdE2eWorkflowLiveTests'
 ```
@@ -123,13 +129,24 @@ report-only orphan detection, forces an exact-name cleanup failure, and retries 
 same owned cleanup successfully. References remain references throughout and process
 diagnostics are checked for secret disclosure.
 
-For CI, set the standard store variable to a job-specific writable path, create the
-bootstrap non-interactively, and provide SQL credentials through environment or mounted
-file references rather than command-line literals. Run the ordinary suite first with
-the gate absent to preserve the zero-connection check, then run the gated filter in a
-separate job or step where the isolated store and reachable SQL Server are intentional.
-Always publish the test log: a cleanup failure names the exact database left behind for
-manual investigation.
+For an isolated local run, CI, or a container, set the standard variable to an alternate
+writable store. It overrides the regular application-default store; it is not an E2E
+enable switch. The selected alternate store must independently contain the same expected
+bootstrap name and exact authorization metadata:
+
+```powershell
+$env:TIGERQUERY_CONNECTION_STORE_FILE = 'C:\temp\tigerquery-e2e.json'
+tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+  --server localhost --allow-database-create
+dotnet test ItTiger.TigerQuery.Tests\ItTiger.TigerQuery.Tests.csproj `
+  --filter 'FullyQualifiedName~TigerSqlCmdE2eWorkflowLiveTests'
+```
+
+For CI, provide SQL credentials through environment or mounted-file references rather
+than command-line literals. A job that needs the zero-connection assertion should point
+the environment override at a missing or empty job-specific store, then run the live
+workflow separately after creating its authorized bootstrap. Always publish the test
+log: a cleanup failure names the exact database left behind for manual investigation.
 
 For containers, mount both the writable store location and any referenced secret files,
 and use paths as seen inside the test container. DPAPI-protected values are not portable
@@ -137,6 +154,8 @@ across users, machines, or containers. Give the container's SQL principal permis
 create and drop only in the dedicated test environment. Do not add endpoint discovery,
 prefix-based cleanup, or an orphan sweeper to make container setup more convenient.
 
-An unconfigured runtime skip confirms only that the default path is inert. Phase 8 is
-complete only after the gated workflow has actually passed against a reachable SQL
-Server.
+An unconfigured runtime skip confirms only that the selected store contains no usable
+bootstrap and no SQL work occurred. It does not mean the environment variable was
+absent. Phase 8 is complete only after the workflow has actually passed against a
+reachable SQL Server through both the regular default store and an environment-selected
+alternate store.

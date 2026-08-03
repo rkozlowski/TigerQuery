@@ -19,6 +19,13 @@ Add `--allow-database-create` only when test infrastructure is explicitly
 allowed to create databases through that profile. This command creates a
 connection profile only; it never creates or deletes a database.
 
+The repository live-test harness uses this regular application-default store when
+`TIGERQUERY_CONNECTION_STORE_FILE` is absent. The expected name plus the exact E2E and
+database-creation metadata are the local opt-in; no environment variable is required.
+Setting `TIGERQUERY_CONNECTION_STORE_FILE` selects an alternate store for CI,
+containers, or isolated local runs. It overrides the default path but does not itself
+authorize or enable E2E work.
+
 To create an E2E-authorized profile that is not the bootstrap identity, reuse
 regular add:
 

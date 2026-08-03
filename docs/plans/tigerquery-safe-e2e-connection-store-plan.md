@@ -1086,13 +1086,13 @@ environments; treat it as displayable but note it in documentation.
 The developer creates one bootstrap connection in the normal application store:
 
 ```text
-tiger-sqlcmd connections add-e2e-bootstrap
+tiger-sqlcmd connections add-e2e-bootstrap --allow-database-create
 ```
 
 or, when the host has configured no default name:
 
 ```text
-tiger-sqlcmd connections add-e2e-bootstrap --name tiger-sqlcmd-e2e
+tiger-sqlcmd connections add-e2e-bootstrap --name tiger-sqlcmd-e2e --allow-database-create
 ```
 
 After that:
@@ -1106,6 +1106,10 @@ After that:
 can all resolve the standard E2E profile without environment variables.
 
 No profile means no E2E access.
+
+`TIGERQUERY_CONNECTION_STORE_FILE` is not required for this workflow and is not the E2E
+enable switch. The expected bootstrap name plus exact E2E authorization and
+database-creation permission in the normal application store are the local opt-in.
 
 ### 12.2 Alternate local store
 
@@ -1135,7 +1139,8 @@ The explicit path overrides the environment variable and default store.
 
 ### 12.3 CI/CD
 
-A pipeline creates or mounts a writable runtime store and sets the TigerQuery store-path environment variable.
+A pipeline creates or mounts a writable runtime store and sets the optional TigerQuery
+store-path override environment variable.
 
 Example:
 
@@ -1160,7 +1165,10 @@ A container may receive:
 - mounted configuration files;
 - environment variables for non-file configuration.
 
-TigerQuery resolves the store path through the standard environment variable.
+TigerQuery resolves the store path through the standard environment override, falling
+back to the host's application default only when the variable is absent. The variable
+selects a store; authorization still comes solely from the expected named profile and
+its exact reserved metadata.
 
 The store references external values and remains writable for temporary connection creation.
 
@@ -1280,15 +1288,21 @@ must be safe.
 It must not:
 
 - discover SQL Server;
-- connect to SQL Server;
-- create databases;
+- connect to SQL Server unless the selected store contains the host's expected bootstrap
+  name with exact E2E authorization and database-creation permission;
+- create databases without that same explicit opt-in;
 - modify existing databases;
-- read unrelated cached credentials;
 - use ordinary connection profiles as E2E profiles;
-- read or write the developer's real user-profile connection store.
+- modify the selected store when bootstrap resolution returns `NotConfigured`, `Invalid`,
+  or `Ambiguous`.
 
 When E2E configuration is absent:
 
+- the live-test harness resolves the store with production precedence: an explicit test
+  override if a harness supplies one, then `TIGERQUERY_CONNECTION_STORE_FILE`, then the
+  normal `tiger-sqlcmd` application-default user store;
+- the selected store is read only to find the host-configured expected bootstrap name and
+  validate its authorization; no alternate store path is tried;
 - E2E tests report `NotConfigured`;
 - the current xUnit suite maps that result to a runtime xUnit skip through test-project or
   test-only helper code;
@@ -1425,7 +1439,12 @@ Add explicit tests proving:
 - prefix-only, age-based, reachability-based, and automatic orphan deletion are refused;
 - orphan detection reports candidates without deleting them, and cleanup failures report
   the exact database left behind;
-- the unconfigured test run never touches the real user-profile store path.
+- with no environment override, the harness reads the normal application-default user
+  store and selects only the host's expected authorized bootstrap name;
+- an environment-selected store overrides that default and must independently satisfy the
+  same name, authorization, and database-creation rules;
+- missing bootstrap configuration performs no SQL activity and does not modify the
+  selected store.
 
 ## 16. Documentation requirements
 
@@ -1436,6 +1455,8 @@ Documentation should include:
 - container setup;
 - CLI/API precedence;
 - standard environment variable;
+- that the environment variable is an optional store-path override rather than an E2E
+  enable switch;
 - **global-option placement rules and the `--name=value` form**;
 - standard E2E metadata, including exact key case and value grammar;
 - **DPAPI portability warning for copied stores** (section 4.4);
@@ -1754,12 +1775,14 @@ host and an external-process test surface.
 **Implemented work.**
 
 1. Removed endpoint discovery and connection probing from TigerQuery tests. The shared
-   test resolver reads only `TIGERQUERY_CONNECTION_STORE_FILE` and selects only the
-   host-default bootstrap name.
+   test resolver uses the production store precedence: the optional
+   `TIGERQUERY_CONNECTION_STORE_FILE` override, then the normal `tiger-sqlcmd`
+   application-default store. It selects only the host-default bootstrap name.
 2. Moved live tests onto the Phase 4 resolver and Phase 7 lifecycle. Test-only mapping
    runtime-skips `NotConfigured`; `Invalid` and `Ambiguous` fail.
-3. Added offline instrumentation proving an absent gate does not construct a store,
-   invoke SQL Client, read legacy endpoint variables, or touch the user-profile store.
+3. Added offline instrumentation proving both default and environment-selected stores,
+   environment-over-default precedence, and that a missing bootstrap invokes no SQL
+   Client activity, reads no legacy endpoint variables, and writes nothing.
 4. Added real child-process `tiger-sqlcmd` coverage for external reference resolution,
    redaction, setup/query/teardown, and generated-profile use.
 5. Added local, CI, and container workflow documentation to the lifecycle guide.
@@ -1772,12 +1795,13 @@ host and an external-process test surface.
 **Depends on.** Phases 4 and 7 for the interesting cases; the inertness work can start
 after Phase 4.
 
-**Validation status.** Offline, external-process redaction, default-inertness, build, and
-documentation validation are part of every normal run. Section 15.7 must also execute in
-full on a machine with SQL Server installed and reachable. When the gate is absent, the
-workflow test skips at runtime; that skip is not proof of the live workflow and is why
-this phase is not yet marked completed. Phase 3 proved only connection-store composition
-and precedence.
+**Validation status.** Offline, external-process redaction, missing-bootstrap inertness,
+build, and documentation validation are part of every normal run. Section 15.7 must also
+execute in full on a machine with SQL Server installed and reachable through both the
+regular application-default store and an environment-selected alternate store. A
+`NotConfigured` runtime skip is not proof of either live workflow and is why this phase
+is not yet marked completed. Phase 3 proved only connection-store composition and
+precedence.
 
 **Risks / implementation details.** How much of the existing live-test surface must be
 rewritten rather than adapted. Framework coupling is confined to the test project.
@@ -1943,7 +1967,11 @@ The design is successful when:
 - TigerQuery consumes TigerCli 0.9.2 contributed-description localization and carries no
   domain-specific workaround;
 - no component discovers SQL Server;
-- no unconfigured test run opens a SQL connection or touches the developer's real store;
+- with no store-path override, live tests read the normal `tiger-sqlcmd` user store and
+  require the host-default bootstrap name plus exact E2E and database-creation metadata;
+- `TIGERQUERY_CONNECTION_STORE_FILE` overrides that default but never enables E2E by
+  itself;
+- no `NotConfigured` test run opens a SQL connection or modifies the selected store;
 - library, tool, and mixed modes use identical contracts;
 - `tiger-sqlcmd` reuses the shared implementation rather than its own;
 - Phase 8 proves the complete E2E workflow end to end through `tiger-sqlcmd`.

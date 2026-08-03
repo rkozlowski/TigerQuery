@@ -1,6 +1,7 @@
 using System.Diagnostics.Tracing;
 using ItTiger.TigerQuery.Core;
 using ItTiger.TigerQuery.Tests.Live;
+using ItTiger.TigerSqlCmd;
 using Xunit.Sdk;
 
 namespace ItTiger.TigerQuery.Tests.E2e;
@@ -8,8 +9,70 @@ namespace ItTiger.TigerQuery.Tests.E2e;
 public sealed class SqlServerE2eTestEnvironmentTests
 {
     [Fact]
-    public void AnUnconfiguredRunIsNotConfiguredWithoutStoreOrSqlActivity()
+    public void RegularApplicationDefaultStoreIsUsedWithoutAnEnvironmentOverride()
     {
+        using var applicationDefault = new TempStore();
+        applicationDefault.Store.Add(Bootstrap("default-server"));
+
+        var result = SqlServerTestEnvironment.Resolve(
+            applicationDefault.Store.FilePath,
+            _ => null,
+            OpenStore,
+            requireDatabaseCreation: true);
+
+        Assert.Equal(SqlServerE2eResolutionStatus.Resolved, result.Resolution.Status);
+        Assert.Equal("default-server", result.Resolution.Profile!.Server);
+        Assert.Equal(applicationDefault.Store.FilePath, result.Store!.FilePath);
+        Assert.Equal(
+            TigerSqlCmdApp.DefaultE2eBootstrapConnectionName,
+            result.Resolution.RequestedName);
+    }
+
+    [Fact]
+    public void EnvironmentSelectedAlternateStoreIsUsed()
+    {
+        using var applicationDefault = new TempStore();
+        using var alternate = new TempStore();
+        alternate.Store.Add(Bootstrap("alternate-server"));
+
+        var result = SqlServerTestEnvironment.Resolve(
+            applicationDefault.Store.FilePath,
+            name => name == SqlServerConnectionStoreEnvironment.ConnectionStoreFile
+                ? alternate.Store.FilePath
+                : null,
+            OpenStore,
+            requireDatabaseCreation: true);
+
+        Assert.Equal(SqlServerE2eResolutionStatus.Resolved, result.Resolution.Status);
+        Assert.Equal("alternate-server", result.Resolution.Profile!.Server);
+        Assert.Equal(alternate.Store.FilePath, result.Store!.FilePath);
+    }
+
+    [Fact]
+    public void EnvironmentOverrideWinsOverTheConfiguredApplicationDefault()
+    {
+        using var applicationDefault = new TempStore();
+        using var alternate = new TempStore();
+        applicationDefault.Store.Add(Bootstrap("default-server"));
+        alternate.Store.Add(Bootstrap("alternate-server"));
+
+        var result = SqlServerTestEnvironment.Resolve(
+            applicationDefault.Store.FilePath,
+            name => name == SqlServerConnectionStoreEnvironment.ConnectionStoreFile
+                ? alternate.Store.FilePath
+                : null,
+            OpenStore,
+            requireDatabaseCreation: true);
+
+        Assert.Equal(SqlServerE2eResolutionStatus.Resolved, result.Resolution.Status);
+        Assert.Equal("alternate-server", result.Resolution.Profile!.Server);
+        Assert.Equal(alternate.Store.FilePath, result.Store!.FilePath);
+    }
+
+    [Fact]
+    public void MissingBootstrapIsNotConfiguredWithoutSqlActivity()
+    {
+        using var applicationDefault = new TempStore();
         var activity = Guid.NewGuid();
         using var sqlClient = new SqlClientEventProbe(activity);
         EventSource.SetCurrentThreadActivityId(activity, out var previousActivity);
@@ -19,6 +82,7 @@ public sealed class SqlServerE2eTestEnvironmentTests
         try
         {
             var result = SqlServerTestEnvironment.Resolve(
+                applicationDefault.Store.FilePath,
                 name =>
                 {
                     environmentReads.Add(name);
@@ -27,11 +91,11 @@ public sealed class SqlServerE2eTestEnvironmentTests
                 _ =>
                 {
                     storeFactoryCalls++;
-                    throw new InvalidOperationException("An unconfigured run must not construct a store.");
+                    return OpenStore(applicationDefault.Store.FilePath);
                 });
 
             Assert.Equal(SqlServerE2eResolutionStatus.NotConfigured, result.Resolution.Status);
-            Assert.Null(result.Store);
+            Assert.NotNull(result.Store);
         }
         finally
         {
@@ -41,16 +105,19 @@ public sealed class SqlServerE2eTestEnvironmentTests
         Assert.Equal(
             [SqlServerConnectionStoreEnvironment.ConnectionStoreFile],
             environmentReads);
-        Assert.Equal(0, storeFactoryCalls);
+        Assert.Equal(1, storeFactoryCalls);
         Assert.Equal(0, sqlClient.Count);
+        Assert.False(File.Exists(applicationDefault.Store.FilePath));
     }
 
     [Fact]
     public void AReachableLegacyEndpointCannotTriggerDiscoveryOrFallback()
     {
+        using var applicationDefault = new TempStore();
         var requestedVariables = new List<string>();
 
         var result = SqlServerTestEnvironment.Resolve(
+            applicationDefault.Store.FilePath,
             name =>
             {
                 requestedVariables.Add(name);
@@ -58,7 +125,7 @@ public sealed class SqlServerE2eTestEnvironmentTests
                     ? "Server=127.0.0.1,1433;Integrated Security=true"
                     : null;
             },
-            _ => throw new InvalidOperationException("No store should be constructed."));
+            OpenStore);
 
         Assert.Equal(SqlServerE2eResolutionStatus.NotConfigured, result.Resolution.Status);
         Assert.Equal(
@@ -66,36 +133,75 @@ public sealed class SqlServerE2eTestEnvironmentTests
             requestedVariables);
     }
 
-    [Theory]
-    [InlineData(SqlServerE2eResolutionStatus.Invalid)]
-    [InlineData(SqlServerE2eResolutionStatus.Ambiguous)]
-    public void InvalidAndAmbiguousMappingsAreTestFailures(
-        SqlServerE2eResolutionStatus status)
+    [Fact]
+    public void BootstrapWithoutDatabaseCreationPermissionIsAnInvalidFailureRatherThanASkip()
     {
-        using var temp = new TempStore();
-        var resolution = new SqlServerE2eConnectionResolution
+        using var applicationDefault = new TempStore();
+        var bootstrap = new SqlServerConnectionProfile
         {
-            Status = status,
-            Errors = [$"Deliberate {status} configuration."]
+            Name = TigerSqlCmdApp.DefaultE2eBootstrapConnectionName,
+            Server = "ordinary-server",
+            Authentication = AuthenticationType.Integrated
         };
+        SqlServerE2eMetadata.AuthorizeNewProfile(
+            bootstrap,
+            allowDatabaseCreation: false);
+        applicationDefault.Store.Add(bootstrap);
+        var result = SqlServerTestEnvironment.Resolve(
+            applicationDefault.Store.FilePath,
+            _ => null,
+            OpenStore,
+            requireDatabaseCreation: true);
 
         var exception = Assert.Throws<FailException>(
-            () => SqlServerTestEnvironment.RequireResolved(temp.Store, resolution));
+            () => SqlServerTestEnvironment.RequireResolved(result.Store!, result.Resolution));
 
-        Assert.Contains(status.ToString(), exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Invalid", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void NotConfiguredMapsToAnXunitRuntimeSkip()
+    public void DuplicateDefaultBootstrapIsAnAmbiguousFailureRatherThanASkip()
     {
-        using var temp = new TempStore();
+        using var applicationDefault = new TempStore();
+        applicationDefault.Store.Save([Bootstrap("first-server"), Bootstrap("second-server")]);
+        var result = SqlServerTestEnvironment.Resolve(
+            applicationDefault.Store.FilePath,
+            _ => null,
+            OpenStore,
+            requireDatabaseCreation: true);
+
+        var exception = Assert.Throws<FailException>(
+            () => SqlServerTestEnvironment.RequireResolved(result.Store!, result.Resolution));
+
+        Assert.Contains("Ambiguous", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MissingDefaultBootstrapMapsToRuntimeSkipBeforeSqlActivity()
+    {
+        using var applicationDefault = new TempStore();
+        var activity = Guid.NewGuid();
+        using var sqlClient = new SqlClientEventProbe(activity);
+        EventSource.SetCurrentThreadActivityId(activity, out var previousActivity);
+        SqlServerE2eTestResolution result;
+
+        try
+        {
+            result = SqlServerTestEnvironment.Resolve(
+                applicationDefault.Store.FilePath,
+                _ => null,
+                OpenStore,
+                requireDatabaseCreation: true);
+        }
+        finally
+        {
+            EventSource.SetCurrentThreadActivityId(previousActivity);
+        }
+
+        Assert.Equal(0, sqlClient.Count);
         SqlServerTestEnvironment.RequireResolved(
-            temp.Store,
-            new SqlServerE2eConnectionResolution
-            {
-                Status = SqlServerE2eResolutionStatus.NotConfigured,
-                Errors = ["Deliberately unconfigured for skip mapping."]
-            });
+            result.Store!,
+            result.Resolution);
     }
 
     [Fact]
@@ -127,6 +233,23 @@ public sealed class SqlServerE2eTestEnvironmentTests
         }
 
         throw new FileNotFoundException($"Could not locate {fileName}.");
+    }
+
+    private static SqlServerConnectionStore OpenStore(string path) =>
+        new(
+            new SqlServerConnectionStoreOptions { FilePath = path },
+            new NoOpConnectionPasswordProtector());
+
+    private static SqlServerConnectionProfile Bootstrap(string server)
+    {
+        var profile = new SqlServerConnectionProfile
+        {
+            Name = TigerSqlCmdApp.DefaultE2eBootstrapConnectionName,
+            Server = server,
+            Authentication = AuthenticationType.Integrated
+        };
+        SqlServerE2eMetadata.AuthorizeNewProfile(profile, allowDatabaseCreation: true);
+        return profile;
     }
 
     private sealed class SqlClientEventProbe(Guid activity) : EventListener
