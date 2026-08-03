@@ -162,6 +162,5 @@ prefix-based cleanup, or an orphan sweeper to make container setup more convenie
 
 An unconfigured runtime skip confirms only that the selected store contains no usable
 bootstrap and no SQL work occurred. It does not mean the environment variable was
-absent. Phase 8 is complete only after the workflow has actually passed against a
-reachable SQL Server through both the regular default store and an environment-selected
-alternate store.
+absent. Validate the live workflow against a reachable SQL Server through both the
+regular default store and an environment-selected alternate store.

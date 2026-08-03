@@ -124,7 +124,7 @@ console renderer.
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `-o`, `--output <file>` | Application/console renderer | Set the initial result-set path. A later `:Out` replaces it. |
-| `--format`, `--result-format <Csv>` | `Csv` | Select the built-in structured result-set format. CSV is the only Phase 3 format. |
+| `--format`, `--result-format <Csv>` | `Csv` | Select the built-in structured result-set format. CSV is currently the only built-in format. |
 | `--output-mode`, `--result-file-mode <SingleFile\|FilePerResultSet>` | `SingleFile` | Write compatible result sets to one file or generate one file per result set. |
 | `--output-encoding`, `--encoding <name>` | UTF-8 with BOM | Use a .NET encoding name for every routed result and message file. |
 
