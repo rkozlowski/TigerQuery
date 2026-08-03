@@ -100,7 +100,11 @@ reflected in the phase plan:
   take literal description strings and offer no `descriptionResourceKey` overload, and
   `Configure` runs at `Build()` time, before `--culture` is resolved. Validation error
   messages *can* be localized because the callback receives `TigerCliGlobalOptionContext.Culture`.
-  See open question 14.
+  A new TigerCli release is being prepared to localize both contributed global-option
+  descriptions and contributed environment-variable help descriptions. TigerQuery will
+  consume that support after the package is available. Until then, English-only
+  contribution descriptions are a known temporary limitation; TigerQuery must not add a
+  domain-specific workaround.
 - **`--tq-connection-store-file` is not a command-setting option.** It must not appear on
   `SqlServerConnectionSettings` or any other `TigerCliSettings` type, must not be bound,
   prompted, or provider-backed, and must not be duplicated per command.
@@ -194,7 +198,8 @@ Environment variables remain useful for CI/CD, containers, build agents, and aut
 
 ### 3.1 `ItTiger.TigerQuery.Core`
 
-Core owns all reusable connection-store and E2E contracts.
+Core owns connection stores, profiles, metadata, E2E authorization, bootstrap resolution,
+external-value references, and other lightweight reusable contracts.
 
 Responsibilities:
 
@@ -207,7 +212,7 @@ Responsibilities:
 - define reserved E2E metadata keys and their value grammar;
 - resolve and validate E2E bootstrap profiles without opening SQL connections;
 - reject ambiguous or invalid E2E configuration;
-- support future external-value references for profile fields;
+- support external-value references for profile fields;
 - remain independent of TigerCli and host-specific UI.
 
 Within this repository, Core must work equally for command-line execution, test-library
@@ -216,7 +221,16 @@ use, build agents, containers, and custom automation.
 Core must not reference `ItTiger.TigerCli`, must not know the option name
 `--tq-connection-store-file`, and must not produce CLI-formatted messages.
 
-### 3.2 `ItTiger.TigerQuery.CliCore`
+### 3.2 `ItTiger.TigerQuery`
+
+`ItTiger.TigerQuery` owns operational SQL lifecycle behavior. That includes creating and
+dropping E2E databases and running setup or teardown SQL against them. Lifecycle state —
+including the exact database name recorded by the current lifecycle instance or run —
+stays in `ItTiger.TigerQuery` unless another package genuinely needs a pure, lightweight
+state contract. Core must not acquire operational SQL behavior merely because it owns the
+profiles and authorization inputs that gate it.
+
+### 3.3 `ItTiger.TigerQuery.CliCore`
 
 CliCore bridges TigerQuery domain behavior into TigerCli-based applications.
 
@@ -245,7 +259,7 @@ CliCore must not duplicate:
 CliCore's callback may *invoke* Core validation and surface its result as a
 `TigerCliValidationResult`; it must not reimplement it.
 
-### 3.3 TigerCli
+### 3.4 TigerCli
 
 TigerCli owns only generic composition mechanics:
 
@@ -266,7 +280,7 @@ TigerCli must not define, read, or understand:
 - E2E connection metadata;
 - SQL Server concepts.
 
-### 3.4 `tiger-sqlcmd`
+### 3.5 `tiger-sqlcmd`
 
 Phase 3 completed the repository's host integration. Its responsibilities are:
 
@@ -395,25 +409,26 @@ Resolving the store path must not:
 - discover SQL Server instances;
 - choose a connection profile.
 
-Store-path resolution and connection-profile resolution are separate concerns, and
-neither touches the disk.
+Store-path resolution and connection-profile resolution are separate concerns. Path
+resolution remains inert. A profile operation may read the one selected store, but it
+must never probe or fall back to another store path.
 
-Separately from the completed Phase 1 resolver, the plan still needs a **store presence
-policy** applied when the
-store is first opened, because today a missing file simply reads as an empty store. That
-is right for the application default (a first-run developer has no store yet) and wrong
-for an explicit override (a CI job pointing at the wrong path would silently see zero
-connections and report "not configured" instead of "your path is wrong"). Recommended
-policy:
+Store presence follows the operation, not the path source:
 
-| Source | File missing, read operation | File missing, `connections add` / `add-e2e-bootstrap` |
-| --- | --- | --- |
-| `ApplicationDefault` | behave as empty store (current behavior) | create |
-| `EnvironmentVariable` | **error**, naming the variable and the resolved path | create |
-| `Explicit` | **error**, naming the option and the resolved path | create |
+- a missing selected store file is valid, whether the path came from the CLI, environment,
+  or application default;
+- read-only operations treat a missing file as an empty store and create nothing;
+- write-capable operations create the file and any required parent directory only on the
+  first successful write;
+- a validation or command failure before persistence leaves the file and directory absent;
+- a malformed or unreadable existing file fails instead of being treated as empty;
+- an invalid path or inaccessible target location fails at the operation that validates,
+  reads, or writes it;
+- no failure causes fallback to a lower-priority or default store path.
 
-This was not implemented in Phase 1. It is a behavior change relative to the current
-store and needs its own implementation phase and tests after open question 5 is settled.
+Users and automation therefore never need to pre-create an empty JSON file. Selecting a
+missing explicit or environment-provided file is not itself evidence of a typo; the
+operation and later profile/E2E outcome determine whether the empty store is useful.
 
 ### 4.4 Credential portability across store paths
 
@@ -589,7 +604,7 @@ Consequences to design for, all of which need tests:
 - **Every command run pays the resolution, including commands that never touch the
   store.** A malformed `TIGERQUERY_CONNECTION_STORE_FILE` therefore fails `tiger-sqlcmd run`
   as well as `connections list`. That is the intended fail-fast behavior; it must be a
-  deliberate, documented decision rather than an accident. See open question 6.
+  deliberate, documented decision rather than an accident.
 - **The store itself is still constructed lazily**, on first access to `Options.Store`.
   Constructing `SqlServerConnectionStore` in the callback would be acceptable today but
   couples every run to store construction cost and to protector initialization.
@@ -648,16 +663,18 @@ cleanup, together with its eager-path tests and documentation, leaving
 needs to be preserved: the current changes are unpublished and there are no other current
 consumers in this plan's scope.
 
-### 6.3 Provider and completion timing
+### 6.3 Provider timing
 
 `group.AddProvider("connections", …)` and the `databases` provider run during prompting,
 which is step 6 of the run pipeline — after the contribution callback. Deferred access is
 therefore safe for prompting.
 
-Any code path that enumerates providers *outside* a normal run — shell completion being
-the obvious candidate — may not have invoked contribution callbacks. Before relying on
-deferred access there, confirm TigerCli's behavior; if callbacks do not run, the provider
-must degrade to the application-default store rather than throw. See open question 7.
+TigerCli has no shell-completion lifecycle to account for. In normal execution the
+contribution callback runs before providers, so providers may rely on contribution-owned
+resolved store state. No completion-specific fallback, application-default degradation,
+or pre-resolution mode is required. This ordering follows the normative
+[TigerCli app-contributions guide](https://github.com/rkozlowski/TigerCli/blob/main/docs/guides/app-contributions.md)
+cited in section 0.
 
 ## 7. Default E2E bootstrap connection
 
@@ -732,10 +749,14 @@ ittiger.e2e.allow-database-create=true
 Possible future TigerQuery-owned keys include:
 
 ```text
-ittiger.e2e.database-prefix=TigerQuery_E2E_
+ittiger.e2e.database-prefix=_TQ_E2E_
 ittiger.e2e.owner=<application-or-suite>
 ittiger.e2e.purpose=<purpose>
 ```
+
+The Phase 7 naming default is `_TQ_E2E_`. A host or application may configure a
+different prefix; a future metadata key is one possible way to persist that choice, not
+proof that a matching database is owned by the current run.
 
 Core exposes constants rather than requiring applications to copy string literals:
 
@@ -1213,34 +1234,42 @@ library side has no command line. Documentation should say so directly.
 
 ## 13. Safe database lifecycle
 
-Future reusable E2E APIs should support safe database lifecycle operations.
-
-Every created database should use a recognizable generated name, for example:
+Reusable E2E APIs in `ItTiger.TigerQuery` should support safe database lifecycle
+operations. The default prefix is:
 
 ```text
-TigerQuery_E2E_<application>_<run-id>_<random>
+_TQ_E2E_
 ```
 
-Before database creation or deletion:
+A host or application may configure a different prefix. Creation generates a unique name
+using the configured prefix and records the exact successfully created name in the
+current lifecycle instance/run. The lifecycle state belongs in `ItTiger.TigerQuery`
+unless another package genuinely needs the pure state contract.
+
+Before database creation:
 
 - profile must be E2E-enabled;
 - database creation permission must be enabled;
-- name must match the approved prefix/pattern;
-- cleanup must verify ownership or test provenance;
-- arbitrary database names must be rejected.
+- the generated name must begin with the configured prefix;
+- the exact generated name must be retained as the cleanup target.
 
-Abandoned-run cleanup must never drop databases merely because they look old or are reachable.
+Cleanup may drop a database only when both conditions hold:
 
-Possible ownership evidence:
+1. the target is the exact name recorded by the current lifecycle instance/run; and
+2. that exact name still matches the configured prefix as a defensive guard.
 
-- generated name plus known prefix;
-- run identifier;
-- extended property inside the database;
-- metadata table;
-- external run manifest.
+A prefix match alone is never proof of ownership. Cleanup must reject arbitrary names,
+names recorded by another lifecycle instance, and recorded names that fail the prefix
+guard. A cleanup failure must report the exact database name left behind.
 
-The final ownership mechanism needs separate design and is the gate on this phase
-starting; see open question 9.
+TigerQuery must never enumerate and automatically delete orphaned databases. Orphans may
+be detected and reported, but deleting one requires explicit human approval through a
+separate manual process. There is no automatic age-based orphan sweeper, and neither age,
+reachability, nor a recognizable prefix authorizes deletion.
+
+Core supplies the store, profile, metadata, E2E authorization, bootstrap resolution, and
+external-value contracts used to authorize the operation. `ItTiger.TigerQuery` owns the
+actual create/drop commands and setup/teardown SQL execution.
 
 ## 14. Default test behavior
 
@@ -1265,10 +1294,15 @@ It must not:
 When E2E configuration is absent:
 
 - E2E tests report `NotConfigured`;
-- framework-specific adapters may skip them;
+- the current xUnit suite maps that result to a runtime xUnit skip through test-project or
+  test-only helper code;
 - no network connection is attempted.
 
-This behavior should be protected by tests proving zero connection attempts.
+`Invalid` and `Ambiguous` are test failures, never skips. Production packages remain
+test-framework neutral: neither Core nor `ItTiger.TigerQuery` may reference xUnit, and no
+public test-framework integration package is introduced at this stage. This behavior
+should be protected by tests proving zero connection attempts for `NotConfigured` and
+failure behavior for invalid or ambiguous configuration.
 
 ## 15. Testing requirements
 
@@ -1291,11 +1325,13 @@ Test:
 
 Test, per section 4.3:
 
-- missing default store reads as empty;
-- missing explicit store errors on read and names the option;
-- missing environment-variable store errors on read and names the variable;
-- `add` and `add-e2e-bootstrap` create the file for every source;
-- a failed `add-e2e-bootstrap` (no name available) creates nothing.
+- missing default, explicit, and environment-selected stores all read as empty without
+  creating a file or directory;
+- the first successful write creates the selected file for every path source;
+- failed validation or a failed `add-e2e-bootstrap` creates nothing;
+- malformed or unreadable existing files fail rather than reading as empty;
+- invalid paths and inaccessible target locations fail without fallback;
+- no operation requires a pre-created empty JSON file.
 
 ### 15.3 E2E metadata
 
@@ -1343,6 +1379,9 @@ Test:
 - host default path is used when neither override is present;
 - duplicate registration of the option or env-var name fails at `Build()`;
 - the same state object serves connection commands, providers, and host commands;
+- contribution callback state is resolved before providers run in normal execution;
+- no shell-completion fallback or pre-resolution path exists because TigerCli has no
+  shell-completion lifecycle;
 - running one built app twice re-applies rather than accumulates state.
 
 ### 15.5 Deferred store selection
@@ -1350,6 +1389,8 @@ Test:
 Test:
 
 - commands, both providers, and the `AsEdit` loader all observe the run-selected store;
+- providers use contribution-owned resolved state and never substitute the application
+  default after callback resolution;
 - the accessor returns the same instance throughout a run;
 - reaching the accessor before the callback throws a wiring error, not a silent default;
 - after cleanup, `SqlServerConnectionCommandOptions` exposes no eager `Store` injection
@@ -1381,6 +1422,13 @@ Add explicit tests proving:
 - no network access when E2E is not configured;
 - secrets are redacted;
 - external values are not persisted into the store;
+- xUnit maps `NotConfigured` to a runtime skip while `Invalid` and `Ambiguous` fail;
+- production projects have no xUnit dependency or framework-specific skip mapping;
+- lifecycle cleanup can drop only the exact current-run recorded name when it also matches
+  the configured prefix;
+- prefix-only, age-based, reachability-based, and automatic orphan deletion are refused;
+- orphan detection reports candidates without deleting them, and cleanup failures report
+  the exact database left behind;
 - the unconfigured test run never touches the real user-profile store path.
 
 ## 16. Documentation requirements
@@ -1401,6 +1449,11 @@ Documentation should include:
 - mixed-mode examples, including that the environment variable is the coordination
   mechanism;
 - cleanup safety requirements;
+- the `_TQ_E2E_` default database prefix and host override;
+- exact current-run ownership and the separate human-approved orphan-deletion process;
+- xUnit's test-only `NotConfigured` runtime-skip mapping;
+- the temporary English-only contribution-description limitation and planned TigerCli
+  dependency update, without a TigerQuery-specific workaround;
 - AI-agent guidance.
 
 The CliCore README's "One selected store" section was rewritten in Phase 2 for the shared
@@ -1442,13 +1495,13 @@ and the "never fall through" rule is easy to get subtly wrong.
 **Depends on.** Nothing.
 
 **Validation completed.** Section 15.1, including inert resolution under a directory that
-does not exist. The store-presence policy in section 4.3 was not part of the committed
-implementation and remains a separate open design item.
+does not exist. Section 4.3 separately settles store presence by operation: every missing
+selected store reads as empty, and the first successful write creates it.
 
 **Settled outcomes.** The variable is `TIGERQUERY_CONNECTION_STORE_FILE`; the public API
 names in section 4 are final; resolution returns `SqlServerConnectionStorePathResolution`
-rather than throwing for a user-supplied unusable path. The store-presence policy remains
-open question 5.
+rather than throwing for a user-supplied unusable path. Missing store files do not alter
+path precedence and never cause fallback.
 
 ### Phase 2 — CliCore deferred store selection and the TigerCli contribution — **Completed**
 
@@ -1485,10 +1538,12 @@ implementation (section 5).
 different `--tq-connection-store-file` values, and asserts each run wrote only its own
 file.
 
-**Settled and remaining outcomes.** The callback resolves on every command run and the
-store remains lazy. The post-Phase 3 review settles `options.Store` for removal as cleanup
-(open question 12). Completion-path behavior remains open question 7. The inability to
-localize contribution descriptions remains an unresolved TigerCli gap (open question 14).
+**Settled outcomes.** The callback resolves on every command run and the store remains
+lazy. The post-Phase 3 review settles `options.Store` for removal as cleanup (open
+question 12). TigerCli has no shell-completion lifecycle, and normal providers run after
+the callback. Contribution-description localization will come from the prepared TigerCli
+release; English-only descriptions remain temporary until TigerQuery updates that
+dependency.
 
 ### Phase 3 — `tiger-sqlcmd` registration and migration — **Completed**
 
@@ -1567,8 +1622,9 @@ never selects a sole authorized profile implicitly, and does not use a bootstrap
 metadata key. Open question 8 is closed: all `ittiger.*` keys are TigerQuery-owned,
 generic metadata write paths must reject them, and only TigerQuery-owned E2E/bootstrap
 operations may write them. Unknown reserved keys remain tolerated on reads for forward
-compatibility. Framework-specific mapping of `NotConfigured` to skip remains open
-question 11.
+compatibility. Production resolution remains test-framework neutral; the repository's
+xUnit suite maps `NotConfigured` to a runtime skip and treats `Invalid` and `Ambiguous` as
+failures in test-only code.
 
 ### Phase 5 — Bootstrap CLI surface — **Completed**
 
@@ -1647,32 +1703,41 @@ options and rejects literal values or sensitive `--opt` keys on argv.
 
 ### Phase 7 — Safe database lifecycle
 
-**Difficulty: High.** Destructive operations against real servers, gated by an ownership
-model that does not exist yet.
+**Difficulty: High.** Destructive operations against real servers require exact
+lifecycle-state ownership and careful partial-failure handling.
 
-**Scope.** Reusable APIs for creating and dropping test databases safely. **Do not start
-this phase until the ownership mechanism is designed and written down** — the current
-plan explicitly defers that decision.
+**Scope.** Reusable APIs in `ItTiger.TigerQuery` for creating and dropping test databases
+safely and running setup/teardown SQL. Core remains limited to the lightweight contracts
+that authorize and describe those operations.
 
 **Tasks.**
 
-1. Ownership-marker design (naming, run identifier, in-database evidence) as a written
-   decision.
-2. Safe generated names and pattern enforcement.
-3. Creation gated on `allow-database-create`.
+1. Configurable database prefix with `_TQ_E2E_` as the default.
+2. Unique generated names using that configured prefix.
+3. Creation gated on `allow-database-create`, with the exact successful database name
+   recorded in the current `ItTiger.TigerQuery` lifecycle instance/run.
 4. Profile copy/add for the generated database.
-5. Script deployment helpers.
-6. Cleanup authorization requiring positive ownership evidence, never age or
-   reachability.
-7. Abandoned-run cleanup as a separate, explicitly invoked operation.
+5. Setup and teardown SQL helpers in `ItTiger.TigerQuery`.
+6. Cleanup that accepts only the exact current-run recorded name and additionally
+   requires the configured-prefix guard.
+7. Exact leftover-database reporting when cleanup fails.
+8. Orphan detection/reporting without automatic deletion; any orphan deletion is a
+   separate manual process requiring explicit human approval.
+9. Document or expose that separate manual approval process without invoking it from
+   automatic lifecycle cleanup.
 
-**Depends on.** Phase 4, and on the ownership design.
+**Depends on.** Phases 4 and 6. The ownership and package-boundary decisions are settled
+in sections 3 and 13.
 
 **Validation.** Live tests behind the E2E gate, plus offline tests proving that
-non-matching names and unauthorized profiles are rejected before any command is sent.
+unauthorized profiles, non-matching prefixes, unrecorded names, and names recorded by a
+different lifecycle instance are rejected before any drop command is sent. Tests must
+also prove that prefix match alone, age, reachability, and orphan enumeration never
+authorize deletion, and that cleanup failures name the exact database left behind.
 
-**Risks / open decisions.** Ownership marker (open question 9); whether these helpers live
-in Core or `ItTiger.TigerQuery` (open question 10); drop-safety under partial failure.
+**Risks / implementation details.** Drop-safety and state retention under partial failure;
+the API shape for the separate human-approved orphan-deletion process. Neither detail may
+weaken the exact-recorded-name and prefix-guard rules.
 
 ### Phase 8 — Repository E2E migration and hardening
 
@@ -1684,11 +1749,14 @@ host and an external-process test surface.
 **Tasks.**
 
 1. Remove SQL Server discovery from TigerQuery tests.
-2. Move them onto the shared resolver and the `NotConfigured` skip path.
+2. Move them onto the shared resolver; map `NotConfigured` to runtime xUnit skip in
+   test-only code and make `Invalid`/`Ambiguous` fail.
 3. Prove default `dotnet test` is inert, including that it never touches the real
    user-profile store path.
 4. Add real `tiger-sqlcmd` external-process E2E tests.
 5. Document local and CI workflows end to end.
+6. Exercise Phase 7 ownership refusal, exact-leftover reporting, and orphan-report-only
+   behavior through the repository E2E surface.
 
 **Depends on.** Phases 4 and 7 for the interesting cases; the inertness work can start
 after Phase 4.
@@ -1698,8 +1766,8 @@ reachable — the proof that matters is that a reachable server changes nothing.
 this phase is what will make the complete E2E workflow proven through `tiger-sqlcmd`.
 Phase 3 proved only connection-store composition and precedence.
 
-**Risks / open decisions.** Skip-mechanism coupling to xUnit (open question 11); how much
-of the existing live-test surface must be rewritten rather than adapted.
+**Risks / implementation details.** How much of the existing live-test surface must be
+rewritten rather than adapted. Framework coupling is confined to the test project.
 
 ### Explicitly deferred
 
@@ -1708,7 +1776,8 @@ Not in scope for any numbered phase above, and not to be added opportunistically
 - `connections e2e enable | disable | show | validate` and any other E2E lifecycle
   command family;
 - a user-facing global `--default-e2e-connection-name`;
-- any TigerCli change made on TigerQuery's behalf;
+- any TigerQuery-specific TigerCli workaround; consume the prepared localization support
+  only after it is available in a released TigerCli package;
 - store formats other than the existing JSON file;
 - credential providers beyond the existing protector abstraction and the external-value
   references in Phase 6.
@@ -1739,10 +1808,11 @@ store plumbing, plus the Core E2E metadata/authorization contract and inert boot
 resolver. The host tests prove store composition and precedence through `tiger-sqlcmd`;
 they do not prove the complete E2E workflow. Phase 5 added the bootstrap command surface
 under the binding reserved-write policy, and Phase 6 added portable external values
-without resolving them during authorization. Phase 8 supplies the end-to-end proof after
-the remaining safety contracts exist.
+without resolving them during authorization. Phase 7 can proceed with the ownership,
+prefix, package-boundary, and manual-orphan decisions now settled. Phase 8 supplies the
+end-to-end proof after those lifecycle APIs exist.
 
-## 19. Open questions
+## 19. Settled decisions and remaining implementation questions
 
 1. ~~Exact environment-variable name for the store path.~~ **Settled in Phase 1:**
    `TIGERQUERY_CONNECTION_STORE_FILE`.
@@ -1754,35 +1824,44 @@ the remaining safety contracts exist.
 4. ~~Whether the resolution failure surface is an exception or a result type.~~ **Settled
    in Phases 1–2:** Core returns `SqlServerConnectionStorePathResolution`; CliCore maps a
    failed result to a localized `TigerCliValidationResult.Error`.
-5. Whether the store-presence policy in section 4.3 is acceptable, given that it changes
-   existing behavior for explicitly-pathed stores that do not yet exist.
+5. ~~Store-presence policy for explicitly or environmentally selected missing files.~~
+   **Settled:** presence is operation-based, not source-based. Every missing selected file
+   reads as an empty store and is created only by the first successful write. Existing
+   malformed/unreadable files and inaccessible targets fail, and no path falls back.
 6. ~~Whether the contribution callback should resolve eagerly on every run.~~ **Settled
    in Phase 2:** path resolution runs in the callback on every command run; store
    construction remains lazy.
-7. Whether TigerCli invokes contribution callbacks on shell-completion paths, and what a
-   provider should do if it does not.
+7. ~~Provider behavior on shell-completion paths.~~ **Settled:** TigerCli has no
+   shell-completion lifecycle. In normal execution the contribution callback precedes
+   providers, which rely on its resolved state without a fallback or pre-resolution mode.
 8. ~~Whether generic metadata paths reject writes to reserved `ittiger.*` keys.~~
    **Settled with Phase 4:** the entire namespace is TigerQuery-owned. Generic metadata
    commands and APIs must reject reserved-key writes; only TigerQuery-owned E2E/bootstrap
    operations may perform them. Unknown reserved keys remain tolerated when reading.
-9. Database ownership marker used for safe cleanup. Blocks Phase 7.
-10. Whether database lifecycle helpers belong entirely in Core or partly in
-    `ItTiger.TigerQuery`.
-11. How test frameworks should map `NotConfigured` to skip behavior without coupling Core
-    to xUnit, NUnit, or MSTest.
+9. ~~Database ownership evidence used for safe cleanup.~~ **Settled:** the current
+   lifecycle instance/run records the exact unique database name it created. Cleanup may
+   drop only that exact name, and only when it also matches the configured prefix. Prefix,
+   age, and reachability are never ownership; orphan deletion is separate and requires
+   explicit human approval.
+10. ~~Package ownership for database lifecycle helpers.~~ **Settled:** Core owns stores,
+    profiles, metadata, authorization, bootstrap resolution, external references, and
+    lightweight contracts. `ItTiger.TigerQuery` owns operational create/drop and
+    setup/teardown SQL, with lifecycle state kept there unless another package genuinely
+    needs a pure state contract.
+11. ~~Framework mapping for `NotConfigured`.~~ **Settled:** the current xUnit test suite
+    uses a runtime skip in test-only code. `Invalid` and `Ambiguous` fail. Production
+    packages stay framework-neutral, and no public integration package is added now.
 12. ~~Whether `SqlServerConnectionCommandOptions.Store` is retained alongside the deferred
     form.~~ **Settled after Phase 3:** remove it as repository cleanup and leave
     `TigerQueryCliOptions` as the sole injection model. No compatibility API is required.
 13. ~~How the existing CLI test harness injects a store and how that injection ranks.~~
     **Settled in Phase 3:** injection supplies the application-default path; CLI and
     environment overrides retain higher precedence.
-14. How contributed global-option and environment-variable *descriptions* get localized,
-    given that 0.9.1 accepts only literal strings at `Build()` time while the rest of the
-    host's help is resource-driven. Options: accept English-only help for this one
-    option; have the host pass a pre-localized description built from its default culture;
-    or request `descriptionResourceKey` overloads in a future TigerCli. This is a TigerCli
-    feature gap, not a TigerQuery design choice, and must not be worked around by making
-    TigerCli TigerQuery-aware.
+14. ~~Localization of contributed global-option and environment-variable help
+    descriptions.~~ **Settled:** a new TigerCli release is being prepared with that
+    support, and TigerQuery will consume it after release. Until the dependency update,
+    English-only contribution descriptions remain a known temporary limitation. No
+    TigerQuery-specific workaround is permitted.
 15. ~~Whether bootstrap identity is recorded as its own metadata key.~~ **Settled in
     Phase 4:** it is not. The resolver selects only the caller's explicit name or the
     host-configured default name; authorization metadata expresses permission, not
@@ -1795,6 +1874,11 @@ the remaining safety contracts exist.
     file form and are returned without trimming.
 18. ~~Full connection-string versus field-level precedence.~~ **Settled in Phase 6:**
     there is no precedence. Mixed mode is invalid and rejected before persistence.
+
+No numbered architectural questions remain open. Phase 7 still has implementation-level
+work around partial-failure sequencing and the manual orphan-approval API, and Phase 8
+must decide how much live-test code to adapt versus rewrite; neither may reopen the
+settled safety or package-boundary decisions above.
 
 ## 20. Acceptance criteria
 
@@ -1810,9 +1894,15 @@ The design is successful when:
 - CLI overrides environment variables;
 - environment variables override the application default;
 - an invalid higher-priority source never falls through to a lower one;
+- a missing selected store reads as empty regardless of path source, creates nothing on
+  read, and is created only by the first successful write;
+- malformed or unreadable existing stores, invalid paths, and inaccessible targets fail
+  without requiring users to pre-create an empty JSON file and without path fallback;
 - one run reads and writes exactly one store file;
 - `TigerQueryCliOptions` is the sole connection-store injection model after the
   post-Phase 3 cleanup;
+- normal providers run after the contribution callback and rely on its resolved state;
+  no shell-completion fallback or pre-resolution mode exists;
 - local developers need no environment variables;
 - CI/CD can use environment variables and mounted files;
 - persisted literals remain compatible, while external values resolve lazily and are
@@ -1826,6 +1916,18 @@ The design is successful when:
 - the entire `ittiger.*` namespace is TigerQuery-owned; generic metadata writes reject it,
   TigerQuery-owned E2E/bootstrap operations are its only writers, and unknown reserved
   keys are tolerated when reading;
+- `_TQ_E2E_` is the default generated-database prefix and hosts may configure another;
+- `ItTiger.TigerQuery` records the exact database created by the current lifecycle
+  instance and cleanup drops only that exact name when it also passes the prefix guard;
+- prefix match, age, reachability, and orphan detection never authorize automatic
+  deletion; orphan removal requires a separate explicitly human-approved process;
+- cleanup failures report the exact database left behind;
+- Core retains lightweight connection/E2E contracts while `ItTiger.TigerQuery` owns
+  operational create/drop and setup/teardown SQL behavior;
+- the xUnit suite runtime-skips `NotConfigured` in test-only code and fails `Invalid` or
+  `Ambiguous`, with no test-framework dependency in production packages;
+- TigerQuery consumes contributed-description localization from the prepared TigerCli
+  release when available and carries no domain-specific workaround in the meantime;
 - no component discovers SQL Server;
 - no unconfigured test run opens a SQL connection or touches the developer's real store;
 - library, tool, and mixed modes use identical contracts;
