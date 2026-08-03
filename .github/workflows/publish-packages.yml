@@ -7,7 +7,6 @@ on:
       version:
         description: Package version already recorded in Version.props
         required: true
-        default: "0.8.2"
         type: string
 
 permissions:
@@ -87,6 +86,105 @@ jobs:
           --no-build
           --no-restore
           --output artifacts/packages
+
+      - name: Pack ItTiger.TigerSqlCmd
+        run: >-
+          dotnet pack ItTiger.TigerSqlCmd/ItTiger.TigerSqlCmd.csproj
+          -c Release
+          --no-build
+          --no-restore
+          --output artifacts/packages
+
+      - name: Inspect ItTiger.TigerSqlCmd tool package
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          $id = "ItTiger.TigerSqlCmd"
+          $packagePath = "artifacts/packages/$id.$env:RELEASE_VERSION.nupkg"
+          $symbolsPath = "artifacts/packages/$id.$env:RELEASE_VERSION.snupkg"
+          foreach ($path in @($packagePath, $symbolsPath)) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Missing package: $path"
+            }
+          }
+
+          $archive = [System.IO.Compression.ZipFile]::OpenRead(
+            (Resolve-Path -LiteralPath $packagePath)
+          )
+          try {
+            $nuspecEntry = $archive.GetEntry("$id.nuspec")
+            if ($null -eq $nuspecEntry) {
+              throw "$packagePath does not contain $id.nuspec."
+            }
+            $reader = [System.IO.StreamReader]::new($nuspecEntry.Open())
+            try {
+              [xml]$nuspec = $reader.ReadToEnd()
+            }
+            finally {
+              $reader.Dispose()
+            }
+
+            $metadata = $nuspec.SelectSingleNode(
+              "/*[local-name()='package']/*[local-name()='metadata']"
+            )
+            if ([string]$metadata.id -ne $id -or [string]$metadata.version -ne $env:RELEASE_VERSION) {
+              throw "$packagePath has unexpected ID or version metadata."
+            }
+            if ([string]$metadata.readme -ne "README.md" -or $null -eq $archive.GetEntry("README.md")) {
+              throw "$packagePath does not contain the configured README.md."
+            }
+            if ([string]$metadata.icon -ne "TigerQuery256.png" -or $null -eq $archive.GetEntry("TigerQuery256.png")) {
+              throw "$packagePath does not contain the configured icon."
+            }
+            $packageType = $nuspec.SelectSingleNode("//*[local-name()='packageType']")
+            if ($null -eq $packageType -or $packageType.GetAttribute("name") -ne "DotnetTool") {
+              throw "$packagePath is not marked as a DotnetTool package."
+            }
+            if (@($nuspec.SelectNodes("//*[local-name()='dependency']")).Count -ne 0) {
+              throw "$packagePath must contain its tool payload instead of package dependencies."
+            }
+            if ($null -eq $archive.GetEntry("tools/net10.0/any/DotnetToolSettings.xml")) {
+              throw "$packagePath does not contain DotnetToolSettings.xml."
+            }
+            if ($null -eq $archive.GetEntry("tools/net10.0/any/tiger-sqlcmd.dll")) {
+              throw "$packagePath does not contain the tiger-sqlcmd assembly."
+            }
+          }
+          finally {
+            $archive.Dispose()
+          }
+
+      - name: Validate ItTiger.TigerSqlCmd tool installation
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $toolPath = Join-Path $env:RUNNER_TEMP "tiger-sqlcmd-tool"
+          dotnet tool install ItTiger.TigerSqlCmd `
+            --tool-path $toolPath `
+            --add-source artifacts/packages `
+            --version $env:RELEASE_VERSION `
+            --ignore-failed-sources
+          if ($LASTEXITCODE -ne 0) {
+            throw "Tool installation failed with exit code $LASTEXITCODE."
+          }
+          $versionOutput = & (Join-Path $toolPath "tiger-sqlcmd.exe") --version | Out-String
+          if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch [regex]::Escape($env:RELEASE_VERSION)) {
+            throw "Installed tool did not report version $env:RELEASE_VERSION."
+          }
+          $helpOutput = & (Join-Path $toolPath "tiger-sqlcmd.exe") --help | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not $helpOutput.Contains("Usage:")) {
+            throw "Installed tool help validation failed."
+          }
+          dotnet tool uninstall ItTiger.TigerSqlCmd --tool-path $toolPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Tool uninstall failed with exit code $LASTEXITCODE."
+          }
 
       - name: Inspect packages
         shell: pwsh
@@ -242,7 +340,7 @@ jobs:
                 $tigerQueryForbidden = @(
                   $dependencies |
                     Where-Object {
-                      $_.GetAttribute("id") -match '(?i)TigerCli|TigerQuery\.Core|TigerQuery\.CliCore|NLog|Spectre'
+                      $_.GetAttribute("id") -match '(?i)TigerCli|TigerQuery\.CliCore|NLog|Spectre'
                     }
                 )
                 if ($tigerQueryForbidden.Count -ne 0) {
@@ -251,7 +349,7 @@ jobs:
               }
 
               $expectedDependencies = Get-PackageReferences -ProjectPath $package.Project
-              if ($id -eq "ItTiger.TigerQuery.CliCore") {
+              if ($id -in @("ItTiger.TigerQuery", "ItTiger.TigerQuery.CliCore")) {
                 $expectedDependencies["ItTiger.TigerQuery.Core"] = $env:RELEASE_VERSION
               }
 
@@ -321,6 +419,8 @@ jobs:
             artifacts/packages/ItTiger.TigerQuery.${{ inputs.version }}.snupkg
             artifacts/packages/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.nupkg
             artifacts/packages/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.snupkg
+            artifacts/packages/ItTiger.TigerSqlCmd.${{ inputs.version }}.nupkg
+            artifacts/packages/ItTiger.TigerSqlCmd.${{ inputs.version }}.snupkg
           if-no-files-found: error
           retention-days: 14
 
@@ -407,6 +507,22 @@ jobs:
             --skip-duplicate `
             --no-symbols
           dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.CliCore.$env:RELEASE_VERSION.snupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate
+
+      - name: Publish ItTiger.TigerSqlCmd to NuGet.org
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          dotnet nuget push "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg" `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key "$env:NUGET_API_KEY" `
+            --skip-duplicate `
+            --no-symbols
+          dotnet nuget push "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.snupkg" `
             --source https://api.nuget.org/v3/index.json `
             --api-key "$env:NUGET_API_KEY" `
             --skip-duplicate

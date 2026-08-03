@@ -29,7 +29,8 @@
           "tiger-sqlcmd.md",
           "connection-profiles.md",
           "e2e-database-lifecycle.md",
-          "cli-integration.md"
+          "cli-integration.md",
+          "releasing-tiger-sqlcmd.md"
         ]
       },
       {

@@ -402,5 +402,5 @@ docs/api-docfx/api/
 docs/api-docfx/_site/
 
 # Ignore installer build folders
-ItTiger.TigerWrap.Installer/WorkingDir/
-ItTiger.TigerWrap.Installer/Output/
+ItTiger.TigerSqlCmd.Installer/WorkingDir/
+ItTiger.TigerSqlCmd.Installer/Output/

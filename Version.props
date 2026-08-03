@@ -4,14 +4,14 @@
     Shared version, company, and repository metadata for the TigerQuery projects:
     ItTiger.TigerQuery, ItTiger.TigerQuery.Core, ItTiger.TigerQuery.CliCore,
     ItTiger.TigerSqlCmd, and ItTiger.TigerQuery.Tests. Imported explicitly by each
-    project file. Project-specific metadata (AssemblyName, Product, Description)
-    stays in each project file.
+    project file, and read by the TigerSqlCmd installer build. Project-specific
+    metadata (AssemblyName, Product, Description) stays in each project file.
   -->
 
   <PropertyGroup>
-    <Version>0.8.2</Version>
-    <AssemblyVersion>0.8.2.0</AssemblyVersion>
-    <FileVersion>0.8.2.0</FileVersion>
+    <Version>0.8.3</Version>
+    <AssemblyVersion>0.8.3.0</AssemblyVersion>
+    <FileVersion>0.8.3.0</FileVersion>
     <UtcBuildTimestamp>$([System.DateTime]::UtcNow.ToString('yyyyMMdd.HHmmss'))</UtcBuildTimestamp>
     <InformationalVersion>$(Version)+$(UtcBuildTimestamp)</InformationalVersion>
     <!-- Keep InformationalVersion exactly Version+timestamp; without this the SDK appends the git SHA. -->
@@ -28,7 +28,8 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 
-    <!-- Symbol packages for the packable projects (ItTiger.TigerQuery, .Core, .CliCore).
+    <!-- Symbol packages for the packable projects (ItTiger.TigerQuery, .Core, .CliCore,
+         and ItTiger.TigerSqlCmd).
          Source Link for GitHub is built into the SDK; embed untracked sources so the
          snupkg debugging experience is complete. -->
     <IncludeSymbols>true</IncludeSymbols>

@@ -191,14 +191,38 @@ dotnet add package ItTiger.TigerQuery.CliCore
 
 ### tiger-sqlcmd CLI
 
-The `tiger-sqlcmd` command-line tool is distributed as prebuilt binaries via
-[GitHub releases](https://github.com/rkozlowski/TigerQuery/releases), or build it from source.
+Install the `tiger-sqlcmd` .NET tool globally:
+
+```bash
+dotnet tool install --global ItTiger.TigerSqlCmd
+```
+
+For a repository-local installation, create or reuse a tool manifest and install
+the same package locally:
+
+```bash
+dotnet new tool-manifest
+dotnet tool install --local ItTiger.TigerSqlCmd
+dotnet tool run tiger-sqlcmd --help
+```
+
+Update or remove the global tool with:
+
+```bash
+dotnet tool update --global ItTiger.TigerSqlCmd
+dotnet tool uninstall --global ItTiger.TigerSqlCmd
+```
+
+For a local manifest, replace `--global` with `--local`. A Windows installer is
+also distributed through [GitHub releases](https://github.com/rkozlowski/TigerQuery/releases).
+See the [release guide](docs/api-docfx/releasing-tiger-sqlcmd.md) for local package
+and installer builds and validation.
 
 ---
 
 ## 🔧 Status
 
-TigerQuery v0.8.2 is a **snapshot release** — not issue-free, but stable, tested, and ready to use.
+TigerQuery v0.8.3 is a **snapshot release** — not issue-free, but stable, tested, and ready to use.
 
 It is meant as a transparent, inspectable tool — bugs and all.  
 The test suite tracks known issues, documents differences, and protects your upgrade path.

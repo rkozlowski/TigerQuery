@@ -77,22 +77,26 @@ public sealed class TigerSqlCmdAppTests : IDisposable
     }
 
     [Fact]
-    public async Task Version_Reports082()
+    public async Task Version_ReportsAssemblyVersion()
     {
         var result = await RunAsync("--version");
+        var assemblyVersion = typeof(TigerSqlCmdApp).Assembly.GetName().Version!;
+        var expectedVersion = $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}";
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
-        Assert.Contains("0.8.2", result.StdOut);
+        Assert.Contains(expectedVersion, result.StdOut);
     }
 
     [Fact]
-    public async Task VersionFull_Reports082WithBuildTimestamp()
+    public async Task VersionFull_ReportsAssemblyVersionWithBuildTimestamp()
     {
         var result = await RunAsync("--version-full");
+        var assemblyVersion = typeof(TigerSqlCmdApp).Assembly.GetName().Version!;
+        var expectedVersion = $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}+";
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         // InformationalVersion is Version+UtcBuildTimestamp (see Version.props).
-        Assert.Contains("0.8.2+", result.StdOut);
+        Assert.Contains(expectedVersion, result.StdOut);
     }
 
     // ── Interaction modes and framework exit codes ───────────────────

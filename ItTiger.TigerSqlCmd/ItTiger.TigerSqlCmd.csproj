@@ -2,8 +2,6 @@
   <Import Project="..\Version.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- Application, distributed as GitHub release binaries; never a NuGet package. -->
-    <IsPackable>false</IsPackable>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -14,6 +12,22 @@
     <Product>TigerSqlCmd</Product>
     <Description>SQL Server script and query runner built on the TigerQuery engine, with sqlcmd-compatible scripting, saved connections, variables, and logging.</Description>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>tiger-sqlcmd</ToolCommandName>
+    <PackageId>ItTiger.TigerSqlCmd</PackageId>
+    <Title>TigerSqlCmd .NET Tool</Title>
+    <PackageTags>dotnet-tool;sqlcmd;sql;sqlserver;cli;ittiger;tigerquery</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>TigerQuery256.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\docs\assets\TigerQuery256.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ItTiger.TigerCli" Version="0.9.2" />

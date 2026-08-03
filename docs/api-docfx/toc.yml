@@ -12,5 +12,7 @@
   href: ../features/e2e-connection-stores.md
 - name: CLI integration
   href: cli-integration.md
+- name: Releasing tiger-sqlcmd
+  href: releasing-tiger-sqlcmd.md
 - name: API reference
   href: api-reference.md
