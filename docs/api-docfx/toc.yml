@@ -8,6 +8,8 @@
   href: tiger-sqlcmd.md
 - name: Connection profiles
   href: connection-profiles.md
+- name: Safe E2E database lifecycle
+  href: e2e-database-lifecycle.md
 - name: CLI integration
   href: cli-integration.md
 - name: API reference

@@ -16,6 +16,7 @@ It is a library: it renders nothing and owns no console. Embed it in your own to
 - Fully asynchronous parsing and execution, from strings or files, with cancellation support
 - Exact line/column metadata per batch
 - Structured execution events (messages, batch start/end, result sets) and a typed execution result
+- Safe, exact-ownership E2E database creation, setup/teardown, reporting, and cleanup
 
 ## Installation
 
@@ -129,9 +130,30 @@ Every diagnostic reaches `OnMessage` with its original number, severity, state, 
 
 Prepared and streaming execution share one coordinator, so the policy, lifecycle events, and counts are identical in both modes.
 
+## Safe E2E database lifecycle
+
+`ItTiger.TigerQuery.E2e.SqlServerE2eDatabaseLifecycle` creates one uniquely named
+test database from an explicitly resolved and authorized Core connection profile.
+The default prefix is `_TQ_E2E_`; hosts can override it through
+`SqlServerE2eDatabaseLifecycleOptions`.
+
+Cleanup is intentionally narrow: an instance can drop only the exact name it
+recorded after its own successful create, and that name must still match its
+configured prefix. A prefix match alone is never ownership. Cleanup failures name
+the exact database that may remain and preserve the state needed for a retry.
+`DetectOrphansAsync` reports prefix-matching candidates but cannot delete them;
+orphan deletion requires a separate manual process with explicit human approval.
+
+Setup and teardown helpers use the existing TigerQuery engine. Optional generated
+profiles use Core's normal copy, validation, and atomic persistence path. External
+connection values resolve only when an operation builds its effective connection and
+are never written back. See the
+[safe E2E database lifecycle guide](https://github.com/rkozlowski/TigerQuery/blob/main/docs/api-docfx/e2e-database-lifecycle.md)
+for the complete workflow and the full-connection-string profile-copy boundary.
+
 ## Related packages
 
-- [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) — saved SQL Server connection profiles (storage, validation, resolution). Independent of this package; combine them when you want named connections in front of the engine.
+- [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) — saved SQL Server connection profiles (storage, validation, resolution), also used by the optional safe E2E lifecycle.
 - [ItTiger.TigerQuery.CliCore](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/) — ready-made TigerCli connection-management commands for CLI applications.
 - [tiger-sqlcmd](https://github.com/rkozlowski/TigerQuery/releases) — the ready-made CLI built on all three, distributed as GitHub release binaries.
 

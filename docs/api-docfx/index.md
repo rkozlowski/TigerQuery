@@ -37,6 +37,9 @@ libraries' C# source and XML documentation comments.
 Start with [Getting started](getting-started.md), or browse the
 [API reference](api-reference.md).
 
+For explicitly authorized test infrastructure, see
+[Safe E2E database lifecycle](e2e-database-lifecycle.md).
+
 ## Project links
 
 - [GitHub repository](https://github.com/rkozlowski/TigerQuery)

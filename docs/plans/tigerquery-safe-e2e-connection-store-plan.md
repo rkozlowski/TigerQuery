@@ -1701,7 +1701,7 @@ sensitive), while resolved passwords, literal full connection strings, and sensi
 free-form option values are redacted. The CLI adds only five non-promptable JSON-reference
 options and rejects literal values or sensitive `--opt` keys on argv.
 
-### Phase 7 — Safe database lifecycle
+### Phase 7 — Safe database lifecycle — **Completed**
 
 **Difficulty: High.** Destructive operations against real servers require exact
 lifecycle-state ownership and careful partial-failure handling.
@@ -1735,9 +1735,19 @@ different lifecycle instance are rejected before any drop command is sent. Tests
 also prove that prefix match alone, age, reachability, and orphan enumeration never
 authorize deletion, and that cleanup failures name the exact database left behind.
 
-**Risks / implementation details.** Drop-safety and state retention under partial failure;
-the API shape for the separate human-approved orphan-deletion process. Neither detail may
-weaken the exact-recorded-name and prefix-guard rules.
+**Resolved implementation details.** Drop-safety and state retention under partial failure,
+and the API boundary for the separate human-approved orphan-deletion process, are recorded
+below. Neither weakens the exact-recorded-name and prefix-guard rules.
+
+**Settled outcome.** `SqlServerE2eDatabaseLifecycle` records a generated name only after
+the create command completes successfully and retains that exact ownership record after a
+successful drop. A failed or cancelled drop raises an exception carrying the exact database
+that may remain, keeps the live state and generated profile for retry, and sends no other
+drop. If creation has an ambiguous transport failure before successful completion can be
+observed, the name is intentionally not adopted; read-only orphan reporting is the recovery
+signal. The lifecycle exposes no orphan-deletion API. Human-approved deletion remains a
+separate administrative process documented for callers rather than an automatic lifecycle
+operation.
 
 ### Phase 8 — Repository E2E migration and hardening
 
@@ -1808,9 +1818,10 @@ store plumbing, plus the Core E2E metadata/authorization contract and inert boot
 resolver. The host tests prove store composition and precedence through `tiger-sqlcmd`;
 they do not prove the complete E2E workflow. Phase 5 added the bootstrap command surface
 under the binding reserved-write policy, and Phase 6 added portable external values
-without resolving them during authorization. Phase 7 can proceed with the ownership,
-prefix, package-boundary, and manual-orphan decisions now settled. Phase 8 supplies the
-end-to-end proof after those lifecycle APIs exist.
+without resolving them during authorization. Phase 7 added exact-instance database
+ownership, generated naming, guarded cleanup, setup/teardown execution, profile copying,
+and report-only orphan detection in `ItTiger.TigerQuery`. Phase 8 supplies the repository
+end-to-end migration and hardening proof over those lifecycle APIs.
 
 ## 19. Settled decisions and remaining implementation questions
 
@@ -1875,10 +1886,10 @@ end-to-end proof after those lifecycle APIs exist.
 18. ~~Full connection-string versus field-level precedence.~~ **Settled in Phase 6:**
     there is no precedence. Mixed mode is invalid and rejected before persistence.
 
-No numbered architectural questions remain open. Phase 7 still has implementation-level
-work around partial-failure sequencing and the manual orphan-approval API, and Phase 8
-must decide how much live-test code to adapt versus rewrite; neither may reopen the
-settled safety or package-boundary decisions above.
+No numbered architectural questions remain open. Phase 7 settled partial-failure
+sequencing and documents manual orphan deletion without exposing it through the automatic
+lifecycle API. Phase 8 must still decide how much live-test code to adapt versus rewrite;
+that choice may not reopen the settled safety or package-boundary decisions above.
 
 ## 20. Acceptance criteria
 
