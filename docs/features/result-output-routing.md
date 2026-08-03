@@ -1,6 +1,6 @@
-# Result-output routing
+# Result output routing
 
-TigerQuery result-output routing lets a SQLCMD script or an embedding application send
+TigerQuery result output routing lets a SQLCMD script or an embedding application send
 result sets, normal SQL Server messages, and SQL Server error messages to deterministic
 files without making the command-line application responsible for parsing directives,
 serializing rows, or managing file lifetimes.

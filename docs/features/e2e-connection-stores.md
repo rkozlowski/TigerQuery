@@ -1,4 +1,4 @@
-# Safe E2E connection stores and database lifecycle
+# E2E connection stores and database lifecycle
 
 TigerQuery's end-to-end infrastructure runs SQL-backed tests only against a connection
 that a user or operator deliberately selected and authorized. It combines four durable

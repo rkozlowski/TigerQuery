@@ -38,6 +38,14 @@
           "ItTiger.md"
         ],
         "dest": "api"
+      },
+      {
+        "src": "../features",
+        "files": [
+          "result-output-routing.md",
+          "e2e-connection-stores.md"
+        ],
+        "dest": "features"
       }
     ],
     "resource": [

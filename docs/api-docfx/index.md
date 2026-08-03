@@ -38,7 +38,7 @@ Start with [Getting started](getting-started.md), or browse the
 [API reference](api-reference.md).
 
 For explicitly authorized test infrastructure, see
-[Safe E2E database lifecycle](e2e-database-lifecycle.md).
+[E2E connection stores and database lifecycle](../features/e2e-connection-stores.md).
 
 ## Project links
 

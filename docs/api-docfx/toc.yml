@@ -4,12 +4,12 @@
   href: getting-started.md
 - name: TigerQuery engine
   href: engine.md
-- name: tiger-sqlcmd output routing
-  href: tiger-sqlcmd.md
+- name: Result output routing
+  href: ../features/result-output-routing.md
 - name: Connection profiles
   href: connection-profiles.md
-- name: Safe E2E database lifecycle
-  href: e2e-database-lifecycle.md
+- name: E2E connection stores
+  href: ../features/e2e-connection-stores.md
 - name: CLI integration
   href: cli-integration.md
 - name: API reference

@@ -145,8 +145,8 @@ tiger-sqlcmd run -c local -f script.sql -o results.csv
 Use `--output-mode FilePerResultSet` for generated per-result-set files,
 `-e`/`--error-output` for SQL errors, and `--out-behavior` to choose whether
 `:Out` also redirects normal messages. See the
-[`tiger-sqlcmd` output-routing guide](docs/api-docfx/tiger-sqlcmd.md) for the
-complete CLI, CSV, overwrite, naming, encoding, and partial-file contract.
+[result output routing feature guide](docs/features/result-output-routing.md) for the
+complete CLI, API, CSV, overwrite, naming, encoding, and partial-file contract.
 
 ### Choosing a connection store
 
