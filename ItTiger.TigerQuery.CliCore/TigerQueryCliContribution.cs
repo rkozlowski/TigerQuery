@@ -59,13 +59,8 @@ public sealed class TigerQueryCliContribution : ITigerCliAppContribution
     /// TigerCli calls this during <c>Build()</c>, which is where a duplicate option name or
     /// a duplicate environment-variable name fails. A host that already registered
     /// <see cref="SqlServerConnectionStoreEnvironment.ConnectionStoreFile"/> itself must
-    /// drop that registration when it adopts this contribution.
-    /// <para>
-    /// The option and variable descriptions are literal English: TigerCli 0.9.1 accepts no
-    /// resource key here, and <c>Build()</c> runs before <c>--culture</c> is resolved. The
-    /// callback's validation messages are localized, because the callback does receive the
-    /// run's culture.
-    /// </para>
+    /// drop that registration when it adopts this contribution. TigerCli 0.9.2 resolves
+    /// both contributed descriptions through the app resource manager at help-render time.
     /// </remarks>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="builder"/> is <see langword="null"/>.
@@ -78,12 +73,14 @@ public sealed class TigerQueryCliContribution : ITigerCliAppContribution
             name: ConnectionStoreFileOption,
             valueName: "path",
             description: "Use a specific TigerQuery connection-store file for this run.",
-            apply: Apply);
+            apply: Apply,
+            descriptionResourceKey: "Opt_TqConnectionStoreFile_Description");
 
         builder.AddEnvironmentVariable(
             SqlServerConnectionStoreEnvironment.ConnectionStoreFile,
             $"Selects the TigerQuery connection-store file when {ConnectionStoreFileOption} "
-            + "is not supplied.");
+            + "is not supplied.",
+            descriptionResourceKey: "Env_TqConnectionStoreFile_Description");
     }
 
     /// <summary>

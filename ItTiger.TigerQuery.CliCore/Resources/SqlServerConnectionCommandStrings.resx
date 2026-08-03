@@ -58,6 +58,8 @@
   <data name="Cmd_Connections_AddE2eBootstrap_Description" xml:space="preserve"><value>Add an E2E-authorized bootstrap SQL Server connection.</value></data>
   <data name="Cmd_Connections_Edit_Description" xml:space="preserve"><value>Edit a SQL Server connection.</value></data>
   <data name="Cmd_Connections_Delete_Description" xml:space="preserve"><value>Delete a saved SQL Server connection.</value></data>
+  <data name="Opt_TqConnectionStoreFile_Description" xml:space="preserve"><value>Use a specific TigerQuery connection-store file for this run.</value></data>
+  <data name="Env_TqConnectionStoreFile_Description" xml:space="preserve"><value>Selects the TigerQuery connection-store file when --tq-connection-store-file is not supplied.</value></data>
 
   <!-- ── Connection settings metadata (identifier keys) ─────────────── -->
   <data name="Arg_Connection_Name_Description" xml:space="preserve"><value>Connection name.</value></data>

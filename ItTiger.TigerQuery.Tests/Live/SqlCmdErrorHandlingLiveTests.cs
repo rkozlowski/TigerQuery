@@ -18,7 +18,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
     public async Task ExitOnError_RaiserrorSeverity16_StopsAndFailsTheRun(
         TigerQueryExecutionMode executionMode)
     {
-        using var scratch = await ScratchTable.CreateAsync();
+        await using var scratch = await ScratchTable.CreateAsync();
         var run = await scratch.RunAsync(executionMode, $"""
             :ON ERROR EXIT
             INSERT INTO {scratch.TableName} (Marker) VALUES ('first');
@@ -60,7 +60,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
     [InlineData(TigerQueryExecutionMode.Prepared)]
     public async Task ExitOnError_Throw_StopsAndFailsTheRun(TigerQueryExecutionMode executionMode)
     {
-        using var scratch = await ScratchTable.CreateAsync();
+        await using var scratch = await ScratchTable.CreateAsync();
         var run = await scratch.RunAsync(executionMode, $"""
             :ON ERROR EXIT
             INSERT INTO {scratch.TableName} (Marker) VALUES ('first');
@@ -90,7 +90,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
     public async Task ExitOnError_CompilationError_StopsAndFailsTheRun(
         TigerQueryExecutionMode executionMode)
     {
-        using var scratch = await ScratchTable.CreateAsync();
+        await using var scratch = await ScratchTable.CreateAsync();
         var run = await scratch.RunAsync(executionMode, $"""
             :ON ERROR EXIT
             INSERT INTO {scratch.TableName} (Marker) VALUES ('first');
@@ -114,7 +114,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
     public async Task IgnoreOnError_RaiserrorSeverity16_CountsTheFailureAndContinues(
         TigerQueryExecutionMode executionMode)
     {
-        using var scratch = await ScratchTable.CreateAsync();
+        await using var scratch = await ScratchTable.CreateAsync();
         var run = await scratch.RunAsync(executionMode, $"""
             :ON ERROR IGNORE
             INSERT INTO {scratch.TableName} (Marker) VALUES ('first');
@@ -150,7 +150,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
     public async Task IgnoreOnError_Throw_CountsTheFailureAndContinues(
         TigerQueryExecutionMode executionMode)
     {
-        using var scratch = await ScratchTable.CreateAsync();
+        await using var scratch = await ScratchTable.CreateAsync();
         var run = await scratch.RunAsync(executionMode, $"""
             :ON ERROR IGNORE
             INSERT INTO {scratch.TableName} (Marker) VALUES ('first');
@@ -173,7 +173,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
     public async Task ExitOnError_FailingRepeatIteration_StopsTheRemainingIterations(
         TigerQueryExecutionMode executionMode)
     {
-        using var scratch = await ScratchTable.CreateAsync();
+        await using var scratch = await ScratchTable.CreateAsync();
         var run = await scratch.RunAsync(executionMode, $"""
             :ON ERROR EXIT
             INSERT INTO {scratch.TableName} (Marker) VALUES ('iteration');
@@ -206,7 +206,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
     public async Task IgnoreOnError_FailingRepeatIteration_RunsTheRemainingIterations(
         TigerQueryExecutionMode executionMode)
     {
-        using var scratch = await ScratchTable.CreateAsync();
+        await using var scratch = await ScratchTable.CreateAsync();
         var run = await scratch.RunAsync(executionMode, $"""
             :ON ERROR IGNORE
             INSERT INTO {scratch.TableName} (Marker) VALUES ('iteration');
@@ -227,7 +227,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
     public async Task ASuccessfulScriptStillSucceedsAndReportsNoFailures(
         TigerQueryExecutionMode executionMode)
     {
-        using var scratch = await ScratchTable.CreateAsync();
+        await using var scratch = await ScratchTable.CreateAsync();
         var run = await scratch.RunAsync(executionMode, $"""
             :ON ERROR EXIT
             PRINT 'informational only';
@@ -249,8 +249,8 @@ public sealed class SqlCmdErrorHandlingLiveTests
     [Fact]
     public async Task PreparedAndStreamingAgreeOnOutcomeEventsAndSideEffects()
     {
-        using var streamingScratch = await ScratchTable.CreateAsync();
-        using var preparedScratch = await ScratchTable.CreateAsync();
+        await using var streamingScratch = await ScratchTable.CreateAsync();
+        await using var preparedScratch = await ScratchTable.CreateAsync();
 
         var streaming = await streamingScratch.RunAsync(
             TigerQueryExecutionMode.Streaming,
@@ -290,28 +290,41 @@ public sealed class SqlCmdErrorHandlingLiveTests
     /// A real table outside the engine's own session, so side effects survive the run
     /// and "the later batch never executed" is observable.
     /// </summary>
-    private sealed class ScratchTable : IDisposable
+    private sealed class ScratchTable : IAsyncDisposable
     {
+        private readonly SqlServerE2eTestDatabase database;
         private readonly string connectionString;
         private readonly string bareName;
 
-        private ScratchTable(string connectionString, string bareName)
+        private ScratchTable(
+            SqlServerE2eTestDatabase database,
+            string connectionString,
+            string bareName)
         {
+            this.database = database;
             this.connectionString = connectionString;
             this.bareName = bareName;
         }
 
-        public string TableName => $"tempdb.dbo.[{bareName}]";
+        public string TableName => $"dbo.[{bareName}]";
 
         public static async Task<ScratchTable> CreateAsync()
         {
-            var connectionString = SqlServerTestEnvironment.RequireConnectionString();
+            var database = await SqlServerTestEnvironment.CreateDatabaseAsync();
             var bareName = $"TigerQueryLive_{Guid.NewGuid():N}";
-            var scratch = new ScratchTable(connectionString, bareName);
+            var scratch = new ScratchTable(database, database.ConnectionString, bareName);
 
-            await scratch.ExecuteAsync(
-                $"CREATE TABLE tempdb.dbo.[{bareName}] (Id INT IDENTITY(1,1) PRIMARY KEY, Marker NVARCHAR(100) NOT NULL);");
-            return scratch;
+            try
+            {
+                await scratch.ExecuteAsync(
+                    $"CREATE TABLE dbo.[{bareName}] (Id INT IDENTITY(1,1) PRIMARY KEY, Marker NVARCHAR(100) NOT NULL);");
+                return scratch;
+            }
+            catch
+            {
+                await database.DisposeAsync();
+                throw;
+            }
         }
 
         public async Task<LiveRun> RunAsync(TigerQueryExecutionMode executionMode, string script)
@@ -354,7 +367,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
             await using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync(TestContext.Current.CancellationToken);
             await using var command = connection.CreateCommand();
-            command.CommandText = $"SELECT Marker FROM tempdb.dbo.[{bareName}] ORDER BY Id;";
+            command.CommandText = $"SELECT Marker FROM dbo.[{bareName}] ORDER BY Id;";
 
             var markers = new List<string>();
             await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
@@ -364,24 +377,15 @@ public sealed class SqlCmdErrorHandlingLiveTests
             return markers;
         }
 
-        public void Dispose()
-        {
-            try
-            {
-                ExecuteAsync($"DROP TABLE IF EXISTS tempdb.dbo.[{bareName}];").GetAwaiter().GetResult();
-            }
-            catch (SqlException)
-            {
-            }
-        }
+        public ValueTask DisposeAsync() => database.DisposeAsync();
 
         private async Task ExecuteAsync(string sql)
         {
             await using var connection = new SqlConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
-            await command.ExecuteNonQueryAsync();
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
         }
     }
 

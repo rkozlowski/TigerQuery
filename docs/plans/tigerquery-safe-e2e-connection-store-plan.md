@@ -1,6 +1,6 @@
 # TigerQuery connection-store resolution and safe E2E foundation
 
-Status: Phases 1–6 completed; Phases 7–8 proposed
+Status: Phases 1–7 completed; Phase 8 implemented with gated live validation pending
 
 Scope:
 
@@ -21,21 +21,22 @@ An implementation agent must read it before writing CliCore or host code. Where 
 plan and the guide disagree, the guide wins and this plan is the document that must be
 corrected.
 
-The API described there ships in **ItTiger.TigerCli 0.9.1**, which every project in this
-repository already references. No TigerCli change is required to start, and no TigerCli
-change may be introduced to accommodate TigerQuery.
+The base API described there shipped in **ItTiger.TigerCli 0.9.1**. This repository now
+references **ItTiger.TigerCli 0.9.2**, whose resource-key overloads localize contributed
+global-option and environment-variable descriptions at help-render time. No TigerCli
+change or TigerQuery-specific workaround is required.
 
-### 0.1 The 0.9.1 contribution surface, as actually shipped
+### 0.1 The 0.9.2 contribution surface, as actually shipped
 
-Verified against the `ItTiger.TigerCli` 0.9.1 reference assembly and XML documentation:
+Verified against the `ItTiger.TigerCli` 0.9.2 reference assembly and XML documentation:
 
 | Member | Namespace `ItTiger.TigerCli.Commands` |
 | --- | --- |
 | `ITigerCliAppContribution` | `void Configure(TigerCliAppContributionBuilder builder)` |
 | `TigerCliAppBuilder.AddContribution(ITigerCliAppContribution)` | host opt-in; contribution is configured during `Build()` |
 | `TigerCliAppContributionBuilder.GlobalOptions` | returns `TigerCliGlobalOptionBuilder` |
-| `TigerCliAppContributionBuilder.AddEnvironmentVariable(string name, string description)` | help metadata only, surfaced by `--help-env` |
-| `TigerCliGlobalOptionBuilder.AddOptionalString(string name, string valueName, string description, Func<TigerCliGlobalOptionContext, string?, TigerCliValidationResult> apply)` | the only contributed-option shape in 0.9.1 |
+| `TigerCliAppContributionBuilder.AddEnvironmentVariable(string name, string description, string? descriptionResourceKey = null)` | help metadata only, surfaced by `--help-env`; the resource key is resolved through app resources |
+| `TigerCliGlobalOptionBuilder.AddOptionalString(string name, string valueName, string description, Func<TigerCliGlobalOptionContext, string?, TigerCliValidationResult> apply, string? descriptionResourceKey = null)` | contributed optional-string shape; the literal remains the fallback description |
 | `TigerCliGlobalOptionContext` | `Culture`, `InteractionMode` |
 | `TigerCliValidationResult` | `IsValid`, `ErrorMessage`, `Success()`, `Error(string)` |
 
@@ -55,7 +56,7 @@ Verified against the `ItTiger.TigerCli` 0.9.1 reference assembly and XML documen
 
 ### 0.3 Constraints this plan must respect
 
-Taken directly from the guide and the 0.9.1 XML documentation:
+Taken directly from the guide and the 0.9.2 XML documentation:
 
 1. A contributed global option is an **optional string** with exactly **one canonical
    `--` long name**. No short name, no alias, no prompting, no "required" form, and no
@@ -83,7 +84,7 @@ Taken directly from the guide and the 0.9.1 XML documentation:
 These were discovered while reconciling the plan with the shipped API and are now
 reflected in the phase plan:
 
-- **Contributions cannot add commands, groups, providers, or resources.** In 0.9.1 a
+- **Contributions cannot add commands, groups, providers, or resources.** A
   contribution may add optional string global options and environment-variable help
   metadata, and nothing else. `connections add-e2e-bootstrap` must therefore be mounted
   through the existing `SqlServerConnectionCommands.Configure(group, ...)` entry point,
@@ -95,16 +96,11 @@ reflected in the phase plan:
   an already-constructed store. The remaining fixed
   `SqlServerConnectionCommandOptions.Store` property is cleanup, not a supported
   integration path (see section 6.2).
-- **Contributed option and environment-variable descriptions cannot be localized through
-  TigerCli's resource pipeline in 0.9.1.** `AddOptionalString` and `AddEnvironmentVariable`
-  take literal description strings and offer no `descriptionResourceKey` overload, and
-  `Configure` runs at `Build()` time, before `--culture` is resolved. Validation error
-  messages *can* be localized because the callback receives `TigerCliGlobalOptionContext.Culture`.
-  A new TigerCli release is being prepared to localize both contributed global-option
-  descriptions and contributed environment-variable help descriptions. TigerQuery will
-  consume that support after the package is available. Until then, English-only
-  contribution descriptions are a known temporary limitation; TigerQuery must not add a
-  domain-specific workaround.
+- **Contributed option and environment-variable descriptions are localized through
+  TigerCli 0.9.2's resource-key overloads.** `Configure` supplies an English fallback and
+  a CliCore resource key; TigerCli resolves that key through the host's app resource
+  manager after `--culture` is known. Validation messages remain localized by CliCore
+  from `TigerCliGlobalOptionContext.Culture`. No domain-specific workaround is used.
 - **`--tq-connection-store-file` is not a command-setting option.** It must not appear on
   `SqlServerConnectionSettings` or any other `TigerCliSettings` type, must not be bound,
   prompted, or provider-backed, and must not be duplicated per command.
@@ -1452,8 +1448,8 @@ Documentation should include:
 - the `_TQ_E2E_` default database prefix and host override;
 - exact current-run ownership and the separate human-approved orphan-deletion process;
 - xUnit's test-only `NotConfigured` runtime-skip mapping;
-- the temporary English-only contribution-description limitation and planned TigerCli
-  dependency update, without a TigerQuery-specific workaround;
+- TigerCli 0.9.2 localization of contributed option and environment-variable
+  descriptions, without a TigerQuery-specific workaround;
 - AI-agent guidance.
 
 The CliCore README's "One selected store" section was rewritten in Phase 2 for the shared
@@ -1541,9 +1537,8 @@ file.
 **Settled outcomes.** The callback resolves on every command run and the store remains
 lazy. The post-Phase 3 review settles `options.Store` for removal as cleanup (open
 question 12). TigerCli has no shell-completion lifecycle, and normal providers run after
-the callback. Contribution-description localization will come from the prepared TigerCli
-release; English-only descriptions remain temporary until TigerQuery updates that
-dependency.
+the callback. Phase 8 updates TigerQuery to TigerCli 0.9.2 and supplies resource keys for
+localized contributed option and environment-variable descriptions.
 
 ### Phase 3 — `tiger-sqlcmd` registration and migration — **Completed**
 
@@ -1756,25 +1751,33 @@ host and an external-process test surface.
 
 **Scope.** TigerQuery's own test suite and `tiger-sqlcmd` external-process coverage.
 
-**Tasks.**
+**Implemented work.**
 
-1. Remove SQL Server discovery from TigerQuery tests.
-2. Move them onto the shared resolver; map `NotConfigured` to runtime xUnit skip in
-   test-only code and make `Invalid`/`Ambiguous` fail.
-3. Prove default `dotnet test` is inert, including that it never touches the real
-   user-profile store path.
-4. Add real `tiger-sqlcmd` external-process E2E tests.
-5. Document local and CI workflows end to end.
-6. Exercise Phase 7 ownership refusal, exact-leftover reporting, and orphan-report-only
-   behavior through the repository E2E surface.
+1. Removed endpoint discovery and connection probing from TigerQuery tests. The shared
+   test resolver reads only `TIGERQUERY_CONNECTION_STORE_FILE` and selects only the
+   host-default bootstrap name.
+2. Moved live tests onto the Phase 4 resolver and Phase 7 lifecycle. Test-only mapping
+   runtime-skips `NotConfigured`; `Invalid` and `Ambiguous` fail.
+3. Added offline instrumentation proving an absent gate does not construct a store,
+   invoke SQL Client, read legacy endpoint variables, or touch the user-profile store.
+4. Added real child-process `tiger-sqlcmd` coverage for external reference resolution,
+   redaction, setup/query/teardown, and generated-profile use.
+5. Added local, CI, and container workflow documentation to the lifecycle guide.
+6. Added a gated workflow covering bootstrap resolution, unique creation, setup SQL,
+   generated profile use, teardown, cross-instance ownership refusal, report-only orphan
+   detection, exact-name cleanup failure reporting, retry, and reference preservation.
+7. Updated CliCore and `tiger-sqlcmd` to consume TigerCli 0.9.2 resource-key localization
+   for the contributed option and environment-variable descriptions.
 
 **Depends on.** Phases 4 and 7 for the interesting cases; the inertness work can start
 after Phase 4.
 
-**Validation.** Section 15.7 in full, run on a machine with SQL Server installed and
-reachable — the proof that matters is that a reachable server changes nothing. Completing
-this phase is what will make the complete E2E workflow proven through `tiger-sqlcmd`.
-Phase 3 proved only connection-store composition and precedence.
+**Validation status.** Offline, external-process redaction, default-inertness, build, and
+documentation validation are part of every normal run. Section 15.7 must also execute in
+full on a machine with SQL Server installed and reachable. When the gate is absent, the
+workflow test skips at runtime; that skip is not proof of the live workflow and is why
+this phase is not yet marked completed. Phase 3 proved only connection-store composition
+and precedence.
 
 **Risks / implementation details.** How much of the existing live-test surface must be
 rewritten rather than adapted. Framework coupling is confined to the test project.
@@ -1786,8 +1789,7 @@ Not in scope for any numbered phase above, and not to be added opportunistically
 - `connections e2e enable | disable | show | validate` and any other E2E lifecycle
   command family;
 - a user-facing global `--default-e2e-connection-name`;
-- any TigerQuery-specific TigerCli workaround; consume the prepared localization support
-  only after it is available in a released TigerCli package;
+- any TigerQuery-specific TigerCli localization workaround;
 - store formats other than the existing JSON file;
 - credential providers beyond the existing protector abstraction and the external-value
   references in Phase 6.
@@ -1820,8 +1822,9 @@ they do not prove the complete E2E workflow. Phase 5 added the bootstrap command
 under the binding reserved-write policy, and Phase 6 added portable external values
 without resolving them during authorization. Phase 7 added exact-instance database
 ownership, generated naming, guarded cleanup, setup/teardown execution, profile copying,
-and report-only orphan detection in `ItTiger.TigerQuery`. Phase 8 supplies the repository
-end-to-end migration and hardening proof over those lifecycle APIs.
+and report-only orphan detection in `ItTiger.TigerQuery`. Phase 8 has supplied the
+repository migration, hardening, and gated end-to-end proof surface over those lifecycle
+APIs; completion still requires executing the live gate against reachable SQL Server.
 
 ## 19. Settled decisions and remaining implementation questions
 
@@ -1869,10 +1872,10 @@ end-to-end migration and hardening proof over those lifecycle APIs.
     **Settled in Phase 3:** injection supplies the application-default path; CLI and
     environment overrides retain higher precedence.
 14. ~~Localization of contributed global-option and environment-variable help
-    descriptions.~~ **Settled:** a new TigerCli release is being prepared with that
-    support, and TigerQuery will consume it after release. Until the dependency update,
-    English-only contribution descriptions remain a known temporary limitation. No
-    TigerQuery-specific workaround is permitted.
+    descriptions.~~ **Settled in Phase 8:** TigerQuery references TigerCli 0.9.2 and
+    supplies CliCore resource keys through its released localization overloads. English
+    remains the fallback; en-US and pl-PL help are resolved at render time. No
+    TigerQuery-specific workaround exists.
 15. ~~Whether bootstrap identity is recorded as its own metadata key.~~ **Settled in
     Phase 4:** it is not. The resolver selects only the caller's explicit name or the
     host-configured default name; authorization metadata expresses permission, not
@@ -1888,8 +1891,8 @@ end-to-end migration and hardening proof over those lifecycle APIs.
 
 No numbered architectural questions remain open. Phase 7 settled partial-failure
 sequencing and documents manual orphan deletion without exposing it through the automatic
-lifecycle API. Phase 8 must still decide how much live-test code to adapt versus rewrite;
-that choice may not reopen the settled safety or package-boundary decisions above.
+lifecycle API. Phase 8 adapted the existing live surface where practical and added a
+single full external-process workflow where process isolation is material.
 
 ## 20. Acceptance criteria
 
@@ -1937,8 +1940,8 @@ The design is successful when:
   operational create/drop and setup/teardown SQL behavior;
 - the xUnit suite runtime-skips `NotConfigured` in test-only code and fails `Invalid` or
   `Ambiguous`, with no test-framework dependency in production packages;
-- TigerQuery consumes contributed-description localization from the prepared TigerCli
-  release when available and carries no domain-specific workaround in the meantime;
+- TigerQuery consumes TigerCli 0.9.2 contributed-description localization and carries no
+  domain-specific workaround;
 - no component discovers SQL Server;
 - no unconfigured test run opens a SQL connection or touches the developer's real store;
 - library, tool, and mixed modes use identical contracts;

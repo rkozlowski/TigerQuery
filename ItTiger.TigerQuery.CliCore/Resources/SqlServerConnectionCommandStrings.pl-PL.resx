@@ -58,6 +58,8 @@
   <data name="Cmd_Connections_AddE2eBootstrap_Description" xml:space="preserve"><value>Dodaje połączenie startowe SQL Server z autoryzacją E2E.</value></data>
   <data name="Cmd_Connections_Edit_Description" xml:space="preserve"><value>Edytuje połączenie SQL Server.</value></data>
   <data name="Cmd_Connections_Delete_Description" xml:space="preserve"><value>Usuwa zapisane połączenie SQL Server.</value></data>
+  <data name="Opt_TqConnectionStoreFile_Description" xml:space="preserve"><value>Użyj określonego pliku magazynu połączeń TigerQuery w tym uruchomieniu.</value></data>
+  <data name="Env_TqConnectionStoreFile_Description" xml:space="preserve"><value>Wybiera plik magazynu połączeń TigerQuery, gdy nie podano --tq-connection-store-file.</value></data>
 
   <!-- ── Connection settings metadata (identifier keys) ─────────────── -->
   <data name="Arg_Connection_Name_Description" xml:space="preserve"><value>Nazwa połączenia.</value></data>

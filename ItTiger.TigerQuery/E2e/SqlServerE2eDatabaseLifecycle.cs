@@ -1,5 +1,4 @@
 using ItTiger.TigerQuery.Core;
-using Microsoft.Data.SqlClient;
 
 namespace ItTiger.TigerQuery.E2e;
 
@@ -199,6 +198,10 @@ public sealed class SqlServerE2eDatabaseLifecycle
         try
         {
             var profile = RequireBootstrapProfile(requireDatabaseCreation: true);
+            // Dispose returns SqlClient connections to their pool. Remove idle sessions for
+            // this exact database before DROP, without forcing or adopting active sessions.
+            // An active connection still makes DROP fail and preserves retryable ownership.
+            executor.ClearPool(BuildConnectionString(profile, recorded));
             await executor.ExecuteAsync(
                 BuildConnectionString(profile, "master"),
                 $"DROP DATABASE {QuoteIdentifier(recorded)};",

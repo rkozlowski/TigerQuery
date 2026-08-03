@@ -1,9 +1,16 @@
 using ItTiger.TigerQuery.Engine;
+using Microsoft.Data.SqlClient;
 
 namespace ItTiger.TigerQuery.E2e;
 
 internal sealed class TigerQueryE2eDatabaseExecutor : ISqlServerE2eDatabaseExecutor
 {
+    public void ClearPool(string connectionString)
+    {
+        using var connection = new SqlConnection(connectionString);
+        SqlConnection.ClearPool(connection);
+    }
+
     public Task ExecuteAsync(
         string connectionString,
         string script,

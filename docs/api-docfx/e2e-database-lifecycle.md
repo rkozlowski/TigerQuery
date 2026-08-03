@@ -94,11 +94,49 @@ approve the deletion using their chosen SQL administration tooling. Do not treat
 prefix, apparent age, or absence of a current test run as approval. There is no
 automatic age-based sweeper.
 
-## Running the repository live test
+## Running the repository E2E workflow
 
-The Phase 7 live test is inert unless `TIGERQUERY_CONNECTION_STORE_FILE` names an
-isolated E2E store. That store must contain the explicitly selected
-`tiger-sqlcmd-e2e` bootstrap profile with both E2E flags set to the exact lower-case
-value `true`. `NotConfigured` produces an xUnit runtime skip; malformed, ambiguous,
-or unauthorized configuration fails. The test never falls back to a user-profile
-store or probes a server.
+The normal test suite is deliberately inert. When
+`TIGERQUERY_CONNECTION_STORE_FILE` is absent, the test-only resolver returns
+`NotConfigured` and xUnit runtime-skips live tests without constructing a store,
+discovering or probing SQL Server, opening a connection, or creating a database. It
+never falls back to the shared user-profile store. `Invalid` and `Ambiguous` are test
+failures rather than skips.
+
+For a local live run, create an isolated store and its explicitly named
+`tiger-sqlcmd-e2e` bootstrap profile. The profile must carry both exact permissions:
+`ittiger.e2e.enabled=true` and `ittiger.e2e.allow-database-create=true`.
+
+```powershell
+$env:TIGERQUERY_CONNECTION_STORE_FILE = 'C:\temp\tigerquery-e2e.json'
+tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+  --server localhost --allow-database-create
+dotnet test ItTiger.TigerQuery.Tests\ItTiger.TigerQuery.Tests.csproj `
+  --filter 'FullyQualifiedName~TigerSqlCmdE2eWorkflowLiveTests'
+```
+
+Replace `localhost` with the explicitly configured server. The suite never searches
+for one. The gated workflow resolves that profile, creates a unique `_TQ_E2E_...`
+database, runs setup through a real child `tiger-sqlcmd` process, uses a generated
+database profile, runs teardown, verifies cross-instance cleanup refusal and
+report-only orphan detection, forces an exact-name cleanup failure, and retries the
+same owned cleanup successfully. References remain references throughout and process
+diagnostics are checked for secret disclosure.
+
+For CI, set the standard store variable to a job-specific writable path, create the
+bootstrap non-interactively, and provide SQL credentials through environment or mounted
+file references rather than command-line literals. Run the ordinary suite first with
+the gate absent to preserve the zero-connection check, then run the gated filter in a
+separate job or step where the isolated store and reachable SQL Server are intentional.
+Always publish the test log: a cleanup failure names the exact database left behind for
+manual investigation.
+
+For containers, mount both the writable store location and any referenced secret files,
+and use paths as seen inside the test container. DPAPI-protected values are not portable
+across users, machines, or containers. Give the container's SQL principal permission to
+create and drop only in the dedicated test environment. Do not add endpoint discovery,
+prefix-based cleanup, or an orphan sweeper to make container setup more convenient.
+
+An unconfigured runtime skip confirms only that the default path is inert. Phase 8 is
+complete only after the gated workflow has actually passed against a reachable SQL
+Server.

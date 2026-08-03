@@ -2,6 +2,8 @@ namespace ItTiger.TigerQuery.E2e;
 
 internal interface ISqlServerE2eDatabaseExecutor
 {
+    void ClearPool(string connectionString);
+
     Task ExecuteAsync(
         string connectionString,
         string script,

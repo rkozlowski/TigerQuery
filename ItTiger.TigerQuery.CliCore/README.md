@@ -138,7 +138,7 @@ metadata, and an authorized profile is never selected implicitly.
 
 ## Localization
 
-Command metadata, prompts, enum labels, and output are localized (en-US, pl-PL). `CreateAppResources(params ResourceManager[])` returns a chained manager: your resource managers are consulted first, the built-in connection-command strings act as the fallback — register the result with TigerCli's `UseAppResources(...)`.
+Command metadata, prompts, enum labels, and output are localized (en-US, pl-PL). `CreateAppResources(params ResourceManager[])` returns a chained manager: your resource managers are consulted first, the built-in connection-command strings act as the fallback — register the result with TigerCli's `UseAppResources(...)`. With TigerCli 0.9.2, this also localizes the contributed store option and environment-variable help descriptions at render time through their resource keys.
 
 ## Related packages
 

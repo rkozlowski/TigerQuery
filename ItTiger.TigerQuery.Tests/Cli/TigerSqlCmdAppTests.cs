@@ -48,6 +48,20 @@ public sealed class TigerSqlCmdAppTests : IDisposable
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         Assert.Contains("Zarządzanie zapisanymi połączeniami", result.StdOut);
+        Assert.Contains(
+            "Użyj określonego pliku magazynu połączeń TigerQuery w tym uruchomieniu.",
+            result.StdOut);
+    }
+
+    [Fact]
+    public async Task HelpEnv_PolishCulture_LocalizesContributedEnvironmentDescription()
+    {
+        var result = await RunAsync("--culture", "pl-PL", "--help-env");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
+        Assert.Contains(
+            "Wybiera plik magazynu połączeń TigerQuery, gdy nie podano --tq-connection-store-file.",
+            result.StdOut);
     }
 
     [Fact]

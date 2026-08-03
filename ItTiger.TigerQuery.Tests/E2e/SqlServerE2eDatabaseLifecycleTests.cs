@@ -371,6 +371,10 @@ public sealed class SqlServerE2eDatabaseLifecycleTests
 
         public Exception? ExecuteFailure { get; set; }
 
+        public void ClearPool(string connectionString)
+        {
+        }
+
         public Task ExecuteAsync(
             string connectionString,
             string script,

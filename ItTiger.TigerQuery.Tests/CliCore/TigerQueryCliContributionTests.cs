@@ -264,6 +264,20 @@ public sealed class TigerQueryCliContributionTests : IDisposable
         Assert.Null(app.Options.ResolvedStorePath);
     }
 
+    [Fact]
+    public async Task ContributedOptionAndEnvironmentDescriptionsUseTheRunCulture()
+    {
+        var app = Create();
+
+        var optionHelp = await app.RunAsync("--culture", "pl-PL", "--help");
+        var environmentHelp = await app.RunAsync("--culture", "pl-PL", "--help-env");
+
+        Assert.Equal((int)ContributionExitCode.Ok, optionHelp.ExitCode);
+        Assert.Contains("Użyj określonego pliku magazynu połączeń", optionHelp.StdOut);
+        Assert.Equal((int)ContributionExitCode.Ok, environmentHelp.ExitCode);
+        Assert.Contains("Wybiera plik magazynu połączeń", environmentHelp.StdOut);
+    }
+
     // ---- The option is contributed, not a command setting ----
 
     [Fact]

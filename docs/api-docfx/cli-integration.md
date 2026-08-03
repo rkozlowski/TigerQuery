@@ -96,6 +96,12 @@ configured. See
 manager. Host resources are consulted first, followed by the built-in en-US and
 pl-PL connection-command strings.
 
+CliCore uses TigerCli 0.9.2's resource-key overloads for both the contributed
+`--tq-connection-store-file` description and the
+`TIGERQUERY_CONNECTION_STORE_FILE` entry shown by `--help-env`. They are therefore
+resolved using the run culture at help-render time. The supplied English text remains
+the fallback, and no TigerQuery-specific localization workaround is required.
+
 The add and edit commands accept repeatable metadata mutations. The list
 command accepts repeatable value, key-present, and key-absent filters; every
 filter must match. Metadata is application-owned, case-sensitive, excluded from

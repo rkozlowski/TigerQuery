@@ -10,14 +10,12 @@ namespace ItTiger.TigerQuery.Tests.Live;
 /// </summary>
 public sealed class SqlServerConnectionCopyLiveTests
 {
-    private const string SqlUserVariable = "TIGERQUERY_TEST_SQL_USER";
-    private const string SqlPasswordVariable = "TIGERQUERY_TEST_SQL_PASSWORD";
-
     [Fact]
     public async Task AnIntegratedAuthenticationCopyResolvesAndOpensAgainstTheOverriddenDatabase()
     {
-        var builder = new SqlConnectionStringBuilder(SqlServerTestEnvironment.RequireConnectionString());
-        Assert.SkipUnless(builder.IntegratedSecurity, "The detected instance does not use integrated authentication.");
+        await using var database = await SqlServerTestEnvironment.CreateDatabaseAsync();
+        var builder = new SqlConnectionStringBuilder(database.ConnectionString);
+        Assert.SkipUnless(builder.IntegratedSecurity, "The configured E2E profile does not use integrated authentication.");
 
         using var temp = new TempStore();
         var source = ProfileFrom("bootstrap", builder);
@@ -28,14 +26,14 @@ public sealed class SqlServerConnectionCopyLiveTests
         var copy = temp.Store.Copy("bootstrap", new SqlServerConnectionCopyOptions
         {
             TargetName = "temporary",
-            InitialCatalogOverride = "tempdb",
+            InitialCatalogOverride = database.DatabaseName,
             MetadataToSet = new Dictionary<string, string>(StringComparer.Ordinal) { ["app:Role"] = "TestDatabase" }
         });
 
-        Assert.Equal("tempdb", copy.Database);
+        Assert.Equal(database.DatabaseName, copy.Database);
         Assert.Equal("TestDatabase", copy.Metadata["app:Role"]);
 
-        Assert.Equal("tempdb", await OpenAndReadDatabaseNameAsync(temp.Store, "temporary"));
+        Assert.Equal(database.DatabaseName, await OpenAndReadDatabaseNameAsync(temp.Store, "temporary"));
         Assert.Equal("master", await OpenAndReadDatabaseNameAsync(temp.Store, "bootstrap"));
 
         Assert.True(temp.Store.Delete("temporary"));
@@ -46,13 +44,13 @@ public sealed class SqlServerConnectionCopyLiveTests
     [Fact]
     public async Task ASqlAuthenticationCopyKeepsTheProtectedPasswordUsable()
     {
-        var user = Environment.GetEnvironmentVariable(SqlUserVariable);
-        var password = Environment.GetEnvironmentVariable(SqlPasswordVariable);
+        await using var database = await SqlServerTestEnvironment.CreateDatabaseAsync();
+        var builder = new SqlConnectionStringBuilder(database.ConnectionString);
+        var user = builder.UserID;
+        var password = builder.Password;
         Assert.SkipWhen(
-            string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password),
-            $"Set {SqlUserVariable} and {SqlPasswordVariable} to run the SQL-authentication copy test.");
-
-        var builder = new SqlConnectionStringBuilder(SqlServerTestEnvironment.RequireConnectionString());
+            builder.IntegratedSecurity || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password),
+            "The configured E2E profile does not use SQL password authentication.");
 
         // The platform-default protector is used deliberately: on Windows the copy has to
         // carry a real DPAPI blob through the store and still open afterwards.
@@ -67,14 +65,14 @@ public sealed class SqlServerConnectionCopyLiveTests
         var copy = temp.Store.Copy("bootstrap", new SqlServerConnectionCopyOptions
         {
             TargetName = "temporary",
-            InitialCatalogOverride = "tempdb"
+            InitialCatalogOverride = database.DatabaseName
         });
 
         // The caller never sees plaintext, and the stored blob is duplicated as-is.
         Assert.Null(copy.PlainPassword);
         Assert.Equal(temp.Store.Find("bootstrap")!.EncryptedPassword, copy.EncryptedPassword);
 
-        Assert.Equal("tempdb", await OpenAndReadDatabaseNameAsync(temp.Store, "temporary"));
+        Assert.Equal(database.DatabaseName, await OpenAndReadDatabaseNameAsync(temp.Store, "temporary"));
         Assert.Equal("master", await OpenAndReadDatabaseNameAsync(temp.Store, "bootstrap"));
     }
 
@@ -95,9 +93,11 @@ public sealed class SqlServerConnectionCopyLiveTests
         Name = name,
         Server = builder.DataSource,
         Authentication = builder.IntegratedSecurity ? AuthenticationType.Integrated : AuthenticationType.SqlPassword,
-        Encrypt = EncryptOption.Optional,
-        TrustServerCertificate = true,
-        ConnectTimeout = 5
+        Username = builder.IntegratedSecurity ? null : builder.UserID,
+        PlainPassword = builder.IntegratedSecurity ? null : builder.Password,
+        Encrypt = Enum.Parse<EncryptOption>(builder.Encrypt.ToString()),
+        TrustServerCertificate = builder.TrustServerCertificate,
+        ConnectTimeout = builder.ConnectTimeout
     };
 
     private sealed class TempStore : IDisposable
