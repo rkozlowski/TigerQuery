@@ -1,89 +1,138 @@
-; User PATH support, based on TigerWrap's environment.iss implementation.
+; environment.iss
+; The code is kindly provided by Wojciech Mleczek in the answer on StackOverflow:
+; https://stackoverflow.com/a/46609047/1240328
+; TigerSqlCmd Setup requires administrator elevation, so this writes the system PATH.
+
 [Code]
-function IsPathInList(Path: string; Paths: string): Boolean;
+function IsPathInList(Path: string; Paths: string): boolean;
 var
-  Item, Tail: string;
-  Separator: Integer;
+    X, Tail: string;
+    P: integer;
 begin
-  Result := False;
-  Tail := Paths;
-  while Length(Tail) > 0 do
-  begin
-    Separator := Pos(';', Tail);
-    if Separator < 1 then
+    Result := false;
+
+    Tail := Paths;
+    while Length(Tail) > 0 do
     begin
-      Item := Tail;
-      Tail := '';
-    end
-    else
-    begin
-      Item := Copy(Tail, 1, Separator - 1);
-      Tail := Copy(Tail, Separator + 1, Length(Tail) - Separator);
+        P := Pos(';', Tail);
+
+        if P < 1 then
+        begin
+            X := Tail;
+            Tail := '';
+        end
+        else
+        begin
+            X := Copy(Tail, 1, P-1);
+            Tail := Copy(Tail, P+1, Length(Tail)-P);
+        end;
+
+        if SameStr(Uppercase(X), Uppercase(Path)) then
+        begin
+            Result := true;
+            break;
+        end;
     end;
-    if SameText(Item, Path) then
-    begin
-      Result := True;
-      exit;
-    end;
-  end;
 end;
 
-function WithoutPath(Paths: string; Path: string): string;
-var
-  Item, Tail: string;
-  Separator: Integer;
+
+function StartsWith(S, Head: string): boolean;
 begin
-  Result := '';
-  Tail := Paths;
-  while Length(Tail) > 0 do
-  begin
-    Separator := Pos(';', Tail);
-    if Separator < 1 then
-    begin
-      Item := Tail;
-      Tail := '';
-    end
+    Result := (1=Pos(Head, S));
+end;
+
+
+function EndsWith(S, Tail: string): boolean;
+begin
+    Result := SameStr(Tail, Copy(S, Length(S)+1-Length(Tail), Length(Tail)));
+end;
+
+
+function WithoutPathInternal(S, Path: string): string;
+var
+    Part: string;
+    I: integer;
+begin
+    if SameStr(Uppercase(Path), Uppercase(S)) then Result := ''
     else
     begin
-      Item := Copy(Tail, 1, Separator - 1);
-      Tail := Copy(Tail, Separator + 1, Length(Tail) - Separator);
+        Result := S;
+
+        Part := ';'+Uppercase(Path)+';';
+        repeat
+            I := Pos(Part, Uppercase(Result));
+            Delete(Result, I, Length(Part)-1);
+        until 0=I;
+
+        Part := Uppercase(Path)+';';
+        if StartsWith(Uppercase(Result), Part) then
+            Delete(Result, 1, Length(Part));
+
+        Part := ';'+Uppercase(Path);
+        if EndsWith(Uppercase(Result), Part) then
+            Delete(Result, Length(Result)+1-Length(Part), Length(Part));
+
+        if StartsWith(Result, ';') then
+            Delete(Result, 1, 1);
+
+        if EndsWith(Result, ';') then
+            Delete(Result, Length(Result), 1);
     end;
-    if (Item <> '') and not SameText(Item, Path) then
-    begin
-      if Result <> '' then
-        Result := Result + ';';
-      Result := Result + Item;
-    end;
-  end;
 end;
+
+
+function WithoutPath(S, Path: string): string;
+begin
+    Result := WithoutPathInternal(S, Path);
+    if EndsWith(Path, '\') then
+        Result := WithoutPathInternal(Result, Copy(Path, 1, Length(Path)-1))
+    else
+        Result := WithoutPathInternal(Result, Path+'\');
+end;
+
 
 procedure EnvAddPath(Path: string);
 var
-  Paths: string;
+    Paths: string;
 begin
-  if not RegQueryStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Paths) then
-    Paths := '';
-  if IsPathInList(Path, Paths) then
-    exit;
-  if Paths = '' then
-    Paths := Path
-  else if Copy(Paths, Length(Paths), 1) = ';' then
-    Paths := Paths + Path
-  else
-    Paths := Paths + ';' + Path;
-  if not RegWriteStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Paths) then
-    RaiseException('Could not add TigerSqlCmd to the user PATH.');
+    { Retrieve current path (use empty string if entry not exists) }
+    if not RegQueryStringValue(HKEY_LOCAL_MACHINE,
+        'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', Paths)
+    then Paths := '';
+
+    if IsPathInList(Path, Paths) then exit;
+
+    if 0 = Length(Paths) then
+        Paths := Path
+    else if EndsWith(Paths, ';') then
+        Paths := Paths + Path
+    else
+        Paths := Paths + ';'+ Path;
+
+    { Overwrite (or create if missing) path environment variable }
+    if RegWriteStringValue(HKEY_LOCAL_MACHINE,
+        'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', Paths)
+    then Log(Format('The [%s] added to PATH: [%s]', [Path, Paths]))
+    else Log(Format('Error while adding the [%s] to PATH: [%s]', [Path, Paths]));
 end;
+
 
 procedure EnvRemovePath(Path: string);
 var
-  Paths: string;
+    Paths: string;
 begin
-  if not RegQueryStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Paths) then
-    exit;
-  if not IsPathInList(Path, Paths) then
-    exit;
-  Paths := WithoutPath(Paths, Path);
-  if not RegWriteStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Paths) then
-    RaiseException('Could not remove TigerSqlCmd from the user PATH.');
+    { Skip if registry entry not exists }
+    if not RegQueryStringValue(HKEY_LOCAL_MACHINE,
+        'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', Paths) then
+        exit;
+
+    if not IsPathInList(Path, Paths) then exit;
+
+    Paths := WithoutPath(Paths, Path);
+
+    { Overwrite path environment variable }
+    if RegWriteStringValue(HKEY_LOCAL_MACHINE,
+        'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 'Path', Paths)
+    then Log(Format('The [%s] removed from PATH: [%s]', [Path, Paths]))
+    else Log(Format('Error while removing the [%s] from PATH: [%s]', [Path, Paths]));
 end;

@@ -1,5 +1,9 @@
 # Connection profiles
 
+For end-user `tiger-sqlcmd connection` examples, authentication, external secrets, and
+store selection, see [TigerSqlCmd concepts and usage](tiger-sqlcmd.md#saved-connections).
+This page describes the reusable profile and library contract.
+
 The [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/)
 package supplies reusable named SQL Server connection profiles. It can be used
 with the TigerQuery engine or independently in another .NET application.

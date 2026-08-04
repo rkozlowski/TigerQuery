@@ -13,6 +13,9 @@ It powers `tiger-sqlcmd`, a modern CLI for executing complex `.sql` scripts with
 
 **[Read the published TigerQuery documentation](https://rkozlowski.github.io/TigerQuery/).**
 
+- [TigerSqlCmd concepts and usage](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html)
+- [TigerSqlCmd E2E scenarios](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd-e2e.html)
+
 ---
 
 ## 🧠 Philosophy
@@ -184,8 +187,10 @@ tiger-sqlcmd connection clone-e2e source --database ExistingDb \
   --session-id 11111111-2222-3333-4444-555555555555 --name-part readonly
 ```
 
-See the [E2E connection-store guide](docs/features/e2e-connection-stores.md#session-scoped-cli-lifecycle)
-for naming, protected metadata, rollback, drop, and cleanup rules.
+See [TigerSqlCmd E2E scenarios](docs/api-docfx/tiger-sqlcmd-e2e.md) for the complete
+bootstrap, session, CI/agent, clone, cleanup, and recovery workflows. The
+[E2E connection-store architecture](docs/features/e2e-connection-stores.md) remains the
+underlying safety contract.
 
 ---
 
@@ -238,10 +243,12 @@ dotnet tool update --global ItTiger.TigerSqlCmd
 dotnet tool uninstall --global ItTiger.TigerSqlCmd
 ```
 
-For a local manifest, replace `--global` with `--local`. A Windows installer is
-also distributed through [GitHub releases](https://github.com/rkozlowski/TigerQuery/releases).
-See the [release guide](docs/api-docfx/releasing-tiger-sqlcmd.md) for local package
-and installer builds and validation.
+For a local manifest, replace `--global` with `--local`. A machine-wide Windows
+installer is also distributed through
+[GitHub releases](https://github.com/rkozlowski/TigerQuery/releases). It requires
+administrator elevation, installs under Program Files, and adds TigerSqlCmd to the system
+PATH. See [TigerSqlCmd concepts and usage](docs/api-docfx/tiger-sqlcmd.md) for all
+installation options and the command reference.
 
 ---
 

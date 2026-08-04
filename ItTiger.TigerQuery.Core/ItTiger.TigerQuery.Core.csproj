@@ -31,7 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ItTiger.Core" Version="0.9.2" />
+    <PackageReference Include="ItTiger.Core" Version="0.9.3" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
   </ItemGroup>

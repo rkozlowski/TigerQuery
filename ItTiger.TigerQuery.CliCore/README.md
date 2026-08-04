@@ -155,7 +155,8 @@ Command metadata, prompts, enum labels, and output are localized (en-US, pl-PL).
 - [ItTiger.TigerCli](https://www.nuget.org/packages/ItTiger.TigerCli/) — the CLI framework this package plugs into.
 - [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) — the connection-profile model and storage.
 - [ItTiger.TigerQuery](https://www.nuget.org/packages/ItTiger.TigerQuery/) — the sqlcmd-compatible script engine (not required by this package).
-- [tiger-sqlcmd](https://github.com/rkozlowski/TigerQuery/releases) — a complete CLI using this group in production.
+- [TigerSqlCmd concepts and usage](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html) — a complete CLI using this group in production.
+- [TigerSqlCmd E2E scenarios](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd-e2e.html) — bootstrap, clone-e2e, and lifecycle automation.
 
 ## Links
 

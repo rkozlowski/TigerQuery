@@ -155,7 +155,8 @@ for the complete workflow and the full-connection-string profile-copy boundary.
 
 - [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) — saved SQL Server connection profiles (storage, validation, resolution), also used by the optional safe E2E lifecycle.
 - [ItTiger.TigerQuery.CliCore](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/) — ready-made TigerCli connection-management commands for CLI applications.
-- [tiger-sqlcmd](https://github.com/rkozlowski/TigerQuery/releases) — the ready-made CLI built on all three, distributed as GitHub release binaries.
+- [tiger-sqlcmd](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html) — the ready-made CLI built on all three; see its dedicated concepts and usage guide.
+- [TigerSqlCmd E2E scenarios](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd-e2e.html) — safe bootstrap, session, clone, cleanup, and automation workflows.
 
 ## Links
 

@@ -27,10 +27,10 @@
           "getting-started.md",
           "engine.md",
           "tiger-sqlcmd.md",
+          "tiger-sqlcmd-e2e.md",
           "connection-profiles.md",
           "e2e-database-lifecycle.md",
-          "cli-integration.md",
-          "releasing-tiger-sqlcmd.md"
+          "cli-integration.md"
         ]
       },
       {

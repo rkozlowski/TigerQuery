@@ -11,6 +11,8 @@ published library projects and combines it with these pages.
 - `ItTiger.TigerQuery.CliCore`
 
 `ItTiger.TigerSqlCmd`, tests, and internal implementation types are not included.
+The conceptual site does include the dedicated TigerSqlCmd user and E2E operational
+guides. Maintainer procedures under `docs/maintainers` are intentionally excluded.
 
 ## Build locally
 

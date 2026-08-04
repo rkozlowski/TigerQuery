@@ -5,8 +5,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <Target Name="RunBuildInstaller" AfterTargets="Build"
-          Condition="'$(Configuration)' == 'Release'">
-    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\BuildInstaller.ps1&quot;" />
+  <Target Name="RunBuildInstaller" AfterTargets="Build">
+    <Exec Condition="'$(Configuration)' == 'Release'"
+          Command="pwsh -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\BuildInstaller.ps1&quot;" />
   </Target>
 </Project>

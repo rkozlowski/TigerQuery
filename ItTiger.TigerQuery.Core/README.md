@@ -356,6 +356,8 @@ source of a `Copy` — keep their stored representation byte-for-byte, so an unr
 
 - [ItTiger.TigerQuery.CliCore](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/) — ready-made TigerCli `connection` commands (list/show/add/edit/delete/clone-e2e) built on this package.
 - [ItTiger.TigerQuery](https://www.nuget.org/packages/ItTiger.TigerQuery/) — the standalone sqlcmd-compatible script engine; independent of this package and easy to combine with it.
+- [TigerSqlCmd concepts and usage](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html) — end-user connection, authentication, store, and execution workflows.
+- [TigerSqlCmd E2E scenarios](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd-e2e.html) — operational use of the E2E contracts.
 
 ## Links
 

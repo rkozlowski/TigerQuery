@@ -8,6 +8,11 @@ protected application-provided variables for automation and embedded tooling.
 Companion packages add named SQL Server connection profiles and reusable
 connection-management commands for TigerCli applications.
 
+`tiger-sqlcmd` is the first-class command-line product built on those components. Start
+with [TigerSqlCmd concepts and usage](tiger-sqlcmd.md), or use the separate
+[TigerSqlCmd E2E scenarios](tiger-sqlcmd-e2e.md) guide for safe unattended database
+lifecycle automation.
+
 This site combines a short guide with API documentation generated from the
 libraries' C# source and XML documentation comments.
 
@@ -33,11 +38,12 @@ libraries' C# source and XML documentation comments.
 | [ItTiger.TigerQuery](https://www.nuget.org/packages/ItTiger.TigerQuery/) | Parsing and executing SQL scripts |
 | [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/) | Saving, validating, and resolving SQL Server connection profiles |
 | [ItTiger.TigerQuery.CliCore](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/) | Adding connection-management commands to a TigerCli application |
+| [ItTiger.TigerSqlCmd](https://www.nuget.org/packages/ItTiger.TigerSqlCmd/) | Running SQL and managing saved connections from a shell, CI job, pipeline, or coding agent |
 
 Start with [Getting started](getting-started.md), or browse the
 [API reference](api-reference.md).
 
-For explicitly authorized test infrastructure, see
+For the E2E architecture and safety contract behind the operational guide, see
 [E2E connection stores and database lifecycle](../features/e2e-connection-stores.md).
 
 ## Project links

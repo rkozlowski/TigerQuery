@@ -4,6 +4,10 @@
   href: getting-started.md
 - name: TigerQuery engine
   href: engine.md
+- name: TigerSqlCmd concepts and usage
+  href: tiger-sqlcmd.md
+- name: TigerSqlCmd E2E scenarios
+  href: tiger-sqlcmd-e2e.md
 - name: Result output routing
   href: ../features/result-output-routing.md
 - name: Connection profiles
@@ -12,7 +16,5 @@
   href: ../features/e2e-connection-stores.md
 - name: CLI integration
   href: cli-integration.md
-- name: Releasing tiger-sqlcmd
-  href: releasing-tiger-sqlcmd.md
 - name: API reference
   href: api-reference.md

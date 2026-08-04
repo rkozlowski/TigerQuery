@@ -1,5 +1,9 @@
 # Safe E2E database lifecycle
 
+For complete `tiger-sqlcmd` bootstrap, create, clone, use, cleanup, and CI examples, see
+[TigerSqlCmd E2E scenarios](tiger-sqlcmd-e2e.md). This page focuses on the reusable
+library lifecycle.
+
 `ItTiger.TigerQuery` provides `SqlServerE2eDatabaseLifecycle` for the destructive
 SQL part of an explicitly authorized test workflow. `ItTiger.TigerQuery.Core`
 continues to own connection stores, profiles, external references, and E2E
