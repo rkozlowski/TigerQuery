@@ -5,6 +5,13 @@ and read-only clone examples, parallel-agent isolation, cleanup, and recovery—
 [TigerSqlCmd E2E scenarios](~/tiger-sqlcmd-e2e.md). This document remains the
 architecture and safety-contract reference.
 
+The CLI examples here use `--non-interactive` because repository E2E tests, CI jobs,
+scripts, and agents must fail on missing input instead of opening a menu or prompt. The
+flag selects TigerCli's unattended interaction policy for the same commands; it does not
+relax the lifecycle contract described on this page. See
+[One Command Model, Multiple Interaction Modes](~/tiger-sqlcmd.md#one-command-model-multiple-interaction-modes)
+for the operational explanation.
+
 TigerQuery's end-to-end infrastructure runs SQL-backed tests only against a connection
 that a user or operator deliberately selected and authorized. It combines four durable
 contracts:
@@ -659,8 +666,9 @@ without turning them into universal library defaults.
   failure; SQL-auth-compatible live tests can still run.
 - DPAPI-protected literal passwords are bound to the Windows user and machine. Use
   external references or a host-selected protector for portable automation.
-- Full connection-string profiles cannot be persisted as generated per-database copies;
-  use lifecycle setup/teardown calls directly or use field mode.
+- A full connection-string profile is retargeted through a persisted initial-catalog
+  override when TigerQuery creates a per-database copy. The referenced connection string
+  remains unresolved and is never written back.
 - The lifecycle does not force-close active sessions. Cleanup can fail and must be
   retried or investigated using the exact reported database name.
 - Orphan detection is read-only and intentionally provides no automatic cleanup.

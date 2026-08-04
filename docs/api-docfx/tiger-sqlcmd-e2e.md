@@ -9,6 +9,35 @@ The core rule is simple: SQL Server reachability is not authorization. TigerQuer
 exact bootstrap profile, protected metadata, an exact session GUID, and durable connection
 records before it will create or drop a database.
 
+## One Command Model, Multiple Interaction Modes
+
+TigerSqlCmd E2E commands are not a separate automation API. The same `e2e create`,
+`connection clone-e2e`, `e2e drop`, and `e2e cleanup` command implementations serve a
+person working with TigerCli's guided semi-interactive presentation and an unattended
+caller using `--non-interactive`.
+
+Interaction mode changes only whether TigerCli may prompt or render interactive activity
+UI. It does not change which E2E operation runs. Use `--non-interactive` for CI pipelines,
+scripts, scheduled jobs, and coding agents so a missing choice fails immediately instead
+of waiting for menus, prompts, confirmations, or keyboard input. The complete TigerSqlCmd
+model is described in
+[One Command Model, Multiple Interaction Modes](tiger-sqlcmd.md#one-command-model-multiple-interaction-modes).
+
+| Operation | Semi-interactive | Unattended |
+| --- | --- | --- |
+| Create an owned database and connection | `tiger-sqlcmd e2e create --session-id <guid> --name-part smoke` | `tiger-sqlcmd e2e create --session-id <guid> --name-part smoke --non-interactive` |
+| Clone for an existing database | `tiger-sqlcmd connection clone-e2e source --database ExistingDb --session-id <guid> --name-part readonly` | `tiger-sqlcmd connection clone-e2e source --database ExistingDb --session-id <guid> --name-part readonly --non-interactive` |
+| Drop one exact resource | `tiger-sqlcmd e2e drop --connection <exact-name> --session-id <guid>` | `tiger-sqlcmd e2e drop --connection <exact-name> --session-id <guid> --non-interactive` |
+| Clean one exact session | `tiger-sqlcmd e2e cleanup --session-id <guid>` | `tiger-sqlcmd e2e cleanup --session-id <guid> --non-interactive` |
+
+For repeatable unattended work, select one store explicitly, keep credentials in external
+value references, and generate and retain one `--session-id` for the complete workflow.
+Those inputs make the same command model deterministic; they do not weaken it.
+Non-interactive mode preserves exact session matching, protected ownership metadata,
+`ittiger.e2e.database.allow-drop`, exact database-name checks, and `_TQ_E2E_` prefix
+validation. It also preserves SQL execution behavior, diagnostics, and process exit
+codes.
+
 ## Bootstrap connection and permissions
 
 TigerSqlCmd's expected bootstrap connection name is `tiger-sqlcmd-e2e`. It must contain
@@ -116,43 +145,115 @@ Generated database names are
 `E2E-<connection-part>-<random-suffix>`. A paired create uses the same suffix for both.
 Prefixes are fixed. Name parts are sanitized and do not become ownership evidence.
 
-## Disposable database: complete PowerShell example
+## Disposable database: complete PowerShell workflow
 
 `e2e create` always creates a database and its paired owning connection. It prints both
-exact names. This example captures the connection name, runs SQL non-interactively, and
-guarantees exact-session cleanup:
+exact names. This fresh-job example selects one isolated store explicitly on every
+command, creates its authorized bootstrap from an externally supplied connection-string
+reference, captures the generated connection name, runs SQL non-interactively, and
+guarantees exact-session cleanup. The job's secret manager must set
+`TQ_E2E_SQL_CONNECTION_STRING`; its value never appears in argv or the store.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
+$storeFile = 'C:\agent\state\job-42\connections.json'
 $sessionId = [Guid]::NewGuid().ToString('D')
 
-$createOutput = @(& tiger-sqlcmd e2e create `
-  --session-id $sessionId --name-part ci-smoke `
-  --non-interactive --no-color)
-if ($LASTEXITCODE -ne 0) { throw "E2E create failed with exit code $LASTEXITCODE." }
-$createOutput | Write-Host
-
-$connectionName = $createOutput |
-  Select-String '^Created E2E connection (?<name>E2E-[A-Za-z0-9_-]+)\.$' |
-  ForEach-Object { $_.Matches[0].Groups['name'].Value } |
-  Select-Object -First 1
-if ([string]::IsNullOrWhiteSpace($connectionName)) {
-  throw 'TigerSqlCmd did not report the created E2E connection name.'
+if ([string]::IsNullOrWhiteSpace($env:TQ_E2E_SQL_CONNECTION_STRING)) {
+  throw 'TQ_E2E_SQL_CONNECTION_STRING must be supplied by the job secret manager.'
 }
 
+& tiger-sqlcmd connection add-e2e-bootstrap `
+  --connection-string-reference '{"Source":"EnvironmentVariable","Name":"TQ_E2E_SQL_CONNECTION_STRING"}' `
+  --allow-database-create --non-interactive --no-color `
+  --tq-connection-store-file $storeFile
+if ($LASTEXITCODE -ne 0) { throw "E2E bootstrap failed with exit code $LASTEXITCODE." }
+
 try {
+  $createOutput = @(& tiger-sqlcmd e2e create `
+    --session-id $sessionId --name-part ci-smoke `
+    --non-interactive --no-color --tq-connection-store-file $storeFile)
+  if ($LASTEXITCODE -ne 0) { throw "E2E create failed with exit code $LASTEXITCODE." }
+  $createOutput | Write-Host
+
+  $connectionName = $createOutput |
+    Select-String '^Created E2E connection (?<name>E2E-[A-Za-z0-9_-]+)\.$' |
+    ForEach-Object { $_.Matches[0].Groups['name'].Value } |
+    Select-Object -First 1
+  if ([string]::IsNullOrWhiteSpace($connectionName)) {
+    throw 'TigerSqlCmd did not report the created E2E connection name.'
+  }
+
   & tiger-sqlcmd run --connection $connectionName `
     --query 'CREATE TABLE dbo.Health(Id int NOT NULL); SELECT DB_NAME() AS DatabaseName;' `
-    --mode SqlCmdEx --non-interactive --no-color
+    --mode SqlCmdEx --non-interactive --no-color `
+    --tq-connection-store-file $storeFile
   if ($LASTEXITCODE -ne 0) { throw "SQL run failed with exit code $LASTEXITCODE." }
 }
 finally {
   & tiger-sqlcmd e2e cleanup --session-id $sessionId `
-    --non-interactive --no-color
+    --non-interactive --no-color --tq-connection-store-file $storeFile
   if ($LASTEXITCODE -ne 0) {
     Write-Error "E2E cleanup was incomplete for session $sessionId."
   }
 }
+```
+
+The bootstrap is add-only. Provision it once outside the per-session portion when a job
+reuses an isolated store; do not ignore an `already exists` result from the fresh-store
+workflow.
+
+## Disposable database: complete POSIX shell workflow
+
+The same command model works in a supported POSIX shell. This `sh` workflow has the same
+fresh-store and secret-manager assumptions as the PowerShell version. It preserves the
+first failing exit status unless cleanup is the only failure, and it always emits
+TigerSqlCmd diagnostics:
+
+```bash
+#!/usr/bin/env sh
+set -eu
+
+store_file=/workspace/state/job-42/connections.json
+session_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
+: "${TQ_E2E_SQL_CONNECTION_STRING:?must be supplied by the job secret manager}"
+
+cleanup() {
+  status=$?
+  trap - EXIT
+  cleanup_status=0
+  tiger-sqlcmd e2e cleanup --session-id "$session_id" \
+    --non-interactive --no-color \
+    --tq-connection-store-file "$store_file" || cleanup_status=$?
+  if [ "$status" -eq 0 ]; then status=$cleanup_status; fi
+  exit "$status"
+}
+trap cleanup EXIT
+
+tiger-sqlcmd connection add-e2e-bootstrap \
+  --connection-string-reference \
+    '{"Source":"EnvironmentVariable","Name":"TQ_E2E_SQL_CONNECTION_STRING"}' \
+  --allow-database-create --non-interactive --no-color \
+  --tq-connection-store-file "$store_file"
+
+create_output=$(tiger-sqlcmd e2e create \
+  --session-id "$session_id" --name-part ci-smoke \
+  --non-interactive --no-color \
+  --tq-connection-store-file "$store_file")
+printf '%s\n' "$create_output"
+
+connection_name=$(printf '%s\n' "$create_output" |
+  sed -n 's/^Created E2E connection \(E2E-[A-Za-z0-9_-]*\)\.$/\1/p' |
+  sed -n '1p')
+if [ -z "$connection_name" ]; then
+  echo 'TigerSqlCmd did not report the created E2E connection name.' >&2
+  exit 1
+fi
+
+tiger-sqlcmd run --connection "$connection_name" \
+  --query 'CREATE TABLE dbo.Health(Id int NOT NULL); SELECT DB_NAME() AS DatabaseName;' \
+  --mode SqlCmdEx --non-interactive --no-color \
+  --tq-connection-store-file "$store_file"
 ```
 
 The owning connection records the exact database and
@@ -179,31 +280,33 @@ session connection:
 
 ```powershell
 $ErrorActionPreference = 'Stop'
+$storeFile = 'C:\agent\state\job-42\connections.json'
 $sessionId = [Guid]::NewGuid().ToString('D')
 
-$cloneOutput = @(& tiger-sqlcmd connection clone-e2e reporting-source `
-  --database ExistingReportingDb --session-id $sessionId --name-part readonly `
-  --non-interactive --no-color)
-if ($LASTEXITCODE -ne 0) { throw "E2E clone failed with exit code $LASTEXITCODE." }
-$cloneOutput | Write-Host
-
-$connectionName = $cloneOutput |
-  Select-String '^Created E2E connection (?<name>E2E-[A-Za-z0-9_-]+) for database ExistingReportingDb\.$' |
-  ForEach-Object { $_.Matches[0].Groups['name'].Value } |
-  Select-Object -First 1
-if ([string]::IsNullOrWhiteSpace($connectionName)) {
-  throw 'TigerSqlCmd did not report the cloned E2E connection name.'
-}
-
 try {
+  $cloneOutput = @(& tiger-sqlcmd connection clone-e2e reporting-source `
+    --database ExistingReportingDb --session-id $sessionId --name-part readonly `
+    --non-interactive --no-color --tq-connection-store-file $storeFile)
+  if ($LASTEXITCODE -ne 0) { throw "E2E clone failed with exit code $LASTEXITCODE." }
+  $cloneOutput | Write-Host
+
+  $connectionName = $cloneOutput |
+    Select-String '^Created E2E connection (?<name>E2E-[A-Za-z0-9_-]+) for database ExistingReportingDb\.$' |
+    ForEach-Object { $_.Matches[0].Groups['name'].Value } |
+    Select-Object -First 1
+  if ([string]::IsNullOrWhiteSpace($connectionName)) {
+    throw 'TigerSqlCmd did not report the cloned E2E connection name.'
+  }
+
   & tiger-sqlcmd run --connection $connectionName `
     --query 'SELECT TOP (10) * FROM dbo.ReportSource;' `
-    --mode SqlCmdEx --non-interactive --no-color
+    --mode SqlCmdEx --non-interactive --no-color `
+    --tq-connection-store-file $storeFile
   if ($LASTEXITCODE -ne 0) { throw "Read-only SQL run failed with exit code $LASTEXITCODE." }
 }
 finally {
   & tiger-sqlcmd e2e cleanup --session-id $sessionId `
-    --non-interactive --no-color
+    --non-interactive --no-color --tq-connection-store-file $storeFile
   if ($LASTEXITCODE -ne 0) {
     Write-Error "E2E clone cleanup was incomplete for session $sessionId."
   }

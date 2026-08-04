@@ -7,13 +7,17 @@
 for applications and automation that protects host-provided variables from
 script-level `:setvar` overrides.
 
-It powers `tiger-sqlcmd`, a modern CLI for executing complex `.sql` scripts with repeatable batches, variable injection, and advanced scripting features.
+It powers `tiger-sqlcmd`, a modern CLI for executing complex `.sql` scripts with
+repeatable batches, variable injection, and advanced scripting features. TigerSqlCmd
+follows TigerCli's **One Command Model, Multiple Interaction Modes**: the same commands
+serve normal semi-interactive execution and automation-safe `--non-interactive`
+execution for scripts, CI, scheduled jobs, redirected runs, and coding agents.
 
 ## Documentation
 
 **[Read the published TigerQuery documentation](https://rkozlowski.github.io/TigerQuery/).**
 
-- [TigerSqlCmd concepts and usage](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html)
+- [TigerSqlCmd interaction modes and usage](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html#one-command-model-multiple-interaction-modes)
 - [TigerSqlCmd E2E scenarios](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd-e2e.html)
 
 ---
@@ -132,6 +136,12 @@ See:
 
 ## 🚀 Quickstart with tiger-sqlcmd
 
+Normal execution is semi-interactive and may prompt for eligible missing input. Add
+`--non-interactive` to the same command for unattended use; menus, prompts,
+confirmations, and keyboard input are disabled, while validation, execution, output,
+diagnostics, and exit-code mapping remain active. See
+[One Command Model, Multiple Interaction Modes](docs/api-docfx/tiger-sqlcmd.md#one-command-model-multiple-interaction-modes).
+
 ```bash
 tiger-sqlcmd run -c local -m sqlcmdex -f script.sql
 ```
@@ -176,15 +186,16 @@ After configuring the authorized `tiger-sqlcmd-e2e` bootstrap, create a database
 and its paired owning connection with one session correlation ID:
 
 ```bash
-tiger-sqlcmd e2e create --session-id 11111111-2222-3333-4444-555555555555 --name-part smoke
-tiger-sqlcmd e2e cleanup --session-id 11111111-2222-3333-4444-555555555555
+tiger-sqlcmd e2e create --session-id 11111111-2222-3333-4444-555555555555 --name-part smoke --non-interactive
+tiger-sqlcmd e2e cleanup --session-id 11111111-2222-3333-4444-555555555555 --non-interactive
 ```
 
 To target a pre-existing database without granting TigerQuery permission to drop it:
 
 ```bash
 tiger-sqlcmd connection clone-e2e source --database ExistingDb \
-  --session-id 11111111-2222-3333-4444-555555555555 --name-part readonly
+  --session-id 11111111-2222-3333-4444-555555555555 --name-part readonly \
+  --non-interactive
 ```
 
 See [TigerSqlCmd E2E scenarios](docs/api-docfx/tiger-sqlcmd-e2e.md) for the complete

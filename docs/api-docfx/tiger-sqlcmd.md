@@ -6,12 +6,67 @@ using TigerQuery's sqlcmd-compatible parser without embedding the library in an
 application.
 
 TigerQuery is the parser and execution engine. TigerSqlCmd supplies the executable,
-connection-store integration, interactive prompts, console rendering, output routing,
+connection-store integration, interaction policy, console rendering, output routing,
 logging, and stable process exit codes. Use the libraries when building an application;
 use `tiger-sqlcmd` when a shell command is the right interface.
 
 For disposable databases and session-scoped automation, continue with
 [TigerSqlCmd E2E scenarios](tiger-sqlcmd-e2e.md).
+
+## One Command Model, Multiple Interaction Modes
+
+TigerSqlCmd follows TigerCli's defining model: one command model serves both guided
+people and unattended callers. The same command path selects the same business operation
+in both modes. Interaction mode changes prompting and presentation policy; it does not
+change command semantics, SQL behavior, or safety checks.
+
+Normal TigerSqlCmd execution uses TigerCli **semi-interactive mode**. One command is
+parsed and executed, and TigerCli may use a command menu, prompt for eligible missing
+input, load provider-backed choices, request confirmation, or render activity/progress UI.
+This is guided completion of one invocation, not a persistent SQL shell.
+
+Adding `--non-interactive` selects TigerCli **non-interactive mode** for that same
+command. It disables command menus, prompts, confirmations, and keyboard input. Missing
+promptable input fails clearly instead of blocking. Parsing, binding, framework and
+custom validation, provider validation, command execution, structured output,
+diagnostics, and process-exit mapping still occur. An activity body still executes, but
+without its interactive dialog, spinner, buttons, or progress display.
+
+Use non-interactive mode for scripts, CI pipelines, scheduled jobs, redirected execution,
+and AI or coding agents—anywhere an invocation must never pause for a person. See the
+authoritative TigerCli [README](https://github.com/rkozlowski/TigerCli/blob/main/README.md#one-command-model-multiple-interaction-modes)
+and [interaction modes guide](https://github.com/rkozlowski/TigerCli/blob/main/docs/guides/interaction-modes.md)
+for the framework model.
+
+### TigerSqlCmd consequences
+
+The `connection`, SQL execution, and E2E commands are not split into human and automation
+APIs. Call the same command and add `--non-interactive` when the caller must supply every
+required choice explicitly:
+
+| Operation | Semi-interactive | Non-interactive |
+| --- | --- | --- |
+| Run SQL | `tiger-sqlcmd run -c local -q "SELECT 1;"` | `tiger-sqlcmd run -c local -q "SELECT 1;" --non-interactive` |
+| Inspect a connection | `tiger-sqlcmd connection show local` | `tiger-sqlcmd connection show local --non-interactive` |
+| Create an E2E resource | `tiger-sqlcmd e2e create --session-id <guid> --name-part smoke` | `tiger-sqlcmd e2e create --session-id <guid> --name-part smoke --non-interactive` |
+
+When a command permits connection prompting, semi-interactive mode can present saved
+connections; non-interactive mode must resolve the connection from an explicit
+`-c`/`--connection` value. A SQL-authentication password or other secret is never prompted
+for in non-interactive mode. Unattended SQL authentication therefore requires an
+[external value reference](#sql-authentication), not a literal password or an expected
+secret prompt. Missing connections, choices, or secret sources fail immediately instead
+of hanging.
+
+Once input has been resolved and validated, SQL parsing and execution, output routing,
+error handling, E2E ownership rules, and every destructive-operation guard are unchanged.
+Unattended callers must inspect the process exit code and retain standard error, routed
+diagnostics, and logs; console text alone is not a success contract.
+
+`--non-interactive` is an execution option and follows normal TigerCli grammar. Place it
+after the command path and any required positional arguments—for example,
+`tiger-sqlcmd connection show local --non-interactive`. App-wide options such as
+`--tq-connection-store-file` follow the same placement rule.
 
 ## Installation
 
@@ -87,20 +142,10 @@ command groups and commands are:
 | `tiger-sqlcmd connection` | Manage saved connections. The group name is singular. |
 | `tiger-sqlcmd e2e` | Create, drop, and clean session-scoped E2E resources. |
 
-The option `--non-interactive` is a primary supported mode for scripts, CI jobs, build
-pipelines, coding agents, and other unattended automation. It disables prompts; omitted
-required values then fail with a usage or validation error instead of waiting for input.
-Place application-wide options after the command path and any positional argument, just
-like other TigerCli options.
-
-### Interactive prompting
-
-Without `--non-interactive`, the friendly default command prompts for a saved connection
-and SQL query when either is missing. Connection `add` and `edit` prompt for applicable
-fields and mask a SQL password. The advanced `run` command requires `--file` or `--query`
-on the command line, although it can prompt for a missing connection. Interactive mode is
-guided command completion, not a persistent SQL REPL; each invocation performs one
-command and exits.
+The friendly default command can prompt in semi-interactive mode for a saved connection
+and SQL query when either is missing. Connection `add` and `edit` can prompt for
+applicable fields and mask a SQL password. The advanced `run` command requires `--file`
+or `--query` on the command line, although it can prompt for a missing connection.
 
 ## Saved connections
 
@@ -190,10 +235,11 @@ different service account.
 
 ### SQL authentication
 
-Select `--authentication SqlPassword`. In an interactive terminal, TigerSqlCmd can prompt
-for the password and masks the input. The `--password` setting cannot be supplied on the
-command line. This prevents a literal password appearing in shell history, process lists,
-job definitions, and agent transcripts.
+Select `--authentication SqlPassword`. In semi-interactive mode, TigerSqlCmd can prompt
+for the password and masks the input. Non-interactive mode never opens that secret prompt.
+The `--password` setting cannot be supplied on the command line. This prevents a literal
+password appearing in shell history, process lists, job definitions, and agent
+transcripts.
 
 For non-interactive work, use external references:
 
@@ -232,16 +278,12 @@ or container. External references are the portable automation path.
 
 ### Inline SQL
 
-The default command is the shortest path for one query:
+The default command is the shortest path for one query. These two invocations select the
+same query operation; the second only changes the interaction policy:
 
 ```console
 tiger-sqlcmd -c local -q "SELECT @@SERVERNAME AS ServerName;"
-```
-
-For unattended execution, make the mode explicit:
-
-```console
-tiger-sqlcmd -c local -q "SELECT 1 AS Healthy;" --non-interactive
+tiger-sqlcmd -c local -q "SELECT @@SERVERNAME AS ServerName;" --non-interactive
 ```
 
 ### SQL files and advanced runs
@@ -297,10 +339,11 @@ Use `--verbosity`, `--log-file`, and `--log-level` for operational diagnostics. 
 connection strings and resolved secrets are never printed. `--no-color` is useful when a
 job captures output, and `--help-env` lists recognized environment variables.
 
-Process exit codes are the automation contract. Run `tiger-sqlcmd --help-errors` for the
-authoritative table. Important values are `0` success, `1` batch failure, `2` fatal SQL or
-connection-domain validation, `3` cancellation, `4` connection failure/not found, `5`
-parse error/already exists, `6` unhandled exception, `7` fatal exception, `8` output
-failure, and `20` invalid or incomplete command-line usage. A failed or cancelled run can
-leave valid partial output files and SQL side effects that completed before the failure;
-automation must treat a nonzero exit as a failed step and retain diagnostics.
+Process exit codes and diagnostics are the automation contract. Run
+`tiger-sqlcmd --help-errors` for the authoritative table. Important values are `0`
+success, `1` batch failure, `2` fatal SQL or connection-domain validation, `3`
+cancellation, `4` connection failure/not found, `5` parse error/already exists, `6`
+unhandled exception, `7` fatal exception, `8` output failure, and `20` invalid or
+incomplete command-line usage. A failed or cancelled run can leave valid partial output
+files and SQL side effects that completed before the failure; automation must treat a
+nonzero exit as a failed step and retain diagnostics.

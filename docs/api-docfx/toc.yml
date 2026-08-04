@@ -4,7 +4,7 @@
   href: getting-started.md
 - name: TigerQuery engine
   href: engine.md
-- name: TigerSqlCmd concepts and usage
+- name: TigerSqlCmd interaction modes and usage
   href: tiger-sqlcmd.md
 - name: TigerSqlCmd E2E scenarios
   href: tiger-sqlcmd-e2e.md

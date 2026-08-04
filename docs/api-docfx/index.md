@@ -8,8 +8,11 @@ protected application-provided variables for automation and embedded tooling.
 Companion packages add named SQL Server connection profiles and reusable
 connection-management commands for TigerCli applications.
 
-`tiger-sqlcmd` is the first-class command-line product built on those components. Start
-with [TigerSqlCmd concepts and usage](tiger-sqlcmd.md), or use the separate
+`tiger-sqlcmd` is the first-class command-line product built on those components. It uses
+TigerCli's **One Command Model, Multiple Interaction Modes**: the same commands serve
+guided semi-interactive runs and automation-safe
+[`--non-interactive` execution](tiger-sqlcmd.md#one-command-model-multiple-interaction-modes).
+Start with [TigerSqlCmd interaction modes and usage](tiger-sqlcmd.md), or use the separate
 [TigerSqlCmd E2E scenarios](tiger-sqlcmd-e2e.md) guide for safe unattended database
 lifecycle automation.
 
