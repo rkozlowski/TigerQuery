@@ -20,6 +20,8 @@ jobs:
   validate:
     name: Build, test, pack, and inspect
     runs-on: windows-latest
+    outputs:
+      tiger-sqlcmd-sha256: ${{ steps.tiger-sqlcmd-hash.outputs.sha256 }}
     permissions:
       contents: read
     steps:
@@ -48,6 +50,26 @@ jobs:
             throw "Workflow input '$env:RELEASE_VERSION' does not match Version.props '$configuredVersion'."
           }
 
+      - name: Reject an already-published release version
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          foreach ($id in @(
+            "ItTiger.TigerQuery.Core",
+            "ItTiger.TigerQuery",
+            "ItTiger.TigerQuery.CliCore",
+            "ItTiger.TigerSqlCmd"
+          )) {
+            $lowerId = $id.ToLowerInvariant()
+            $index = Invoke-RestMethod "https://api.nuget.org/v3-flatcontainer/$lowerId/index.json"
+            if (@($index.versions) -contains ($env:RELEASE_VERSION).ToLowerInvariant()) {
+              throw "$id $env:RELEASE_VERSION already exists on NuGet.org. Choose a new version; published packages are immutable."
+            }
+          }
+
       - name: Restore .NET tools
         run: dotnet tool restore
 
@@ -62,6 +84,24 @@ jobs:
 
       - name: Build DocFX site
         run: dotnet docfx docs/api-docfx/docfx.json
+
+      - name: Prepare clean package staging directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packageDirectory = [IO.Path]::GetFullPath((Join-Path $PWD "artifacts/packages"))
+          $artifactsDirectory = [IO.Path]::GetFullPath((Join-Path $PWD "artifacts"))
+          $expectedPrefix = $artifactsDirectory.TrimEnd(
+            [IO.Path]::DirectorySeparatorChar,
+            [IO.Path]::AltDirectorySeparatorChar
+          ) + [IO.Path]::DirectorySeparatorChar
+          if (-not $packageDirectory.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to clean package directory outside $artifactsDirectory."
+          }
+          if (Test-Path -LiteralPath $packageDirectory) {
+            Remove-Item -LiteralPath $packageDirectory -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $packageDirectory | Out-Null
 
       - name: Pack ItTiger.TigerQuery.Core
         run: >-
@@ -157,6 +197,16 @@ jobs:
           finally {
             $archive.Dispose()
           }
+
+      - name: Validate exact ItTiger.TigerSqlCmd package structure
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          ./.github/scripts/Assert-TigerSqlCmdToolPackage.ps1 `
+            -PackagePath "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg" `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -ExpectedRepositoryCommit $env:GITHUB_SHA
 
       - name: Validate ItTiger.TigerSqlCmd tool installation
         shell: pwsh
@@ -408,6 +458,22 @@ jobs:
             Write-Host "Validated $packagePath and $symbolsPath"
           }
 
+      - name: Record exact validated ItTiger.TigerSqlCmd package hash
+        id: tiger-sqlcmd-hash
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packagePath = "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg"
+          $hash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content `
+            -LiteralPath "$packagePath.sha256" `
+            -Value "$hash  $([IO.Path]::GetFileName($packagePath))" `
+            -Encoding utf8NoBOM
+          "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Approved package candidate SHA-256: $hash"
+
       - name: Upload validated packages
         uses: actions/upload-artifact@v7
         with:
@@ -421,6 +487,7 @@ jobs:
             artifacts/packages/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.snupkg
             artifacts/packages/ItTiger.TigerSqlCmd.${{ inputs.version }}.nupkg
             artifacts/packages/ItTiger.TigerSqlCmd.${{ inputs.version }}.snupkg
+            artifacts/packages/ItTiger.TigerSqlCmd.${{ inputs.version }}.nupkg.sha256
           if-no-files-found: error
           retention-days: 14
 
@@ -433,6 +500,9 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Checkout validation script
+        uses: actions/checkout@v6
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -443,6 +513,28 @@ jobs:
         with:
           name: NuGet-packages-${{ inputs.version }}
           path: artifacts/packages
+
+      - name: Verify approved package bytes and tool structure
+        shell: pwsh
+        env:
+          EXPECTED_TIGER_SQLCMD_SHA256: ${{ needs.validate.outputs.tiger-sqlcmd-sha256 }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packagePath = "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg"
+          $hashPath = "$packagePath.sha256"
+
+          $actualHash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $recordedHashLine = (Get-Content -LiteralPath $hashPath -Raw).Trim()
+          $expectedHashLine = "$env:EXPECTED_TIGER_SQLCMD_SHA256  $([IO.Path]::GetFileName($packagePath))"
+          if ($actualHash -cne $env:EXPECTED_TIGER_SQLCMD_SHA256 -or $recordedHashLine -cne $expectedHashLine) {
+            throw "Downloaded tool package SHA-256 '$actualHash' does not match the pre-approval hash '$env:EXPECTED_TIGER_SQLCMD_SHA256'."
+          }
+
+          ./.github/scripts/Assert-TigerSqlCmdToolPackage.ps1 `
+            -PackagePath $packagePath `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -ExpectedRepositoryCommit $env:GITHUB_SHA
 
       - name: Verify NuGet.org Trusted Publishing configuration
         shell: pwsh
@@ -514,10 +606,17 @@ jobs:
       - name: Publish ItTiger.TigerSqlCmd to NuGet.org
         shell: pwsh
         env:
+          EXPECTED_TIGER_SQLCMD_SHA256: ${{ needs.validate.outputs.tiger-sqlcmd-sha256 }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          dotnet nuget push "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg" `
+          $ErrorActionPreference = "Stop"
+          $packagePath = "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg"
+          $actualHash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -cne $env:EXPECTED_TIGER_SQLCMD_SHA256) {
+            throw "Refusing to publish tool package SHA-256 '$actualHash'; approved SHA-256 is '$env:EXPECTED_TIGER_SQLCMD_SHA256'."
+          }
+          dotnet nuget push $packagePath `
             --source https://api.nuget.org/v3/index.json `
             --api-key "$env:NUGET_API_KEY" `
             --skip-duplicate `

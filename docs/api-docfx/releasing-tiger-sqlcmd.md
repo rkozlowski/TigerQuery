@@ -12,17 +12,26 @@ dotnet pack ItTiger.TigerSqlCmd\ItTiger.TigerSqlCmd.csproj -c Release -o artifac
 ```
 
 The expected package is
-`artifacts\packages\ItTiger.TigerSqlCmd.<version>.nupkg`. Validate it without
-touching the global tool store:
+`artifacts\packages\ItTiger.TigerSqlCmd.<version>.nupkg`. Inspect its generated
+tool metadata, then validate it without touching the global tool store or
+consulting any other configured NuGet source:
 
 ```powershell
+$packagePath = 'artifacts\packages\ItTiger.TigerSqlCmd.<version>.nupkg'
+& .\.github\scripts\Assert-TigerSqlCmdToolPackage.ps1 `
+  -PackagePath $packagePath -ExpectedVersion <version>
 $toolPath = Join-Path $env:TEMP ('tiger-sqlcmd-tool-' + [Guid]::NewGuid().ToString('N'))
 dotnet tool install ItTiger.TigerSqlCmd --tool-path $toolPath `
-  --add-source artifacts\packages --version <version>
+  --source (Resolve-Path artifacts\packages) --version <version>
 & (Join-Path $toolPath 'tiger-sqlcmd.exe') --version
 & (Join-Path $toolPath 'tiger-sqlcmd.exe') --help
 dotnet tool uninstall ItTiger.TigerSqlCmd --tool-path $toolPath
 ```
+
+The package targets `net10.0`, so installation requires a .NET 10 SDK. Older
+SDKs can misleadingly report that `DotnetToolSettings.xml` is missing even when
+the file is present under `tools/net10.0/any/`; check `dotnet --version` and any
+applicable `global.json` before diagnosing that message as package corruption.
 
 For a local manifest installation, use `dotnet new tool-manifest` followed by
 `dotnet tool install --local ItTiger.TigerSqlCmd`. Use `dotnet tool update`

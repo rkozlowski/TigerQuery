@@ -197,6 +197,11 @@ Install the `tiger-sqlcmd` .NET tool globally:
 dotnet tool install --global ItTiger.TigerSqlCmd
 ```
 
+The tool targets .NET 10, so run installation with a .NET 10 SDK. An older SDK
+can misleadingly report that `DotnetToolSettings.xml` is missing even though it
+is present in the package; check `dotnet --version` and any applicable
+`global.json` if that message appears.
+
 For a repository-local installation, create or reuse a tool manifest and install
 the same package locally:
 
