@@ -115,7 +115,7 @@ For the normal local workflow, create the bootstrap in the regular user store on
 then run the tests without an environment variable:
 
 ```powershell
-tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+tiger-sqlcmd connection add-e2e-bootstrap --non-interactive `
   --server localhost --allow-database-create
 Remove-Item Env:TIGERQUERY_CONNECTION_STORE_FILE -ErrorAction Ignore
 dotnet test ItTiger.TigerQuery.Tests\ItTiger.TigerQuery.Tests.csproj `
@@ -137,7 +137,7 @@ bootstrap name and exact authorization metadata:
 
 ```powershell
 $env:TIGERQUERY_CONNECTION_STORE_FILE = 'C:\temp\tigerquery-e2e.json'
-tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+tiger-sqlcmd connection add-e2e-bootstrap --non-interactive `
   --server localhost --allow-database-create
 dotnet test ItTiger.TigerQuery.Tests\ItTiger.TigerQuery.Tests.csproj `
   --filter 'FullyQualifiedName~TigerSqlCmdE2eWorkflowLiveTests'
@@ -151,7 +151,7 @@ log: a cleanup failure names the exact database left behind for manual investiga
 
 An older bootstrap profile without `ittiger.e2e.bootstrap=true` now fails live-test
 resolution as invalid rather than being used. After preserving any settings still needed,
-delete and recreate it with `connections add-e2e-bootstrap`; regular `add --e2e` does not
+delete and recreate it with `connection add-e2e-bootstrap`; regular `add --e2e` does not
 migrate it.
 
 For containers, mount both the writable store location and any referenced secret files,

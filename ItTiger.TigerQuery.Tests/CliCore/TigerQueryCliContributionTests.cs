@@ -148,10 +148,10 @@ public sealed class TigerQueryCliContributionTests : IDisposable
     {
         var app = Create();
 
-        // `connections show` needs a name; supplying none is a binding-time failure. The
+        // `connection show` needs a name; supplying none is a binding-time failure. The
         // store error is reported instead, which is only possible if the callback ran first.
         var (exit, _, stdErr) = await app.RunAsync(
-            "connections", "show", "--non-interactive", "--tq-connection-store-file", "   ");
+            "connection", "show", "--non-interactive", "--tq-connection-store-file", "   ");
 
         Assert.Equal((int)ContributionExitCode.Validation, exit);
         Assert.Contains(TigerQueryCliContribution.ConnectionStoreFileOption, stdErr);
@@ -245,7 +245,7 @@ public sealed class TigerQueryCliContributionTests : IDisposable
     {
         var app = Create();
 
-        var (exit, stdOut, _) = await app.RunAsync("connections", "list", "--help");
+        var (exit, stdOut, _) = await app.RunAsync("connection", "list", "--help");
 
         Assert.Equal((int)ContributionExitCode.Ok, exit);
         Assert.Contains(TigerQueryCliContribution.ConnectionStoreFileOption, stdOut);

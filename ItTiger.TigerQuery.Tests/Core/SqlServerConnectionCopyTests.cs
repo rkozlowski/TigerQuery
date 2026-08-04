@@ -11,7 +11,10 @@ public sealed class SqlServerConnectionCopyTests
 {
     [Theory]
     [InlineData(SqlServerE2eMetadata.Enabled)]
-    [InlineData("ittiger.future.setting")]
+    [InlineData(SqlServerE2eMetadata.SessionId)]
+    [InlineData(SqlServerE2eMetadata.DatabaseName)]
+    [InlineData(SqlServerE2eMetadata.AllowDatabaseDrop)]
+    [InlineData("ittiger.e2e.future.setting")]
     public void Copy_RejectsReservedMetadataAssignmentsAndRemovals(string key)
     {
         using var temp = new TempStore();

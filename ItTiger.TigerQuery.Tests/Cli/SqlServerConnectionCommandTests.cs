@@ -19,7 +19,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         => CliTestRunner.RunAsync(_temp.Store, args);
 
     private Task<(int ExitCode, string StdOut, string StdErr)> AddDemoAsync()
-        => RunAsync("connections", "add", "demo", "--non-interactive", "--server", "srv");
+        => RunAsync("connection", "add", "demo", "--non-interactive", "--server", "srv");
 
     [Fact]
     public async Task Add_Show_List_Delete_HappyPath()
@@ -29,19 +29,19 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         Assert.Contains("demo", add.StdOut);
 
         var edit = await RunAsync(
-            "connections", "edit", "demo", "--non-interactive", "--server", "updated");
+            "connection", "edit", "demo", "--non-interactive", "--server", "updated");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, edit.ExitCode);
 
-        var show = await RunAsync("connections", "show", "demo", "--non-interactive");
+        var show = await RunAsync("connection", "show", "demo", "--non-interactive");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, show.ExitCode);
         Assert.Contains("demo", show.StdOut);
         Assert.Contains("updated", show.StdOut);
 
-        var list = await RunAsync("connections", "list", "--non-interactive");
+        var list = await RunAsync("connection", "list", "--non-interactive");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, list.ExitCode);
         Assert.Contains("demo", list.StdOut);
 
-        var delete = await RunAsync("connections", "delete", "demo", "--non-interactive");
+        var delete = await RunAsync("connection", "delete", "demo", "--non-interactive");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, delete.ExitCode);
     }
 
@@ -60,7 +60,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         _temp.Store.Add(profile);
 
         var edit = await RunAsync(
-            "connections",
+            "connection",
             "edit",
             "automation-host",
             "--non-interactive",
@@ -90,7 +90,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     public async Task Add_WithOneMetadataEntry_PersistsIt()
     {
         var result = await RunAsync(
-            "connections",
+            "connection",
             "add",
             "demo",
             "--non-interactive",
@@ -107,7 +107,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     public async Task Add_WithMultipleMetadataEntries_PersistsAll()
     {
         var result = await RunAsync(
-            "connections",
+            "connection",
             "add",
             "demo",
             "--non-interactive",
@@ -128,7 +128,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     public async Task Add_MetadataValueContainingEquals_SplitsOnlyAtFirstEquals()
     {
         var result = await RunAsync(
-            "connections",
+            "connection",
             "add",
             "demo",
             "--non-interactive",
@@ -147,7 +147,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     public async Task Add_MetadataAllowsEmptyValue()
     {
         var result = await RunAsync(
-            "connections",
+            "connection",
             "add",
             "demo",
             "--non-interactive",
@@ -166,7 +166,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         AddProfile("demo", ("app.role", "old"));
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "edit",
             "demo",
             "--non-interactive",
@@ -183,7 +183,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         AddProfile("demo", ("app.existing", "preserved"));
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "edit",
             "demo",
             "--non-interactive",
@@ -205,7 +205,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
             ("app.preserve", "value"));
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "edit",
             "demo",
             "--non-interactive",
@@ -224,7 +224,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         AddProfile("demo", ("app.preserve", "value"));
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "edit",
             "demo",
             "--non-interactive",
@@ -241,7 +241,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         AddProfile("demo", ("app.role", "old"));
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "edit",
             "demo",
             "--non-interactive",
@@ -261,7 +261,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     public async Task Add_DuplicateMetadataAssignmentFailsValidation()
     {
         var result = await RunAsync(
-            "connections",
+            "connection",
             "add",
             "demo",
             "--non-interactive",
@@ -282,7 +282,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     public async Task Add_MalformedMetadataAssignmentFailsValidation()
     {
         var result = await RunAsync(
-            "connections",
+            "connection",
             "add",
             "demo",
             "--non-interactive",
@@ -308,7 +308,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
             ("a.key", "middle"));
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "show",
             "demo",
             "--non-interactive");
@@ -331,7 +331,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         AddProfile("missing");
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "list",
             "--non-interactive",
             "--metadata",
@@ -350,7 +350,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         AddProfile("missing");
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "list",
             "--non-interactive",
             "--metadata-set",
@@ -368,7 +368,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         AddProfile("missing");
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "list",
             "--non-interactive",
             "--metadata-not-set",
@@ -390,7 +390,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         AddProfile("region-only", ("app.region", "west"));
 
         var result = await RunAsync(
-            "connections",
+            "connection",
             "list",
             "--non-interactive",
             "--metadata",
@@ -418,7 +418,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     [Fact]
     public async Task Show_MissingConnection_ReturnsNotFound()
     {
-        var result = await RunAsync("connections", "show", "missing", "--non-interactive");
+        var result = await RunAsync("connection", "show", "missing", "--non-interactive");
 
         Assert.Equal((int)TigerSqlCmdExitCode.ConnectionNotFound, result.ExitCode);
         Assert.Contains("missing", result.StdErr);
@@ -427,7 +427,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     [Fact]
     public async Task Delete_MissingConnection_ReturnsNotFound()
     {
-        var result = await RunAsync("connections", "delete", "missing", "--non-interactive");
+        var result = await RunAsync("connection", "delete", "missing", "--non-interactive");
 
         Assert.Equal((int)TigerSqlCmdExitCode.ConnectionNotFound, result.ExitCode);
     }
@@ -438,7 +438,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         // Non-interactive, so the username/password prompts are skipped and the command's
         // own domain validation reports the missing credentials.
         var result = await RunAsync(
-            "connections", "add", "demo", "--non-interactive",
+            "connection", "add", "demo", "--non-interactive",
             "--server", "srv", "--authentication", "SqlPassword");
 
         Assert.Equal((int)TigerSqlCmdExitCode.ConnectionInvalidArguments, result.ExitCode);
@@ -452,7 +452,7 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
         // same semantic kind as command-level domain validation. TigerCli's app-wide
         // policy therefore maps both paths to the host's connection-validation value.
         var result = await RunAsync(
-            "connections", "add", "demo", "--non-interactive",
+            "connection", "add", "demo", "--non-interactive",
             "--server", "srv", "--pooling", "false", "--min-pool-size", "2");
 
         Assert.Equal((int)TigerSqlCmdExitCode.ConnectionInvalidArguments, result.ExitCode);
@@ -464,12 +464,12 @@ public sealed class SqlServerConnectionCommandTests : IDisposable
     {
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, (await AddDemoAsync()).ExitCode);
 
-        // No name supplied: the positional argument is prompted from the "connections"
+        // No name supplied: the positional argument is prompted from the "connection"
         // provider; the first (only) choice is the seeded profile.
         var result = await CliTestRunner.RunAsync(
             _temp.Store,
             host => host.WithSelectIndex(0),
-            "connections", "show");
+            "connection", "show");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         Assert.Contains("demo", result.StdOut);

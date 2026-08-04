@@ -29,7 +29,7 @@ internal static class TigerSqlCmdApp
     public static string DefaultConnectionStoreFile =>
         SqlServerConnectionStoreOptions.Shared("ItTiger.net").FilePath;
 
-    /// <summary>The profile name used by <c>connections add-e2e-bootstrap</c> by default.</summary>
+    /// <summary>The profile name used by <c>connection add-e2e-bootstrap</c> by default.</summary>
     public const string DefaultE2eBootstrapConnectionName = "tiger-sqlcmd-e2e";
 
     /// <summary>
@@ -142,16 +142,33 @@ internal static class TigerSqlCmdApp
                     ctx => connections.Store.GetConnectionNamesAsync(ctx.CancellationToken)))
             // Default command: the basic, friendly query runner.
             .SetDefaultCommand(() => new TigerSqlCmdQueryCommand(connections))
-            .AddCommandGroup("connections", group =>
+            .AddCommandGroup("connection", group =>
             {
                 group.SetDescription("Manage saved connections",
                     resourceKey: "Grp_Connections_Description");
                 SqlServerConnectionCommands.Configure(group, options =>
                 {
                     options.TigerQuery = connections;
-                    // Database is optional for tiger-sqlcmd connections.
+                    // Database is optional for tiger-sqlcmd connection commands.
                     options.ValidationPolicy = SqlServerConnectionValidationPolicy.DatabaseOptional;
                 });
+            })
+            .AddCommandGroup("e2e", group =>
+            {
+                group.SetDescription("Manage session-scoped E2E databases and connections.");
+                group.SetPromptMode(ItTiger.TigerCli.Enums.TigerCliPromptMode.RequiredOnly);
+                group.AddCommand(
+                    "create",
+                    () => new TigerSqlCmdE2eCreateCommand(connections),
+                    "Create an E2E database and its paired owning connection.");
+                group.AddCommand(
+                    "drop",
+                    () => new TigerSqlCmdE2eDropCommand(connections),
+                    "Safely drop or detach one session-owned E2E connection.");
+                group.AddCommand(
+                    "cleanup",
+                    () => new TigerSqlCmdE2eCleanupCommand(connections),
+                    "Clean all protected E2E connection records for one session.");
             })
             // Advanced command: full script/sqlcmd execution.
             .AddCommand(

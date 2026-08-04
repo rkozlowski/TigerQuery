@@ -32,14 +32,14 @@ public sealed class DeferredConnectionStoreTests : IDisposable
         var app = ContributionTestApp.Create(_default.FilePath);
 
         var add = await app.RunAsync(
-            "connections", "add", "demo",
+            "connection", "add", "demo",
             "--non-interactive",
             "--server", "srv",
             "--tq-connection-store-file", _explicitPath.FilePath);
         Assert.Equal((int)ContributionExitCode.Ok, add.ExitCode);
 
         var list = await app.RunAsync(
-            "connections", "list",
+            "connection", "list",
             "--non-interactive",
             "--tq-connection-store-file", _explicitPath.FilePath);
 
@@ -56,7 +56,7 @@ public sealed class DeferredConnectionStoreTests : IDisposable
         Seed(_explicitPath.FilePath, "demo", "original-server");
 
         var edit = await app.RunAsync(
-            "connections", "edit", "demo",
+            "connection", "edit", "demo",
             "--non-interactive",
             "--database", "AdventureWorks",
             "--tq-connection-store-file", _explicitPath.FilePath);
@@ -89,14 +89,14 @@ public sealed class DeferredConnectionStoreTests : IDisposable
         var app = ContributionTestApp.Create(_default.FilePath);
 
         var first = await app.RunAsync(
-            "connections", "add", "first",
+            "connection", "add", "first",
             "--non-interactive",
             "--server", "srv-one",
             "--tq-connection-store-file", _explicitPath.FilePath);
         Assert.Equal((int)ContributionExitCode.Ok, first.ExitCode);
 
         var second = await app.RunAsync(
-            "connections", "add", "second",
+            "connection", "add", "second",
             "--non-interactive",
             "--server", "srv-two",
             "--tq-connection-store-file", _second.FilePath);
@@ -206,7 +206,7 @@ public sealed class DeferredConnectionStoreTests : IDisposable
         TigerCliApp.CreateBuilder()
             .SetApplicationName("tq-wiring-test")
             .UseAppResources(SqlServerConnectionCommands.CreateAppResources())
-            .AddCommandGroup("connections", group =>
+            .AddCommandGroup("connection", group =>
                 SqlServerConnectionCommands.Configure(group, configure))
             .Build();
 

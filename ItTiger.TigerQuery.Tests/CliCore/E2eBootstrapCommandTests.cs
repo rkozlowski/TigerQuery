@@ -12,7 +12,7 @@ public sealed class E2eBootstrapCommandTests
         var app = ContributionTestApp.Create(storePath.FilePath);
 
         var result = await app.RunAsync(
-            "connections", "add-e2e-bootstrap",
+            "connection", "add-e2e-bootstrap",
             "--non-interactive", "--server", "srv");
 
         Assert.Equal((int)ContributionExitCode.Validation, result.ExitCode);
@@ -30,7 +30,7 @@ public sealed class E2eBootstrapCommandTests
             defaultE2eBootstrapConnectionName: "host-bootstrap");
 
         var result = await app.RunAsync(
-            "connections", "add-e2e-bootstrap",
+            "connection", "add-e2e-bootstrap",
             "--non-interactive", "--server", "srv");
 
         Assert.Equal((int)ContributionExitCode.Ok, result.ExitCode);

@@ -35,13 +35,13 @@ namespace ItTiger.TigerQuery.Core;
 /// </remarks>
 public static class SqlServerE2eMetadata
 {
-    /// <summary>The metadata namespace reserved for TigerQuery: <c>ittiger.</c>.</summary>
+    /// <summary>The metadata namespace reserved for TigerQuery E2E lifecycle state.</summary>
     /// <remarks>
     /// Reserved by documentation and by <see cref="IsReservedKey"/>. Generic profile,
     /// store-copy, and CLI metadata mutations reject writes to it; TigerQuery-owned
     /// operations such as <see cref="AuthorizeNewProfile"/> are its only writers.
     /// </remarks>
-    public const string ReservedKeyPrefix = "ittiger.";
+    public const string ReservedKeyPrefix = "ittiger.e2e.";
 
     /// <summary>
     /// <c>ittiger.e2e.enabled</c> — the profile may be used by TigerQuery E2E
@@ -62,6 +62,15 @@ public static class SqlServerE2eMetadata
     /// never implied by <see cref="Enabled"/>.
     /// </summary>
     public const string AllowDatabaseCreation = "ittiger.e2e.allow-database-create";
+
+    /// <summary>The session that owns or correlates a non-bootstrap E2E profile.</summary>
+    public const string SessionId = "ittiger.e2e.session-id";
+
+    /// <summary>The exact database targeted by a non-bootstrap E2E profile.</summary>
+    public const string DatabaseName = "ittiger.e2e.database.name";
+
+    /// <summary>Whether the recorded database is owned and may be dropped by E2E cleanup.</summary>
+    public const string AllowDatabaseDrop = "ittiger.e2e.database.allow-drop";
 
     /// <summary>The only accepted affirmative value for a reserved Boolean key.</summary>
     public const string True = "true";
@@ -145,6 +154,31 @@ public static class SqlServerE2eMetadata
             if (IsReservedKey(key))
                 destination.SetReservedMetadata(key, value);
         }
+    }
+
+    /// <summary>Writes the complete protected metadata schema for a session connection.</summary>
+    /// <param name="profile">The new non-bootstrap E2E profile.</param>
+    /// <param name="sessionId">The non-empty safety-correlation identifier.</param>
+    /// <param name="databaseName">The exact database targeted by the profile.</param>
+    /// <param name="allowDatabaseDrop">Whether dedicated E2E cleanup owns the database.</param>
+    public static void ConfigureSessionProfile(
+        SqlServerConnectionProfile profile,
+        Guid sessionId,
+        string databaseName,
+        bool allowDatabaseDrop)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (sessionId == Guid.Empty)
+            throw new ArgumentException("A non-empty E2E session ID is required.", nameof(sessionId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
+
+        profile.ClearReservedMetadata();
+        profile.SetReservedMetadata(Enabled, True);
+        profile.SetReservedMetadata(Bootstrap, False);
+        profile.SetReservedMetadata(AllowDatabaseCreation, False);
+        profile.SetReservedMetadata(SessionId, sessionId.ToString("D"));
+        profile.SetReservedMetadata(DatabaseName, databaseName);
+        profile.SetReservedMetadata(AllowDatabaseDrop, allowDatabaseDrop ? True : False);
     }
 
     /// <summary>Determines whether a metadata key falls in TigerQuery's reserved namespace.</summary>

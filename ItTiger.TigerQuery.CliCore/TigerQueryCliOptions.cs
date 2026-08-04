@@ -53,7 +53,7 @@ public sealed class TigerQueryCliOptions
     /// </summary>
     /// <remarks>
     /// Host configuration only: it names a convention and is used by
-    /// <c>connections add-e2e-bootstrap</c> when that command receives no
+    /// <c>connection add-e2e-bootstrap</c> when that command receives no
     /// <c>--name</c>. It confers no authorization; a profile becomes usable for E2E work
     /// through explicit TigerQuery metadata, never through its name.
     /// </remarks>

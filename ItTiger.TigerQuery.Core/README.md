@@ -246,7 +246,7 @@ because profile metadata is compared ordinally:
   accepted spellings, and none of them means `false` — they are reported as malformed, so
   a typo fails loudly instead of quietly withdrawing an authorization its author believed
   they had written;
-- the `ittiger.` prefix is reserved for TigerQuery. Keep application metadata under your
+- the `ittiger.e2e.` prefix is reserved for TigerQuery. Keep application metadata under your
   own prefix; `SqlServerE2eMetadata.IsReservedKey(...)` tells you which is which.
 
 ```csharp
@@ -260,7 +260,7 @@ store.AddOrUpdate(profile);
 `AuthorizeNewProfile(...)` writes general E2E authorization and never writes the
 bootstrap flag. `AuthorizeNewBootstrapProfile(...)` is the TigerQuery-owned path that
 writes both authorization flags and the optional database-creation permission. Generic
-metadata APIs reject all `ittiger.*` writes.
+metadata APIs reject all `ittiger.e2e.*` writes.
 
 ### Resolving the bootstrap connection
 
@@ -307,7 +307,7 @@ The four outcomes:
 
 Bootstrap profiles created by older TigerQuery builds do not contain
 `ittiger.e2e.bootstrap=true` and now resolve as `Invalid`. After preserving any settings
-you still need, delete and recreate them with `connections add-e2e-bootstrap`, or upgrade
+you still need, delete and recreate them with `connection add-e2e-bootstrap`, or upgrade
 them through `AuthorizeNewBootstrapProfile(...)` and persist the profile. Generic metadata
 mutation is intentionally not a migration path.
 
@@ -354,7 +354,7 @@ source of a `Copy` — keep their stored representation byte-for-byte, so an unr
 
 ## Related packages
 
-- [ItTiger.TigerQuery.CliCore](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/) — ready-made TigerCli `connections` commands (list/show/add/edit/delete) built on this package.
+- [ItTiger.TigerQuery.CliCore](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/) — ready-made TigerCli `connection` commands (list/show/add/edit/delete/clone-e2e) built on this package.
 - [ItTiger.TigerQuery](https://www.nuget.org/packages/ItTiger.TigerQuery/) — the standalone sqlcmd-compatible script engine; independent of this package and easy to combine with it.
 
 ## Links

@@ -1,4 +1,5 @@
 using ItTiger.TigerCli.Commands;
+using ItTiger.TigerCli.Markup;
 using ItTiger.TigerCli.Terminal;
 
 namespace ItTiger.TigerQuery.CliCore;
@@ -15,12 +16,20 @@ internal sealed class DeleteSqlServerConnectionCommand(SqlServerConnectionComman
 {
     public override Task<TigerCliExitKind> ExecuteAsync(DeleteSqlServerConnectionSettings settings)
     {
-        if (!context.Store.Delete(settings.Name))
+        try
         {
-            TigerConsole.MarkupErrorLine(settings.E(
-                "SQL Server connection [Value]{0}[/] was not found.",
-                settings.Name));
-            return Task.FromResult(TigerCliExitKind.NotFound);
+            if (!context.Store.Delete(settings.Name))
+            {
+                TigerConsole.MarkupErrorLine(settings.E(
+                    "SQL Server connection [Value]{0}[/] was not found.",
+                    settings.Name));
+                return Task.FromResult(TigerCliExitKind.NotFound);
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            TigerConsole.MarkupErrorLine(CliMarkupParser.Escape(ex.Message));
+            return Task.FromResult(TigerCliExitKind.ValidationError);
         }
 
         TigerConsole.MarkupLine(settings.E(

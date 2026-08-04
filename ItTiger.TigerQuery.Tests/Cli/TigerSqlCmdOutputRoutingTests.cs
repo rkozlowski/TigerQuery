@@ -185,7 +185,7 @@ public sealed class TigerSqlCmdOutputRoutingTests : IDisposable
     public async Task CliInitialRouteCollision_ExitsEightBeforeOpeningSqlConnection()
     {
         var add = await RunAsync(
-            "connections", "add", "demo", "--non-interactive", "--server", "srv");
+            "connection", "add", "demo", "--non-interactive", "--server", "srv");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         var path = Path.Combine(

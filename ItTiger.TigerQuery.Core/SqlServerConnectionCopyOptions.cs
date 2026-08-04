@@ -92,5 +92,5 @@ public sealed class SqlServerConnectionCopyOptions
     }
 
     private const string ReservedMetadataMessage =
-        "Metadata keys beginning with 'ittiger.' are reserved for TigerQuery.";
+        "Metadata keys beginning with 'ittiger.e2e.' are reserved for TigerQuery.";
 }

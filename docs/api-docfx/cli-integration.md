@@ -1,7 +1,7 @@
 # CLI integration
 
 The [ItTiger.TigerQuery.CliCore](https://www.nuget.org/packages/ItTiger.TigerQuery.CliCore/)
-package adds a reusable `connections` command group to applications built with
+package adds a reusable `connection` command group to applications built with
 [TigerCli](https://www.nuget.org/packages/ItTiger.TigerCli/). It provides
 list, show, add, edit, and delete commands backed by
 [ItTiger.TigerQuery.Core](https://www.nuget.org/packages/ItTiger.TigerQuery.Core/).
@@ -38,7 +38,7 @@ var app = TigerCliApp.CreateBuilder()
     .UseAssemblyMetadata(typeof(Program).Assembly)
     .UseAppResources(SqlServerConnectionCommands.CreateAppResources())
     .AddContribution(tigerQuery)
-    .AddCommandGroup("connections", group =>
+    .AddCommandGroup("connection", group =>
     {
         group.SetDescription("Manage saved connections");
         SqlServerConnectionCommands.Configure(group, options =>
@@ -68,7 +68,7 @@ option name or precedence rule. Precedence and validation belong to
 this package only carries the value across and reports failures as TigerCli
 validation errors.
 
-Registering the contribution and mounting the `connections` group are separate
+Registering the contribution and mounting the `connection` group are separate
 opt-ins — either works without the other. The rule that matters is to create the
 `TigerQueryCliOptions` **once** and give that same instance to
 `AddContribution`, to `options.TigerQuery`, and to the application's own command
@@ -106,7 +106,7 @@ The add and edit commands accept repeatable metadata mutations. The list
 command accepts repeatable value, key-present, and key-absent filters; every
 filter must match. Metadata is application-owned, case-sensitive, excluded from
 connection strings, and must not contain secrets. Generic set/remove operations
-reject the lowercase `ittiger.*` namespace because it is reserved for
+reject the lowercase `ittiger.e2e.*` namespace because it is reserved for
 TigerQuery-owned metadata; list filters and reads remain forward-compatible with
 unknown reserved keys.
 
@@ -116,8 +116,8 @@ The regular add command can authorize a new profile for E2E use without making
 it the host's bootstrap profile:
 
 ```console
-your-tool connections add test-server --server sql01 --e2e
-your-tool connections add test-creator --server sql01 --e2e --allow-database-create
+your-tool connection add test-server --server sql01 --e2e
+your-tool connection add test-creator --server sql01 --e2e --allow-database-create
 ```
 
 `--e2e` writes exactly `ittiger.e2e.enabled=true`.
@@ -130,7 +130,7 @@ bootstrap even when its name matches the expected name.
 The dedicated bootstrap creation command is:
 
 ```console
-your-tool connections add-e2e-bootstrap [--name <name>] --server <server>
+your-tool connection add-e2e-bootstrap [--name <name>] --server <server>
 ```
 
 An explicit `--name` wins. Otherwise CliCore uses the host's
@@ -146,7 +146,7 @@ are required during resolution.
 Bootstrap profiles created by older builds lack the new bootstrap flag and now
 fail resolution as invalid. After preserving any settings still needed, delete
 and recreate such a profile with `add-e2e-bootstrap`; generic `--metadata`
-writes cannot add the flag because all `ittiger.*` keys remain reserved.
+writes cannot add the flag because all `ittiger.e2e.*` keys remain reserved.
 
 ## Configuring external values
 
@@ -171,7 +171,7 @@ plaintext credentials in process arguments.
 For a fully non-interactive SQL-auth bootstrap:
 
 ```console
-your-tool connections add-e2e-bootstrap --non-interactive --authentication SqlPassword --server-reference {environment-reference-json} --username-reference {keyed-file-reference-json} --password-reference {text-file-reference-json}
+your-tool connection add-e2e-bootstrap --non-interactive --authentication SqlPassword --server-reference {environment-reference-json} --username-reference {keyed-file-reference-json} --password-reference {text-file-reference-json}
 ```
 
 Use `--connection-string-reference` by itself for full-string mode. It is

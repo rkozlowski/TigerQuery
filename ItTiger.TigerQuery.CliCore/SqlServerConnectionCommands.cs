@@ -43,7 +43,7 @@ public static class SqlServerConnectionCommands
     }
 
     /// <summary>
-    /// Mounts the connection providers and list/show/add/add-e2e-bootstrap/edit/delete
+    /// Mounts the connection providers and list/show/add/add-e2e-bootstrap/clone-e2e/edit/delete
     /// commands.
     /// </summary>
     /// <param name="group">The TigerCli command group to configure.</param>
@@ -55,7 +55,7 @@ public static class SqlServerConnectionCommands
     /// <remarks>
     /// <para>
     /// Configuration enables prompting for the group, registers saved-connection
-    /// and live-database providers, and adds the six command handlers. Add and edit
+    /// and live-database providers, and adds the seven command handlers. Add and edit
     /// expose repeatable generic metadata mutations; list exposes ordinal,
     /// case-sensitive metadata filters combined with AND semantics. Generic mutations
     /// reject TigerQuery's reserved namespace, while the add-only E2E switches and
@@ -150,6 +150,11 @@ public static class SqlServerConnectionCommands
             () => new AddE2eBootstrapSqlServerConnectionCommand(context),
             "Add an E2E-authorized bootstrap SQL Server connection.",
             descriptionResourceKey: "Cmd_Connections_AddE2eBootstrap_Description")
+            .SetPromptMode(TigerCliPromptMode.RequiredOnly);
+        group.AddCommand(
+            "clone-e2e",
+            () => new CloneE2eSqlServerConnectionCommand(context),
+            "Clone a connection for an existing E2E database without taking database ownership.")
             .SetPromptMode(TigerCliPromptMode.RequiredOnly);
         group.AddCommand(
             "edit",

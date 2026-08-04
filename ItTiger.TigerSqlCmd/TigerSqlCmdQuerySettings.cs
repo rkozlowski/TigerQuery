@@ -15,7 +15,7 @@ public sealed class TigerSqlCmdQuerySettings : TigerCliSettings
     [TigerCliOption("-c|--connection",
         ValueName = "name",
         Required = true,
-        Description = "Name of a saved SQL Server connection (managed via the 'connections' command).",
+        Description = "Name of a saved SQL Server connection (managed via the 'connection' command).",
         DescriptionResourceKey = "Opt_Connection_Description",
         Provider = "connections",
         Promptable = TigerCliPromptable.Normal)]

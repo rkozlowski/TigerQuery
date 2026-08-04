@@ -27,7 +27,7 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     public async Task BootstrapAddSupportsFullyNonInteractiveSqlAuthenticationReferences()
     {
         var result = await RunAsync(
-            "connections", "add-e2e-bootstrap",
+            "connection", "add-e2e-bootstrap",
             "--non-interactive",
             "--authentication", "SqlPassword",
             "--server-reference", ServerEnvironment,
@@ -64,7 +64,7 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     public async Task BootstrapAddSupportsAFullConnectionStringReference()
     {
         var result = await RunAsync(
-            "connections", "add-e2e-bootstrap",
+            "connection", "add-e2e-bootstrap",
             "--name", "full-bootstrap",
             "--non-interactive",
             "--connection-string-reference", FullConnectionEnvironment);
@@ -82,7 +82,7 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     public async Task FullConnectionStringAndFieldOptionsFailBeforeStoreMutation()
     {
         var result = await RunAsync(
-            "connections", "add", "mixed",
+            "connection", "add", "mixed",
             "--non-interactive",
             "--connection-string-reference", FullConnectionEnvironment,
             "--server-reference", ServerEnvironment);
@@ -99,7 +99,7 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     public async Task InvalidReferenceJsonFailsSafelyBeforeStoreMutation(string reference)
     {
         var result = await RunAsync(
-            "connections", "add", "invalid-reference",
+            "connection", "add", "invalid-reference",
             "--non-interactive",
             "--server-reference", reference);
 
@@ -129,8 +129,8 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
             }
         });
 
-        var show = await RunAsync("connections", "show", "referenced", "--non-interactive");
-        var list = await RunAsync("connections", "list", "--non-interactive");
+        var show = await RunAsync("connection", "show", "referenced", "--non-interactive");
+        var list = await RunAsync("connection", "list", "--non-interactive");
         var output = show.StdOut + show.StdErr + list.StdOut + list.StdErr;
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, show.ExitCode);
@@ -153,8 +153,8 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
                 "Server=private-server;User ID=user;Password=literal-secret")
         });
 
-        var show = await RunAsync("connections", "show", "literal-full", "--non-interactive");
-        var list = await RunAsync("connections", "list", "--non-interactive");
+        var show = await RunAsync("connection", "show", "literal-full", "--non-interactive");
+        var list = await RunAsync("connection", "list", "--non-interactive");
         var output = show.StdOut + list.StdOut;
 
         Assert.Contains("redacted", output, StringComparison.OrdinalIgnoreCase);
@@ -166,7 +166,7 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     public async Task UnrelatedEditPreservesFieldReferences()
     {
         var add = await RunAsync(
-            "connections", "add", "editable",
+            "connection", "add", "editable",
             "--non-interactive",
             "--authentication", "SqlPassword",
             "--server-reference", ServerEnvironment,
@@ -175,7 +175,7 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         var edit = await RunAsync(
-            "connections", "edit", "editable",
+            "connection", "edit", "editable",
             "--non-interactive",
             "--metadata", "app.role=worker");
 
@@ -193,13 +193,13 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     public async Task UnrelatedEditPreservesFullConnectionStringReference()
     {
         var add = await RunAsync(
-            "connections", "add", "full-editable",
+            "connection", "add", "full-editable",
             "--non-interactive",
             "--connection-string-reference", FullConnectionEnvironment);
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         var edit = await RunAsync(
-            "connections", "edit", "full-editable",
+            "connection", "edit", "full-editable",
             "--non-interactive",
             "--metadata", "app.role=worker");
 
@@ -217,13 +217,13 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     public async Task EditCannotMixAFullProfileWithFieldInput()
     {
         var add = await RunAsync(
-            "connections", "add", "full-mode",
+            "connection", "add", "full-mode",
             "--non-interactive",
             "--connection-string-reference", FullConnectionEnvironment);
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         var edit = await RunAsync(
-            "connections", "edit", "full-mode",
+            "connection", "edit", "full-mode",
             "--non-interactive",
             "--server", "must-not-replace");
 
@@ -240,13 +240,13 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     public async Task EditCannotMixAFieldProfileWithAFullReference()
     {
         var add = await RunAsync(
-            "connections", "add", "field-mode",
+            "connection", "add", "field-mode",
             "--non-interactive",
             "--server-reference", ServerEnvironment);
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         var edit = await RunAsync(
-            "connections", "edit", "field-mode",
+            "connection", "edit", "field-mode",
             "--non-interactive",
             "--connection-string-reference", FullConnectionEnvironment);
 
@@ -265,7 +265,7 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     {
         const string Secret = "command-line-secret";
         var result = await RunAsync(
-            "connections", "add", "unsafe-opt",
+            "connection", "add", "unsafe-opt",
             "--non-interactive",
             "--server", "srv",
             "--opt", $"{key}={Secret}");
@@ -279,7 +279,7 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     [Fact]
     public async Task HelpExposesOnlyTheFiveReferenceOptions()
     {
-        var result = await RunAsync("connections", "add", "demo", "--help");
+        var result = await RunAsync("connection", "add", "demo", "--help");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         Assert.Contains("--server-reference", result.StdOut);

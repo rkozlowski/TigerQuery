@@ -17,7 +17,7 @@ internal static class SqlServerConnectionMetadataOptions
     public const string ConflictingMutation =
         "The same metadata key cannot be both set and removed in one command.";
     public const string ReservedMutation =
-        "Metadata keys beginning with 'ittiger.' are reserved for TigerQuery.";
+        "Metadata keys beginning with 'ittiger.e2e.' are reserved for TigerQuery.";
 
     public static string? ValidateMutations(
         IReadOnlyList<string> assignments,

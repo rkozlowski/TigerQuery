@@ -57,7 +57,7 @@
   <data name="Cmd_Run_Description" xml:space="preserve"><value>Zaawansowane wykonywanie sqlcmd: uruchamia plik skryptu lub zapytanie ze zmiennymi, przekierowaniem wyników, trybem, szczegółowością i logowaniem.</value></data>
 
   <!-- ── Option metadata (identifier keys) ──────────────────────────── -->
-  <data name="Opt_Connection_Description" xml:space="preserve"><value>Nazwa zapisanego połączenia SQL Server (zarządzanego poleceniem 'connections').</value></data>
+  <data name="Opt_Connection_Description" xml:space="preserve"><value>Nazwa zapisanego połączenia SQL Server (zarządzanego poleceniem 'connection').</value></data>
   <data name="Opt_Query_Description" xml:space="preserve"><value>Zapytanie SQL do wykonania.</value></data>
   <data name="Opt_Run_File_Description" xml:space="preserve"><value>Ścieżka do pliku skryptu SQL do wykonania.</value></data>
   <data name="Opt_Run_Query_Description" xml:space="preserve"><value>Zapytanie SQL podane w wierszu poleceń.</value></data>

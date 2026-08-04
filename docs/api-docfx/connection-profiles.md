@@ -180,7 +180,7 @@ connection string so a secret is never required on the command line.
 
 Passwords and complete literal connection strings are sensitive. Resolver
 failures, exceptions, logs, and CLI inspection output never include their raw
-values. `connections show` and `connections list` render references by source
+values. `connection show` and `connection list` render references by source
 description (environment-variable name or file path/key) and never resolve
 them. Server, database, and username references use the same behavior even
 though those destination fields are normally non-sensitive. File paths and
@@ -256,7 +256,7 @@ Metadata comparison is ordinal and case-sensitive. Queries combine filters
 with AND semantics and preserve store order. Do not store passwords, tokens,
 or other secrets in metadata.
 
-The exact lowercase `ittiger.*` namespace is reserved for TigerQuery. Generic
+The exact lowercase `ittiger.e2e.*` namespace is reserved for TigerQuery. Generic
 profile mutations and copy overrides reject both known and unknown keys in that
 namespace. TigerQuery-owned creation operations may write the canonical E2E
 keys, while reads tolerate unknown reserved keys written by a newer version.

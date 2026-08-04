@@ -385,6 +385,56 @@ public sealed class SqlServerConnectionStore
         return copy;
     }
 
+    // Trusted assemblies use this after database creation or for an explicitly
+    // non-owning clone. Keeping it internal prevents generic store callers from granting
+    // drop ownership by passing a Boolean to an otherwise ordinary copy operation.
+    internal SqlServerConnectionProfile CopyForE2eSession(
+        string sourceName,
+        string targetName,
+        string databaseName,
+        Guid sessionId,
+        bool allowDatabaseDrop)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
+        if (sessionId == Guid.Empty)
+            throw new ArgumentException("A non-empty E2E session ID is required.", nameof(sessionId));
+
+        using var scope = storeFile.EnterMutationScope();
+        var connections = LoadPersisted();
+        var source = connections.FirstOrDefault(i => i.Name == sourceName)
+            ?? throw new InvalidOperationException($"A connection named '{sourceName}' was not found.");
+        if (connections.Any(i => i.Name == targetName))
+            throw new InvalidOperationException($"A connection named '{targetName}' already exists.");
+
+        var copy = source.ClonePersisted();
+        copy.Name = targetName;
+        if (copy.ConnectionStringValue is null)
+            copy.Database = databaseName;
+        else
+            copy.InitialCatalogOverride = databaseName;
+
+        SqlServerE2eMetadata.ConfigureSessionProfile(
+            copy,
+            sessionId,
+            databaseName,
+            allowDatabaseDrop);
+
+        var errors = SqlServerConnectionValidator.ValidateComplete(
+            copy,
+            SqlServerConnectionValidationPolicy.DatabaseRequired);
+        if (errors.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"The copied connection '{targetName}' is not valid: {string.Join(" ", errors)}");
+        }
+
+        connections.Add(copy);
+        SavePersisted(connections);
+        return copy;
+    }
+
     /// <summary>Deletes every profile with an exact name match.</summary>
     /// <param name="name">The nonblank, case-sensitive profile name.</param>
     /// <returns><see langword="true"/> when at least one profile was deleted.</returns>
@@ -404,11 +454,61 @@ public sealed class SqlServerConnectionStore
         using var scope = storeFile.EnterMutationScope();
 
         var connections = LoadPersisted();
+        var protectedProfile = connections.FirstOrDefault(i => i.Name == name);
+        var dropFlag = protectedProfile is null
+            ? SqlServerE2eFlagState.Absent
+            : SqlServerE2eMetadata.ReadFlag(
+                protectedProfile,
+                SqlServerE2eMetadata.AllowDatabaseDrop);
+        if (protectedProfile is not null
+            && dropFlag is SqlServerE2eFlagState.True or SqlServerE2eFlagState.Malformed)
+        {
+            var session = protectedProfile.Metadata.TryGetValue(
+                SqlServerE2eMetadata.SessionId,
+                out var storedSession)
+                ? storedSession
+                : "<guid>";
+            throw new InvalidOperationException(
+                $"Connection '{name}' owns an E2E database and cannot be deleted normally. "
+                + $"Use 'tiger-sqlcmd e2e drop --connection {name} --session-id {session}' "
+                + $"or 'tiger-sqlcmd e2e cleanup --session-id {session}'.");
+        }
         var removed = connections.RemoveAll(i => i.Name == name) > 0;
         if (removed)
             SavePersisted(connections);
 
         return removed;
+    }
+
+    // Only the E2E lifecycle may bypass the ordinary owning-record deletion guard, and
+    // only after it has applied the database ownership rules.
+    internal bool DeleteE2eSessionConnection(string name, Guid sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (sessionId == Guid.Empty)
+            throw new ArgumentException("A non-empty E2E session ID is required.", nameof(sessionId));
+
+        using var scope = storeFile.EnterMutationScope();
+        var connections = LoadPersisted();
+        var profile = connections.FirstOrDefault(i => i.Name == name);
+        if (profile is null)
+            return false;
+
+        var expectedSession = sessionId.ToString("D");
+        if (SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.Enabled)
+                != SqlServerE2eFlagState.True
+            || SqlServerE2eMetadata.ReadFlag(profile, SqlServerE2eMetadata.Bootstrap)
+                != SqlServerE2eFlagState.False
+            || !profile.Metadata.TryGetValue(SqlServerE2eMetadata.SessionId, out var storedSession)
+            || !string.Equals(storedSession, expectedSession, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Connection '{name}' is not a non-bootstrap E2E connection owned by session '{expectedSession}'.");
+        }
+
+        connections.Remove(profile);
+        SavePersisted(connections);
+        return true;
     }
 
     /// <summary>Loads profile names in store order for provider-based selection.</summary>

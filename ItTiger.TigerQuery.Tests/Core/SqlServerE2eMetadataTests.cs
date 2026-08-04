@@ -12,10 +12,13 @@ public sealed class SqlServerE2eMetadataTests
     [Fact]
     public void TheReservedKeysAndValuesAreTheDocumentedLiterals()
     {
-        Assert.Equal("ittiger.", SqlServerE2eMetadata.ReservedKeyPrefix);
+        Assert.Equal("ittiger.e2e.", SqlServerE2eMetadata.ReservedKeyPrefix);
         Assert.Equal("ittiger.e2e.enabled", SqlServerE2eMetadata.Enabled);
         Assert.Equal("ittiger.e2e.bootstrap", SqlServerE2eMetadata.Bootstrap);
         Assert.Equal("ittiger.e2e.allow-database-create", SqlServerE2eMetadata.AllowDatabaseCreation);
+        Assert.Equal("ittiger.e2e.session-id", SqlServerE2eMetadata.SessionId);
+        Assert.Equal("ittiger.e2e.database.name", SqlServerE2eMetadata.DatabaseName);
+        Assert.Equal("ittiger.e2e.database.allow-drop", SqlServerE2eMetadata.AllowDatabaseDrop);
         Assert.Equal("true", SqlServerE2eMetadata.True);
         Assert.Equal("false", SqlServerE2eMetadata.False);
     }
@@ -102,7 +105,10 @@ public sealed class SqlServerE2eMetadataTests
     [Theory]
     [InlineData(SqlServerE2eMetadata.Enabled)]
     [InlineData(SqlServerE2eMetadata.Bootstrap)]
-    [InlineData("ittiger.future.setting")]
+    [InlineData(SqlServerE2eMetadata.SessionId)]
+    [InlineData(SqlServerE2eMetadata.DatabaseName)]
+    [InlineData(SqlServerE2eMetadata.AllowDatabaseDrop)]
+    [InlineData("ittiger.e2e.future.setting")]
     public void GenericProfileMutationsRejectKnownAndUnknownReservedKeys(string key)
     {
         var profile = Profile();
@@ -149,8 +155,10 @@ public sealed class SqlServerE2eMetadataTests
 
     [Theory]
     [InlineData("ittiger.e2e.enabled", true)]
-    [InlineData("ittiger.anything.at.all", true)]
-    [InlineData("ittiger.", true)]
+    [InlineData("ittiger.e2e.anything.at.all", true)]
+    [InlineData("ittiger.e2e.", true)]
+    [InlineData("ittiger.anything.at.all", false)]
+    [InlineData("ittiger.", false)]
     [InlineData("ITTIGER.e2e.enabled", false)]
     [InlineData("yourvendor.yourapp.role", false)]
     [InlineData("ittige", false)]

@@ -96,7 +96,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
     public async Task WithNoOverride_TheApplicationDefaultStoreIsUsed()
     {
         var add = await RunAsync(
-            "connections", "add", "in-default", "--non-interactive", "--server", "srv");
+            "connection", "add", "in-default", "--non-interactive", "--server", "srv");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         Assert.NotNull(_default.Store.Find("in-default"));
@@ -107,7 +107,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
     public async Task TheCliOptionSelectsAnAlternateStore()
     {
         var add = await RunAsync(
-            "connections", "add", "in-alternate",
+            "connection", "add", "in-alternate",
             "--non-interactive",
             "--server", "srv",
             "--tq-connection-store-file", _alternate.FilePath);
@@ -117,7 +117,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
         Assert.Null(_default.Store.Find("in-alternate"));
 
         var list = await RunAsync(
-            "connections", "list",
+            "connection", "list",
             "--non-interactive",
             "--tq-connection-store-file", _alternate.FilePath);
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, list.ExitCode);
@@ -129,7 +129,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
     {
         var add = await RunWithEnvironmentAsync(
             _alternate.FilePath,
-            "connections", "add", "from-environment", "--non-interactive", "--server", "srv");
+            "connection", "add", "from-environment", "--non-interactive", "--server", "srv");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         Assert.NotNull(_alternate.Store.Find("from-environment"));
@@ -144,7 +144,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
         // The environment names the alternate store; the option names a third one.
         var add = await RunWithEnvironmentAsync(
             _alternate.FilePath,
-            "connections", "add", "from-cli",
+            "connection", "add", "from-cli",
             "--non-interactive",
             "--server", "srv",
             "--tq-connection-store-file", third.FilePath);
@@ -162,11 +162,11 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
         // default, so a test cannot accidentally prove the opposite of shipping precedence.
         var viaEnvironment = await RunWithEnvironmentAsync(
             _alternate.FilePath,
-            "connections", "add", "env-wins", "--non-interactive", "--server", "srv");
+            "connection", "add", "env-wins", "--non-interactive", "--server", "srv");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, viaEnvironment.ExitCode);
 
         var viaCli = await RunAsync(
-            "connections", "add", "cli-wins",
+            "connection", "add", "cli-wins",
             "--non-interactive",
             "--server", "srv",
             "--tq-connection-store-file", _alternate.FilePath);
@@ -180,7 +180,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
     public async Task AnUnusableEnvironmentValueFailsTheRunInsteadOfFallingBack()
     {
         var result = await RunWithEnvironmentAsync(
-            "   ", "connections", "list", "--non-interactive");
+            "   ", "connection", "list", "--non-interactive");
 
         Assert.Equal((int)TigerSqlCmdExitCode.ConnectionInvalidArguments, result.ExitCode);
         Assert.Contains(SqlServerConnectionStoreEnvironment.ConnectionStoreFile, result.StdErr);
@@ -191,7 +191,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
     public async Task AnUnusableCliValueFailsTheRunInsteadOfFallingBack()
     {
         var result = await RunAsync(
-            "connections", "list", "--non-interactive", "--tq-connection-store-file", "   ");
+            "connection", "list", "--non-interactive", "--tq-connection-store-file", "   ");
 
         Assert.Equal((int)TigerSqlCmdExitCode.ConnectionInvalidArguments, result.ExitCode);
         Assert.Contains(TigerQueryCliContribution.ConnectionStoreFileOption, result.StdErr);
@@ -203,19 +203,19 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
     [Fact]
     public async Task TheRunCommandResolvesAgainstTheSameStoreTheConnectionCommandsWrote()
     {
-        // Each profile is created through `connections add` against a different store.
+        // Each profile is created through `connection add` against a different store.
         var addDefault = await RunAsync(
-            "connections", "add", "in-default", "--non-interactive", "--server", "srv");
+            "connection", "add", "in-default", "--non-interactive", "--server", "srv");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, addDefault.ExitCode);
 
         var addAlternate = await RunAsync(
-            "connections", "add", "in-alternate",
+            "connection", "add", "in-alternate",
             "--non-interactive",
             "--server", "srv",
             "--tq-connection-store-file", _alternate.FilePath);
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, addAlternate.ExitCode);
 
-        // Both stores now have exactly one profile, so the app-level `connections` provider
+        // Both stores now have exactly one profile, so the app-level `connection` provider
         // has choices and TigerCli validates -c against them before the handler runs. With
         // no override the provider enumerates the default store, so the alternate's name is
         // not an available choice.
@@ -238,7 +238,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
     public async Task TheRunCommandHandlerResolvesAgainstTheRunSelectedStore()
     {
         var add = await RunAsync(
-            "connections", "add", "in-default", "--non-interactive", "--server", "srv");
+            "connection", "add", "in-default", "--non-interactive", "--server", "srv");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         // The alternate store stays empty, so the provider offers no choices and its
@@ -257,7 +257,7 @@ public sealed class TigerSqlCmdConnectionStoreTests : IDisposable
     public async Task TheDefaultQueryCommandAlsoResolvesAgainstTheRunSelectedStore()
     {
         var add = await RunAsync(
-            "connections", "add", "in-default", "--non-interactive", "--server", "srv");
+            "connection", "add", "in-default", "--non-interactive", "--server", "srv");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         // Same check for the default command, whose handler reads the same shared options.

@@ -26,6 +26,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ItTiger.TigerQuery.Tests" />
+    <InternalsVisibleTo Include="ItTiger.TigerQuery" />
+    <InternalsVisibleTo Include="ItTiger.TigerQuery.CliCore" />
   </ItemGroup>
 
   <ItemGroup>

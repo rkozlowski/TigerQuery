@@ -133,7 +133,7 @@ See:
 tiger-sqlcmd run -c local -m sqlcmdex -f script.sql
 ```
 
-Here, `local` is a saved connection managed with `tiger-sqlcmd connections`.
+Here, `local` is a saved connection managed with `tiger-sqlcmd connection`.
 The `run` command supports `-v name=value` for variables, `--verbosity`,
 `--log-level`, and more. Route result sets to TigerQuery's built-in CSV writer
 with `-o`/`--output`:
@@ -155,7 +155,7 @@ single run can point somewhere else — a scratch store, a CI workspace, a
 container mount — without touching that default:
 
 ```bash
-tiger-sqlcmd connections list --tq-connection-store-file /tmp/scratch.json
+tiger-sqlcmd connection list --tq-connection-store-file /tmp/scratch.json
 export TIGERQUERY_CONNECTION_STORE_FILE=/workspace/runtime/connections.json
 ```
 
@@ -166,6 +166,26 @@ a developer's personal store. The option is app-wide in meaning but still an
 option, so write it after the command path and any positionals; use
 `--tq-connection-store-file=<path>` when the path begins with `-`. See
 [selecting the connection store](docs/api-docfx/connection-profiles.md#selecting-one-store).
+
+### Session-scoped E2E resources
+
+After configuring the authorized `tiger-sqlcmd-e2e` bootstrap, create a database
+and its paired owning connection with one session correlation ID:
+
+```bash
+tiger-sqlcmd e2e create --session-id 11111111-2222-3333-4444-555555555555 --name-part smoke
+tiger-sqlcmd e2e cleanup --session-id 11111111-2222-3333-4444-555555555555
+```
+
+To target a pre-existing database without granting TigerQuery permission to drop it:
+
+```bash
+tiger-sqlcmd connection clone-e2e source --database ExistingDb \
+  --session-id 11111111-2222-3333-4444-555555555555 --name-part readonly
+```
+
+See the [E2E connection-store guide](docs/features/e2e-connection-stores.md#session-scoped-cli-lifecycle)
+for naming, protected metadata, rollback, drop, and cleanup rules.
 
 ---
 

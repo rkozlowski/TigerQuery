@@ -18,7 +18,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     public async Task RegularAdd_E2eAuthorizesWithoutMakingTheProfileTheBootstrap()
     {
         var result = await RunAsync(
-            "connections", "add", "general-e2e",
+            "connection", "add", "general-e2e",
             "--non-interactive", "--server", "srv", "--e2e");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
@@ -43,7 +43,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     public async Task RegularAdd_CanAuthorizeDatabaseCreationExplicitly()
     {
         var result = await RunAsync(
-            "connections", "add", "database-e2e",
+            "connection", "add", "database-e2e",
             "--non-interactive", "--server", "srv",
             "--e2e", "--allow-database-create");
 
@@ -60,7 +60,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     public async Task RegularAdd_DatabaseCreationPermissionRequiresE2eAuthorization()
     {
         var result = await RunAsync(
-            "connections", "add", "invalid",
+            "connection", "add", "invalid",
             "--non-interactive", "--server", "srv",
             "--allow-database-create");
 
@@ -72,7 +72,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     public async Task BootstrapAdd_UsesTheTigerSqlCmdHostDefault()
     {
         var result = await RunAsync(
-            "connections", "add-e2e-bootstrap",
+            "connection", "add-e2e-bootstrap",
             "--non-interactive", "--server", "srv");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
@@ -86,7 +86,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     public async Task BootstrapAdd_ExplicitNameOverridesTheHostDefault()
     {
         var result = await RunAsync(
-            "connections", "add-e2e-bootstrap",
+            "connection", "add-e2e-bootstrap",
             "--non-interactive", "--name", "explicit-bootstrap", "--server", "srv",
             "--allow-database-create");
 
@@ -104,12 +104,12 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     public async Task BootstrapMetadataIsShownWithExistingMetadata()
     {
         var add = await RunAsync(
-            "connections", "add-e2e-bootstrap",
+            "connection", "add-e2e-bootstrap",
             "--non-interactive", "--name", "shown-bootstrap", "--server", "srv");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         var show = await RunAsync(
-            "connections", "show", "shown-bootstrap", "--non-interactive");
+            "connection", "show", "shown-bootstrap", "--non-interactive");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, show.ExitCode);
         Assert.Contains(SqlServerE2eMetadata.Enabled, show.StdOut, StringComparison.Ordinal);
@@ -120,12 +120,12 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     public async Task OrdinaryEditPreservesReservedE2eMetadataWithoutExposingLifecycleOptions()
     {
         var add = await RunAsync(
-            "connections", "add", "editable-e2e",
+            "connection", "add", "editable-e2e",
             "--non-interactive", "--server", "before", "--e2e");
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, add.ExitCode);
 
         var edit = await RunAsync(
-            "connections", "edit", "editable-e2e",
+            "connection", "edit", "editable-e2e",
             "--non-interactive", "--server", "after");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, edit.ExitCode);
@@ -133,7 +133,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
         Assert.Equal("after", profile.Server);
         Assert.Equal(SqlServerE2eMetadata.True, profile.Metadata[SqlServerE2eMetadata.Enabled]);
 
-        var help = await RunAsync("connections", "edit", "editable-e2e", "--help");
+        var help = await RunAsync("connection", "edit", "editable-e2e", "--help");
         Assert.DoesNotContain("--e2e", help.StdOut);
         Assert.DoesNotContain("--allow-database-create", help.StdOut);
     }
@@ -141,11 +141,11 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     [Theory]
     [InlineData(SqlServerE2eMetadata.Enabled)]
     [InlineData(SqlServerE2eMetadata.Bootstrap)]
-    [InlineData("ittiger.future.setting")]
+    [InlineData("ittiger.e2e.future.setting")]
     public async Task GenericMetadataSetRejectsKnownAndUnknownReservedKeys(string key)
     {
         var result = await RunAsync(
-            "connections", "add", "generic",
+            "connection", "add", "generic",
             "--non-interactive", "--server", "srv", "--metadata", $"{key}=true");
 
         Assert.Equal((int)TigerSqlCmdExitCode.ConnectionInvalidArguments, result.ExitCode);
@@ -156,7 +156,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     [Theory]
     [InlineData(SqlServerE2eMetadata.Enabled)]
     [InlineData(SqlServerE2eMetadata.Bootstrap)]
-    [InlineData("ittiger.future.setting")]
+    [InlineData("ittiger.e2e.future.setting")]
     public async Task GenericMetadataRemoveRejectsKnownAndUnknownReservedKeys(string key)
     {
         var profile = new SqlServerConnectionProfile
@@ -170,7 +170,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
         temp.Store.Add(profile);
 
         var result = await RunAsync(
-            "connections", "edit", "generic",
+            "connection", "edit", "generic",
             "--non-interactive", "--remove-metadata", key);
 
         Assert.Equal((int)TigerSqlCmdExitCode.ConnectionInvalidArguments, result.ExitCode);
@@ -187,17 +187,17 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
             Authentication = AuthenticationType.Integrated,
             Encrypt = EncryptOption.Mandatory
         };
-        profile.SetReservedMetadata("ittiger.future.setting", "future-value");
+        profile.SetReservedMetadata("ittiger.e2e.future.setting", "future-value");
         temp.Store.Add(profile);
 
         var show = await RunAsync(
-            "connections", "show", "newer-profile", "--non-interactive");
+            "connection", "show", "newer-profile", "--non-interactive");
         var list = await RunAsync(
-            "connections", "list", "--non-interactive",
-            "--metadata", "ittiger.future.setting=future-value");
+            "connection", "list", "--non-interactive",
+            "--metadata", "ittiger.e2e.future.setting=future-value");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, show.ExitCode);
-        Assert.Contains("ittiger.future.setting", show.StdOut);
+        Assert.Contains("ittiger.e2e.future.setting", show.StdOut);
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, list.ExitCode);
         Assert.Contains("newer-profile", list.StdOut);
     }
@@ -205,7 +205,7 @@ public sealed class SqlServerE2eConnectionCommandTests : IDisposable
     [Fact]
     public async Task PolishHelpContainsTheBootstrapCommandResources()
     {
-        var result = await RunAsync("connections", "--help", "--culture", "pl-PL");
+        var result = await RunAsync("connection", "--help", "--culture", "pl-PL");
 
         Assert.Equal((int)TigerSqlCmdExitCode.Ok, result.ExitCode);
         Assert.Contains("add-e2e-bootstrap", result.StdOut);

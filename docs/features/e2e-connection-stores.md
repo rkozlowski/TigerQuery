@@ -89,7 +89,7 @@ Create the expected bootstrap once, then leave the override unset:
 
 ```powershell
 Remove-Item Env:TIGERQUERY_CONNECTION_STORE_FILE -ErrorAction Ignore
-tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+tiger-sqlcmd connection add-e2e-bootstrap --non-interactive `
   --server sql01 --allow-database-create
 ```
 
@@ -102,7 +102,7 @@ For an isolated local run, CI agent, or container, select a writable alternate s
 
 ```powershell
 $env:TIGERQUERY_CONNECTION_STORE_FILE = 'C:\agent\state\tigerquery-e2e.json'
-tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+tiger-sqlcmd connection add-e2e-bootstrap --non-interactive `
   --server sql01 --allow-database-create
 ```
 
@@ -113,7 +113,7 @@ does not make a profile in the normal user store available.
 For an individual CLI invocation, the global TigerQuery option outranks the environment:
 
 ```powershell
-tiger-sqlcmd connections list `
+tiger-sqlcmd connection list `
   --tq-connection-store-file C:\scratch\connections.json
 ```
 
@@ -143,7 +143,7 @@ var app = TigerCliApp.CreateBuilder()
     .UseAssemblyMetadata(typeof(Program).Assembly)
     .UseAppResources(SqlServerConnectionCommands.CreateAppResources())
     .AddContribution(contribution)
-    .AddCommandGroup("connections", group =>
+    .AddCommandGroup("connection", group =>
     {
         SqlServerConnectionCommands.Configure(group, options =>
         {
@@ -161,14 +161,15 @@ bound, resolves the store path, and stores the result. `TigerQueryCliOptions.Sto
 then created lazily and reused for the run. A malformed override fails before a command
 handler, even for a command that would not otherwise open the store.
 
-Registering the contribution and mounting the `connections` group are separate opt-ins.
+Registering the contribution and mounting the `connection` group are separate opt-ins.
 Register the contribution at most once. It also contributes help metadata for
 `TIGERQUERY_CONNECTION_STORE_FILE`; a host adopting it must not register the same
 environment variable independently.
 
 ## E2E metadata and bootstrap selection
 
-TigerQuery owns three reserved, ordinal, case-sensitive metadata keys:
+TigerQuery owns the ordinal, case-sensitive `ittiger.e2e.*` namespace. The namespace
+currently defines these keys:
 
 ```text
 ittiger.e2e.enabled=true
@@ -181,12 +182,15 @@ ittiger.e2e.allow-database-create=true
 | `ittiger.e2e.enabled` | The profile may be used for TigerQuery E2E work. |
 | `ittiger.e2e.bootstrap` | The selected profile may act as an E2E bootstrap. |
 | `ittiger.e2e.allow-database-create` | E2E infrastructure may create databases through the profile. |
+| `ittiger.e2e.session-id` | Exact session safety-correlation GUID for a generated non-bootstrap connection. |
+| `ittiger.e2e.database.name` | Exact database targeted by that connection. |
+| `ittiger.e2e.database.allow-drop` | Exact lowercase Boolean granting or withholding database ownership. |
 
 Only the exact lowercase values `true` and `false` are valid. `True`, `1`, `yes`, an
 empty value, and values with surrounding whitespace are malformed. Malformed reserved
 metadata is an error, not a denial or an absent flag.
 
-The complete lowercase `ittiger.*` namespace is reserved for TigerQuery. Generic profile
+The complete lowercase `ittiger.e2e.*` namespace is reserved for TigerQuery. Generic profile
 and CLI metadata mutation rejects keys in that namespace. Applications must use their own
 prefix. Unknown reserved keys are preserved and ignored by older readers so newer stores
 remain forward-compatible. Use `SqlServerE2eMetadata.AuthorizeNewProfile` or
@@ -230,19 +234,19 @@ host convention that has never been configured describes a clean machine.
 
 ## Connection-management commands
 
-### `connections add --e2e`
+### `connection add --e2e`
 
 Use the regular add command for an E2E-authorized profile that is not the bootstrap:
 
 ```powershell
-tiger-sqlcmd connections add worker-e2e --non-interactive `
+tiger-sqlcmd connection add worker-e2e --non-interactive `
   --server sql01 --e2e
 ```
 
 Add database-creation permission only when that profile needs it:
 
 ```powershell
-tiger-sqlcmd connections add worker-e2e --non-interactive `
+tiger-sqlcmd connection add worker-e2e --non-interactive `
   --server sql01 --e2e --allow-database-create
 ```
 
@@ -250,12 +254,12 @@ tiger-sqlcmd connections add worker-e2e --non-interactive `
 `ittiger.e2e.enabled=true` and, when requested, the database-creation flag. It never writes
 `ittiger.e2e.bootstrap=true`.
 
-### `connections add-e2e-bootstrap [--name <name>]`
+### `connection add-e2e-bootstrap [--name <name>]`
 
 Use the dedicated command for a bootstrap profile:
 
 ```powershell
-tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+tiger-sqlcmd connection add-e2e-bootstrap --non-interactive `
   --server sql01 --allow-database-create
 ```
 
@@ -264,7 +268,7 @@ Without `--name`, the command uses the host's configured default (`tiger-sqlcmd-
 name:
 
 ```powershell
-tiger-sqlcmd connections add-e2e-bootstrap --name team-e2e `
+tiger-sqlcmd connection add-e2e-bootstrap --name team-e2e `
   --non-interactive --server sql01 --allow-database-create
 ```
 
@@ -274,9 +278,87 @@ an existing profile. Ordinary edit preserves reserved metadata but generic `--me
 and `--remove-metadata` cannot grant, alter, or remove reserved authorization.
 
 Older E2E profiles without `bootstrap=true` are invalid bootstraps. Preserve any needed
-settings, then recreate them with `connections add-e2e-bootstrap`, or use the public
+settings, then recreate them with `connection add-e2e-bootstrap`, or use the public
 TigerQuery-owned authorization API and persist the updated profile. Regular
-`connections add --e2e` is not a bootstrap migration.
+`connection add --e2e` is not a bootstrap migration.
+
+## Session-scoped CLI lifecycle
+
+The `tiger-sqlcmd e2e` group is a durable, connection-record-driven lifecycle. Every
+command requires a non-empty GUID `--session-id`; it is a safety correlation value, not a
+secret.
+
+### Paired create
+
+```powershell
+tiger-sqlcmd e2e create `
+  --session-id 11111111-2222-3333-4444-555555555555 `
+  --name-part smoke
+```
+
+One command creates both a new database and a saved connection targeting it. There is no
+database-only create command. The authorized bootstrap must have exact
+`enabled=true`, `bootstrap=true`, and `allow-database-create=true`. The copied profile
+preserves authentication and unresolved external references; resolved values are never
+persisted. If connection persistence fails, TigerQuery attempts to roll back only the exact
+database created by that invocation and distinguishes successful rollback from a rollback
+failure that needs manual attention.
+
+The generated database is `_TQ_E2E_<database-part>_<suffix>` and the connection is
+`E2E-<connection-part>-<suffix>`. `--name-part` defaults both parts;
+`--database-name-part` and `--connection-name-part` override their respective part. Without
+any part, `session` is used. Name parts are trimmed, runs of unsupported characters become
+one hyphen, and the result must contain an ASCII letter or digit and fit the SQL identifier
+limit. Prefixes are fixed and the same random suffix is used for both names.
+
+The paired connection receives the complete protected schema:
+
+```text
+ittiger.e2e.enabled=true
+ittiger.e2e.bootstrap=false
+ittiger.e2e.allow-database-create=false
+ittiger.e2e.session-id=<canonical-guid>
+ittiger.e2e.database.name=<exact-created-database-name>
+ittiger.e2e.database.allow-drop=true
+```
+
+### Clone for an existing database
+
+```powershell
+tiger-sqlcmd connection clone-e2e source `
+  --database ExistingDb `
+  --session-id 11111111-2222-3333-4444-555555555555 `
+  --name-part readonly
+```
+
+Clone performs no SQL operation. It preserves authentication and unresolved external
+references, retargets the clone to the exact selected database, rejects a generated name
+that already exists, and writes the same protected schema with
+`ittiger.e2e.database.allow-drop=false`. This is the supported path for pre-existing or
+read-only databases.
+
+### Drop and cleanup
+
+```powershell
+tiger-sqlcmd e2e drop --connection E2E-smoke-<suffix> `
+  --session-id 11111111-2222-3333-4444-555555555555
+tiger-sqlcmd e2e cleanup `
+  --session-id 11111111-2222-3333-4444-555555555555
+```
+
+Drop requires exact `enabled=true`, `bootstrap=false`, and session-ID metadata. It reads the
+database name and ownership Boolean only from protected metadata. With `allow-drop=true`,
+it additionally validates the exact `_TQ_E2E_` prefix, drops through the authorized
+bootstrap, and removes the connection only after the drop succeeds or the exact database
+is confirmed absent. With `allow-drop=false`, it never connects to SQL and removes only the
+saved connection.
+
+Cleanup enumerates matching protected non-bootstrap connection records, never database
+names or prefixes. It continues after each failure, reports dropped, absent, detached, and
+failed items, and returns non-zero while any matching record remains incomplete. Bootstrap
+records and other sessions are never selected. Regular `connection delete` refuses
+`allow-drop=true` records and directs callers to `e2e drop` or `e2e cleanup`; it permits
+`allow-drop=false` records.
 
 ## External value references
 
@@ -344,7 +426,7 @@ For SQL authentication without secrets in argv or the store:
 
 ```powershell
 $env:TQ_E2E_SQL_SERVER = 'sql01'
-tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+tiger-sqlcmd connection add-e2e-bootstrap --non-interactive `
   --authentication SqlPassword `
   --server-reference '{"Source":"EnvironmentVariable","Name":"TQ_E2E_SQL_SERVER"}' `
   --username-reference '{"Source":"File","Path":"C:\\secrets\\sql-auth.json","Format":"Json","Key":"username"}' `
@@ -359,7 +441,7 @@ token keys are also rejected through `--opt`.
 Alternatively, reference one complete connection string:
 
 ```powershell
-tiger-sqlcmd connections add-e2e-bootstrap --non-interactive `
+tiger-sqlcmd connection add-e2e-bootstrap --non-interactive `
   --connection-string-reference '{"Source":"EnvironmentVariable","Name":"TQ_E2E_CONNECTION_STRING"}' `
   --allow-database-create
 ```
@@ -637,7 +719,7 @@ not prove that the environment variable was absent.
 | Component | Owns |
 | --- | --- |
 | `ItTiger.TigerQuery.Core` | Connection profiles and stores, path precedence, external values, validation/redaction, reserved E2E metadata, neutral bootstrap resolution, and same-store profile copying. It opens no SQL connection during E2E resolution. |
-| `ItTiger.TigerQuery.CliCore` | Reusable TigerCli `connections` commands, `TigerQueryCliContribution`, the standard store option/environment help, `--e2e`, `add-e2e-bootstrap`, external-reference CLI binding, and semantic CLI outcomes. |
+| `ItTiger.TigerQuery.CliCore` | Reusable TigerCli `connection` commands, `TigerQueryCliContribution`, the standard store option/environment help, `--e2e`, `add-e2e-bootstrap`, external-reference CLI binding, and semantic CLI outcomes. |
 | `ItTiger.TigerQuery` | SQLCMD execution and the SQL-backed `SqlServerE2eDatabaseLifecycle`, exact ownership, setup/teardown execution, cleanup exceptions, and report-only orphan detection. |
 | `tiger-sqlcmd` | The executable host: shared-store default, `tiger-sqlcmd-e2e` convention, composition of Core/CliCore/engine, application exit codes, console UI, and child-process workflows. |
 

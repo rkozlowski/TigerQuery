@@ -126,6 +126,13 @@ public sealed class SqlServerConnectionProfile
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SqlServerConnectionValue? ConnectionStringValue { get; set; }
 
+    // Used only by dedicated E2E cloning so an unresolved complete connection-string
+    // reference can be retargeted without resolving or rewriting the reference.
+    [JsonInclude]
+    [JsonPropertyName("InitialCatalogOverride")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    internal string? InitialCatalogOverride { get; set; }
+
     /// <summary>Gets or sets the transport encryption policy.</summary>
     public EncryptOption Encrypt { get; set; }
 
@@ -184,7 +191,7 @@ public sealed class SqlServerConnectionProfile
     /// <param name="value">The opaque string value; an empty value is permitted.</param>
     /// <remarks>
     /// Keys and values are not trimmed or normalized. Keys in TigerQuery's reserved
-    /// <c>ittiger.*</c> namespace are rejected; only TigerQuery-owned operations may
+    /// <c>ittiger.e2e.*</c> namespace are rejected; only TigerQuery-owned operations may
     /// write them. Call
     /// <see cref="SqlServerConnectionStore.AddOrUpdate"/> to persist the change.
     /// </remarks>
@@ -208,7 +215,7 @@ public sealed class SqlServerConnectionProfile
     /// <param name="key">The non-empty, case-sensitive key.</param>
     /// <returns><see langword="true"/> when a value was removed.</returns>
     /// <remarks>
-    /// Keys in TigerQuery's reserved <c>ittiger.*</c> namespace are rejected; only
+    /// Keys in TigerQuery's reserved <c>ittiger.e2e.*</c> namespace are rejected; only
     /// TigerQuery-owned operations may remove them. Call
     /// <see cref="SqlServerConnectionStore.AddOrUpdate"/> to persist the change.
     /// </remarks>
@@ -232,6 +239,12 @@ public sealed class SqlServerConnectionProfile
             throw new ArgumentException("A TigerQuery-owned metadata key is required.", nameof(key));
 
         metadata[key] = value;
+    }
+
+    internal void ClearReservedMetadata()
+    {
+        foreach (var key in metadata.Keys.Where(SqlServerE2eMetadata.IsReservedKey).ToList())
+            metadata.Remove(key);
     }
 
     private static void ThrowIfReservedMetadataKey(string key)
@@ -338,7 +351,10 @@ public sealed class SqlServerConnectionProfile
                 externalValues);
             try
             {
-                return new SqlConnectionStringBuilder(connectionString);
+                var builder = new SqlConnectionStringBuilder(connectionString);
+                if (InitialCatalogOverride is not null)
+                    builder.InitialCatalog = InitialCatalogOverride;
+                return builder;
             }
             catch (Exception ex) when (ex is ArgumentException or FormatException)
             {

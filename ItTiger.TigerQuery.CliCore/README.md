@@ -2,13 +2,14 @@
 
 Reusable **TigerCli command group for SQL Server connection management**, used by `tiger-sqlcmd` and other TigerQuery-family command-line tools.
 
-This package is for **developers building [TigerCli](https://www.nuget.org/packages/ItTiger.TigerCli/) applications**, not for end users. Mount it in your app and you get a complete `connections` command group:
+This package is for **developers building [TigerCli](https://www.nuget.org/packages/ItTiger.TigerCli/) applications**, not for end users. Mount it in your app and you get a complete `connection` command group:
 
 - `list` / `show` — structured table and details output, including metadata filters and a separate metadata section
 - `add` / `edit` — parser-driven prompting, provider-backed selection (including live database enumeration), shared connection-value options, TigerCli `.AsEdit()` merge semantics, and repeatable metadata mutations
 - Five non-promptable external-value options for server, database, SQL username,
   SQL password, and a complete connection string
 - `add-e2e-bootstrap [--name <name>]` and add-only `--e2e` / `--allow-database-create` switches for explicit E2E setup
+- `clone-e2e` — session-scoped, non-owning clone for an existing database
 - `delete`
 - Domain validation with clear errors and portable `TigerCliExitKind` outcomes
 - en-US and pl-PL resources, merged behind your app's own resources so you can override any string
@@ -45,7 +46,7 @@ var app = TigerCliApp.CreateBuilder()
     // Chain your own ResourceManager(s) in front to override or localize strings.
     .UseAppResources(SqlServerConnectionCommands.CreateAppResources())
     .AddContribution(tigerQuery)
-    .AddCommandGroup("connections", group =>
+    .AddCommandGroup("connection", group =>
     {
         group.SetDescription("Manage saved connections");
         SqlServerConnectionCommands.Configure(group, options =>
@@ -71,7 +72,7 @@ A run reads and writes exactly one store file. Which file it is gets decided onc
 
 An unusable higher-priority value **fails the run** rather than falling through to the next source, so a build agent pointed at the wrong path never quietly uses a developer's personal store. Precedence, environment reading, and path normalization all live in `ItTiger.TigerQuery.Core`; this package only carries the value across.
 
-Registering the contribution and mounting the `connections` group are separate opt-ins. Register `TigerQueryCliContribution` at most once, and if your app already called `AddEnvironmentVariable("TIGERQUERY_CONNECTION_STORE_FILE", …)`, drop that registration — the contribution adds it and a duplicate fails at `Build()`.
+Registering the contribution and mounting the `connection` group are separate opt-ins. Register `TigerQueryCliContribution` at most once, and if your app already called `AddEnvironmentVariable("TIGERQUERY_CONNECTION_STORE_FILE", …)`, drop that registration — the contribution adds it and a duplicate fails at `Build()`.
 
 The one rule that matters: **create the `TigerQueryCliOptions` once** and give that same instance to `AddContribution`, to `options.TigerQuery`, and to your own command factories and services. Two instances, or one registered and a different one passed to the commands, gives you a run whose resolved path nothing reads.
 
@@ -82,8 +83,8 @@ The one rule that matters: **create the `TigerQueryCliOptions` once** and give t
 `--tq-connection-store-file` is app-wide in meaning but it is still an option, so TigerCli's grammar applies: write it **after the command path and any positional arguments**.
 
 ```text
-your-tool connections list --tq-connection-store-file C:\temp\e2e.json   valid
-your-tool --tq-connection-store-file C:\temp\e2e.json connections list   invalid
+your-tool connection list --tq-connection-store-file C:\temp\e2e.json   valid
+your-tool --tq-connection-store-file C:\temp\e2e.json connection list   invalid
 your-tool "select 1" --tq-connection-store-file=-oddly-named.json        valid (=form for values starting with -)
 ```
 
@@ -132,12 +133,18 @@ Your application keeps full ownership of everything around the group: overall ap
 filters; every filter must match. Metadata remains opaque, application-owned,
 case-sensitive string data, is never included in connection strings, and must
 not contain secrets. Generic mutations reject the reserved lowercase
-`ittiger.*` namespace. The E2E creation switches are the TigerQuery-owned path
+`ittiger.e2e.*` namespace. The E2E creation switches are the TigerQuery-owned path
 that writes their exact authorization keys. Regular `add --e2e` writes
 `ittiger.e2e.enabled=true` but never the bootstrap flag. `add-e2e-bootstrap`
 also writes `ittiger.e2e.bootstrap=true`. Resolution requires both the expected
 name and that bootstrap authorization; an authorized profile is never selected
 implicitly.
+
+`clone-e2e <source> --database <name> --session-id <guid>` preserves authentication
+and unresolved references, targets the selected pre-existing database, and writes
+protected session metadata with `ittiger.e2e.database.allow-drop=false`. Regular
+`delete` refuses a protected owning record with `allow-drop=true`, directing the caller
+to the host's dedicated E2E drop or cleanup workflow.
 
 ## Localization
 

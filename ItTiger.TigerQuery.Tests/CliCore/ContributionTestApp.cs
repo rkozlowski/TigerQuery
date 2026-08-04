@@ -97,7 +97,7 @@ internal sealed class ContributionTestApp
             .ExitCategory(TigerCliExitCategory.Usage, ContributionExitCode.Usage)
             .ExitKind(TigerCliExitKind.ValidationError, ContributionExitCode.Validation)
             .AddContribution(contribution)
-            .AddCommandGroup("connections", group =>
+            .AddCommandGroup("connection", group =>
                 SqlServerConnectionCommands.Configure(group, options =>
                 {
                     options.TigerQuery = contribution.Options;

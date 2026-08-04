@@ -57,7 +57,7 @@
   <data name="Cmd_Run_Description" xml:space="preserve"><value>Advanced sqlcmd execution: run a script file or query with variables, output routing, mode, verbosity and logging.</value></data>
 
   <!-- ── Option metadata (identifier keys) ──────────────────────────── -->
-  <data name="Opt_Connection_Description" xml:space="preserve"><value>Name of a saved SQL Server connection (managed via the 'connections' command).</value></data>
+  <data name="Opt_Connection_Description" xml:space="preserve"><value>Name of a saved SQL Server connection (managed via the 'connection' command).</value></data>
   <data name="Opt_Query_Description" xml:space="preserve"><value>SQL query to run.</value></data>
   <data name="Opt_Run_File_Description" xml:space="preserve"><value>Path to the SQL script file to execute.</value></data>
   <data name="Opt_Run_Query_Description" xml:space="preserve"><value>Inline SQL query to execute.</value></data>
