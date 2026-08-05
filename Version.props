@@ -9,7 +9,7 @@
   -->
 
   <PropertyGroup>
-    <Version>0.8.4</Version>
+    <Version>0.8.5</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     <UtcBuildTimestamp>$([System.DateTime]::UtcNow.ToString('yyyyMMdd.HHmmss'))</UtcBuildTimestamp>
