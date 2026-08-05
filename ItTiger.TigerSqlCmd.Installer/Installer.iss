@@ -1,6 +1,6 @@
 ; ============================================
 ; TigerSqlCmd Installer Script
-; Version:     0.8.5
+; Version:     0.8.6
 ; InstallType: Machine-wide (admin required)
 ; Author:      IT Tiger
 ; ============================================
@@ -20,17 +20,17 @@
 ; Stable installer identity used for upgrades and by package managers. It must never change.
 AppId=ItTiger.TigerSqlCmd
 AppName=TigerSqlCmd
-AppVersion=0.8.5
+AppVersion=0.8.6
 DefaultDirName={autopf}\ItTiger\TigerSqlCmd
 DefaultGroupName=TigerSqlCmd
-OutputBaseFilename=TigerSqlCmdSetup_0_8_5
+OutputBaseFilename=TigerSqlCmdSetup_0_8_6
 Compression=lzma
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
 VersionInfoDescription=TigerSqlCmd installer
-VersionInfoVersion=0.8.5.0
+VersionInfoVersion=0.8.6.0
 UninstallDisplayIcon={app}\cli\tiger-sqlcmd.exe
 AlwaysShowDirOnReadyPage=yes
 
