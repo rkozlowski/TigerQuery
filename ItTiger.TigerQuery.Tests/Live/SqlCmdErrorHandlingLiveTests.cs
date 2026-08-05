@@ -126,8 +126,9 @@ public sealed class SqlCmdErrorHandlingLiveTests
             GO
             """);
 
-        // Documented compatibility: an ignored failed batch keeps the run successful.
-        Assert.Equal(ExecutionResultCode.Success, run.Result.ResultCode);
+        // Ignore keeps executing the script; it does not make the run succeed. The
+        // later batch's side effect and the failing result code are both required.
+        Assert.Equal(ExecutionResultCode.BatchFailed, run.Result.ResultCode);
         Assert.Equal(1, run.Result.FailedBatches);
         Assert.Equal(2, run.Result.ExecutedBatches);
         Assert.Equal(["first", "later"], await scratch.ReadMarkersAsync());
@@ -162,7 +163,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
             GO
             """);
 
-        Assert.Equal(ExecutionResultCode.Success, run.Result.ResultCode);
+        Assert.Equal(ExecutionResultCode.BatchFailed, run.Result.ResultCode);
         Assert.Equal(1, run.Result.FailedBatches);
         Assert.Equal(2, run.Result.ExecutedBatches);
         Assert.Equal(["first", "later"], await scratch.ReadMarkersAsync());
@@ -216,7 +217,7 @@ public sealed class SqlCmdErrorHandlingLiveTests
             GO 3
             """);
 
-        Assert.Equal(ExecutionResultCode.Success, run.Result.ResultCode);
+        Assert.Equal(ExecutionResultCode.BatchFailed, run.Result.ResultCode);
         Assert.Equal(1, run.Result.FailedBatches);
         Assert.Equal(2, run.Result.ExecutedBatches);
         Assert.Equal(3, (await scratch.ReadMarkersAsync()).Count);

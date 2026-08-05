@@ -79,9 +79,10 @@ internal sealed class OutputTestHost : IDisposable
         string script,
         TigerQueryExecutionMode executionMode = TigerQueryExecutionMode.Streaming,
         OutputRoutingOptions? routing = null,
-        Action<TigerQueryEngineOptions>? configure = null)
+        Action<TigerQueryEngineOptions>? configure = null,
+        SqlCmdMode mode = SqlCmdMode.SqlCmd)
     {
-        return RunAsync(script, BuildOptions(executionMode, routing, configure));
+        return RunAsync(script, BuildOptions(executionMode, routing, configure, mode));
     }
 
     public async Task<ExecutionResult> RunAsync(string script, TigerQueryEngineOptions options)
@@ -102,7 +103,8 @@ internal sealed class OutputTestHost : IDisposable
     public TigerQueryEngineOptions BuildOptions(
         TigerQueryExecutionMode executionMode = TigerQueryExecutionMode.Streaming,
         OutputRoutingOptions? routing = null,
-        Action<TigerQueryEngineOptions>? configure = null)
+        Action<TigerQueryEngineOptions>? configure = null,
+        SqlCmdMode mode = SqlCmdMode.SqlCmd)
     {
         routing ??= new OutputRoutingOptions();
         if (routing.BaseDirectory is null)
@@ -112,7 +114,7 @@ internal sealed class OutputTestHost : IDisposable
 
         var options = new TigerQueryEngineOptions
         {
-            Mode = SqlCmdMode.SqlCmd,
+            Mode = mode,
             ExecutionMode = executionMode,
             OutputRouting = routing,
             OnResultSet = result =>

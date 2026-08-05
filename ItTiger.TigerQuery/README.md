@@ -120,11 +120,11 @@ The effective policy starts at `ContinueOnError` and is updated by `:ON ERROR EX
 | `FailedBatches` | incremented | incremented |
 | `ExecutedBatches` | not incremented for the failing attempt | not incremented for the failing attempt |
 | Later batches | not started; no `BatchStart`/`BatchEnd` for them | the next scheduled batch runs |
-| `ResultCode` | `BatchFailed`, or `Fatal` for a fatal server error | `Success` |
+| `ResultCode` | `BatchFailed`, or `Fatal` for a fatal server error | `BatchFailed`, or `Fatal` for a fatal server error |
 
 `GO n` iterations follow the same rule individually, and a fatal server error stops the run under either policy.
 
-For compatibility, an ignored failure keeps `ResultCode` at `Success` while `FailedBatches` is greater than zero, so a caller that tolerates no failed batch should check `FailedBatches` as well. Exit-on-error never returns `Success`.
+The policy decides how much of the script runs, not what the run reports. `ResultCode` is `Success` only when `FailedBatches` is zero: continuing past a failed batch still ends the run as `BatchFailed`, and a later successful batch never clears an earlier failure.
 
 Every diagnostic reaches `OnMessage` with its original number, severity, state, procedure, and line, and a diagnostic delivered both as a message and on a thrown exception is raised once. A batch that fails without a thrown exception carries a `SqlBatchErrorException` on `BatchEnd.Exception` and `ExecutionResult.Exception`, whose `Errors` collection holds those diagnostics.
 

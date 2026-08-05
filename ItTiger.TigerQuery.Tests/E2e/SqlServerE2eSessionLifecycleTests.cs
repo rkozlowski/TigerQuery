@@ -147,8 +147,114 @@ public sealed class SqlServerE2eSessionLifecycleTests
             "owning", Session, TestContext.Current.CancellationToken);
 
         Assert.Equal(SqlServerE2eDropDisposition.DatabaseDroppedAndConnectionRemoved, result.Disposition);
-        Assert.Equal("DROP DATABASE [_TQ_E2E_owned_suffix];", Assert.Single(executor.Executions));
+        Assert.Equal(ForcedDropScript("_TQ_E2E_owned_suffix"), Assert.Single(executor.Executions));
+        Assert.Equal(
+            new Dictionary<string, string> { ["@databaseName"] = "_TQ_E2E_owned_suffix" },
+            Assert.Single(executor.Parameters));
         Assert.Null(temp.Store.Find("owning"));
+    }
+
+    /// <summary>
+    /// The teardown is one batch on one connection so that no other session can take the
+    /// single-user slot between the forced rollback and the drop, the existence test is a
+    /// bound parameter, and only the exact owned name is ever quoted into an identifier.
+    /// </summary>
+    [Fact]
+    public async Task OwningDropForcesSingleUserAndDropsInOneGuardedBatch()
+    {
+        using var temp = new TempStore();
+        temp.AddBootstrap();
+        temp.Store.CopyForE2eSession(
+            "bootstrap", "owning", "_TQ_E2E_owned_suffix", Session, true);
+        var executor = new RecordingExecutor();
+        executor.ExistingDatabases.Add("_TQ_E2E_owned_suffix");
+
+        await Lifecycle(temp, executor).DropAsync(
+            "owning", Session, TestContext.Current.CancellationToken);
+
+        var script = Assert.Single(executor.Executions);
+        Assert.Equal("""
+            USE [master];
+
+            IF DB_ID(@databaseName) IS NOT NULL
+            BEGIN
+                ALTER DATABASE [_TQ_E2E_owned_suffix]
+                    SET SINGLE_USER
+                    WITH ROLLBACK IMMEDIATE;
+
+                DROP DATABASE [_TQ_E2E_owned_suffix];
+            END
+            """,
+            script);
+        Assert.DoesNotContain("GO", script, StringComparison.Ordinal);
+        Assert.Equal("_TQ_E2E_owned_suffix", Assert.Single(executor.Parameters)["@databaseName"]);
+
+        // The pool is returned before SQL Server is asked to disconnect everybody else.
+        Assert.Single(executor.ClearedPools);
+    }
+
+    [Fact]
+    public async Task OwningDropOfAnAbsentDatabaseStillRemovesTheOwningConnection()
+    {
+        using var temp = new TempStore();
+        temp.AddBootstrap();
+        temp.Store.CopyForE2eSession(
+            "bootstrap", "owning", "_TQ_E2E_gone_suffix", Session, true);
+        var executor = new RecordingExecutor();
+
+        var result = await Lifecycle(temp, executor).DropAsync(
+            "owning", Session, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SqlServerE2eDropDisposition.DatabaseAbsentAndConnectionRemoved, result.Disposition);
+        Assert.Empty(executor.Executions);
+        Assert.Null(temp.Store.Find("owning"));
+    }
+
+    [Fact]
+    public async Task AFailedForcedDropPreservesTheOwningConnectionRecord()
+    {
+        using var temp = new TempStore();
+        temp.AddBootstrap();
+        temp.Store.CopyForE2eSession(
+            "bootstrap", "owning", "_TQ_E2E_stuck_suffix", Session, true);
+        var executor = new RecordingExecutor { FailDropContaining = "_TQ_E2E_stuck_suffix" };
+        executor.ExistingDatabases.Add("_TQ_E2E_stuck_suffix");
+
+        await Assert.ThrowsAsync<IOException>(() => Lifecycle(temp, executor).DropAsync(
+            "owning", Session, TestContext.Current.CancellationToken));
+
+        var owning = temp.Store.Find("owning");
+        Assert.NotNull(owning);
+        Assert.Equal(
+            "_TQ_E2E_stuck_suffix",
+            owning.Metadata[SqlServerE2eMetadata.DatabaseName]);
+        Assert.Equal(
+            SqlServerE2eMetadata.True,
+            owning.Metadata[SqlServerE2eMetadata.AllowDatabaseDrop]);
+    }
+
+    /// <summary>
+    /// The forced path is reserved for owned databases. A clone records
+    /// <c>allow-drop=false</c>, and cleaning it up must not emit any SQL at all — not a
+    /// drop, and not the mode change that would disconnect that database's real users.
+    /// </summary>
+    [Fact]
+    public async Task NonOwningCleanupNeverAltersOrDropsItsTargetDatabase()
+    {
+        using var temp = new TempStore();
+        temp.AddBootstrap();
+        temp.Store.CopyForE2eSession("bootstrap", "clone", "SharedProductionish", Session, false);
+        var executor = new RecordingExecutor();
+        executor.ExistingDatabases.Add("SharedProductionish");
+
+        var result = await Lifecycle(temp, executor).DropAsync(
+            "clone", Session, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SqlServerE2eDropDisposition.ConnectionRemoved, result.Disposition);
+        Assert.Empty(executor.Executions);
+        Assert.Empty(executor.Queries);
+        Assert.Empty(executor.ClearedPools);
+        Assert.Null(temp.Store.Find("clone"));
     }
 
     [Fact]
@@ -197,7 +303,7 @@ public sealed class SqlServerE2eSessionLifecycleTests
 
         Assert.True(result.IsComplete);
         Assert.Equal(2, result.Items.Count);
-        Assert.Contains("DROP DATABASE [_TQ_E2E_owned_suffix];", executor.Executions);
+        Assert.Contains(ForcedDropScript("_TQ_E2E_owned_suffix"), executor.Executions);
         Assert.DoesNotContain(executor.Executions, sql => sql.Contains("ExistingDb", StringComparison.Ordinal));
         Assert.DoesNotContain(executor.Executions, sql => sql.Contains("other", StringComparison.Ordinal));
         Assert.Null(temp.Store.Find("owning"));
@@ -219,7 +325,12 @@ public sealed class SqlServerE2eSessionLifecycleTests
             Session, TestContext.Current.CancellationToken);
 
         Assert.False(result.IsComplete);
-        Assert.Single(result.Items, item => !item.IsSuccess);
+        var failure = Assert.Single(result.Items, item => !item.IsSuccess);
+        Assert.Equal("fails", failure.ConnectionName);
+        Assert.Equal("drop failed", failure.Error);
+
+        // The later candidate was still attempted after the earlier one failed.
+        Assert.Contains(result.Items, item => item.ConnectionName == "succeeds" && item.IsSuccess);
         Assert.NotNull(temp.Store.Find("fails"));
         Assert.Null(temp.Store.Find("succeeds"));
     }
@@ -239,6 +350,20 @@ public sealed class SqlServerE2eSessionLifecycleTests
         Assert.True(temp.Store.Delete("non-owning"));
         Assert.NotNull(temp.Store.Find("owning"));
     }
+
+    /// <summary>The exact guarded teardown batch the lifecycle is expected to submit.</summary>
+    private static string ForcedDropScript(string databaseName) => $"""
+        USE [master];
+
+        IF DB_ID(@databaseName) IS NOT NULL
+        BEGIN
+            ALTER DATABASE [{databaseName}]
+                SET SINGLE_USER
+                WITH ROLLBACK IMMEDIATE;
+
+            DROP DATABASE [{databaseName}];
+        END
+        """;
 
     private static SqlServerE2eSessionLifecycle Lifecycle(
         TempStore temp,
@@ -275,17 +400,30 @@ public sealed class SqlServerE2eSessionLifecycleTests
 
     private sealed class RecordingExecutor : ISqlServerE2eDatabaseExecutor
     {
+        private static readonly IReadOnlyDictionary<string, string> NoParameters =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
         public List<string> Executions { get; } = [];
+        public List<IReadOnlyDictionary<string, string>> Parameters { get; } = [];
+        public List<string> ClearedPools { get; } = [];
         public List<string> Queries { get; } = [];
         public HashSet<string> ExistingDatabases { get; } = new(StringComparer.Ordinal);
         public string? FailDropContaining { get; init; }
 
-        public void ClearPool(string connectionString) { }
+        public void ClearPool(string connectionString) => ClearedPools.Add(connectionString);
 
-        public Task ExecuteAsync(string connectionString, string script, CancellationToken cancellationToken)
+        public Task ExecuteAsync(string connectionString, string script, CancellationToken cancellationToken) =>
+            ExecuteAsync(connectionString, script, NoParameters, cancellationToken);
+
+        public Task ExecuteAsync(
+            string connectionString,
+            string script,
+            IReadOnlyDictionary<string, string> parameters,
+            CancellationToken cancellationToken)
         {
             Executions.Add(script);
-            if (script.StartsWith("DROP DATABASE", StringComparison.Ordinal)
+            Parameters.Add(parameters);
+            if (script.Contains("DROP DATABASE", StringComparison.Ordinal)
                 && FailDropContaining is not null
                 && script.Contains(FailDropContaining, StringComparison.Ordinal))
                 return Task.FromException(new IOException("drop failed"));

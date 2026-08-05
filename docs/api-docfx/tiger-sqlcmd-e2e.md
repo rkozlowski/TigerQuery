@@ -269,6 +269,48 @@ If the exact owned database exists, TigerQuery drops it and then removes the con
 If it is already absent, TigerQuery removes the connection. If the drop fails, the
 owning record remains so the same exact operation can be retried.
 
+### Forced teardown of an owned database
+
+An interrupted deployment, an abandoned tool, or a crashed test host can leave work open
+inside a session database, and an ordinary `DROP DATABASE` against it either reports that
+the database is in use or waits indefinitely for it to become free. Teardown of a resource
+TigerQuery already owns must not depend on that, so the owned path forces the database into
+single-user mode with an immediate rollback and drops it in the same guarded batch, on one
+connection:
+
+```sql
+USE [master];
+
+IF DB_ID(@exactDatabaseName) IS NOT NULL
+BEGIN
+    ALTER DATABASE [exact-database-name]
+        SET SINGLE_USER
+        WITH ROLLBACK IMMEDIATE;
+
+    DROP DATABASE [exact-database-name];
+END
+```
+
+**Uncommitted work in that database is rolled back and its sessions are disconnected.** A
+session database is disposable by construction, so that is the intended outcome; treat any
+result you still need as something to read out before teardown.
+
+This is the last step of the drop, not the first. It runs only after every existing
+ownership check has passed — the exact saved connection, `ittiger.e2e.enabled=true`,
+`ittiger.e2e.bootstrap=false`, an exact `--session-id` match, the exact database name from
+protected metadata, `ittiger.e2e.database.allow-drop=true`, the `_TQ_E2E_` prefix
+validation, and an authorized bootstrap connection. Nothing about it scans, adopts, or
+sweeps by prefix, and the database name reaches the batch as the exact recorded value.
+
+**A non-owning cloned connection never authorizes teardown.** A record written by
+`connection clone-e2e` carries `ittiger.e2e.database.allow-drop=false`; cleaning it up
+removes the saved connection and issues no SQL at all. Its target database is never opened,
+never altered, never forced into single-user mode, and never dropped — including when other
+sessions are actively using it.
+
+If the forced rollback or the drop fails, the owning connection record is kept with its
+exact database name so the identical operation can be retried, and the failure is reported.
+
 ## Handing the session connection to an external tool
 
 A session database is usually not the end of the job. Something has to deploy a schema into
@@ -389,9 +431,12 @@ finally {
 }
 ```
 
-Cleanup of a non-owning clone never resolves the bootstrap, opens SQL, or drops the
-database. It removes only the exact saved connection. `e2e drop` has the same non-owning
-behavior when given that one connection and its exact session ID.
+Cleanup of a non-owning clone never resolves the bootstrap, opens SQL, alters the
+database, or drops it. It removes only the exact saved connection. `e2e drop` has the same
+non-owning behavior when given that one connection and its exact session ID. The forced
+single-user teardown described in
+[Forced teardown of an owned database](#forced-teardown-of-an-owned-database) is
+unreachable from a cloned record.
 
 ## Parallel jobs and cleanup safety
 

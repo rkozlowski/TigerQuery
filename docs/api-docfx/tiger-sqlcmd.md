@@ -318,6 +318,37 @@ tiger-sqlcmd run -c local -f deploy.sql --mode SqlCmdEx -v TargetDatabase=Contro
 
 Use `--mode Normal` only when sqlcmd directives should be sent as ordinary SQL text.
 
+### Batch failure and the `run` exit code
+
+**Any SQL batch failure makes `run` return a nonzero exit code.** A batch fails when SQL
+Server reports an error of severity 11 or higher for it, which includes the severity 11-16
+errors the provider delivers as messages instead of throwing — `RAISERROR(..., 16, ...)`,
+`THROW`, a failed `DROP DATABASE`, and ordinary compilation errors such as an invalid
+object name. Reaching the end of the script is not success.
+
+`:on error exit` and `:on error ignore` decide **how much of the script runs**, not what
+the process reports:
+
+| Script | Later batches | Exit code |
+| --- | --- | --- |
+| Every batch succeeds | All run | `0` |
+| A batch fails, default or `:on error ignore` | Later batches still run | `1` (batch failed) |
+| A batch fails under `:on error exit` | Not started | `1` (batch failed) |
+| A fatal server error | Not started | `2` |
+
+A later successful batch never clears an earlier failure, and successfully writing a
+routed result file never masks a SQL failure. Both modes, `SqlCmd` and `SqlCmdEx`, behave
+identically here.
+
+Scripts and agents must branch on the exit code. SQL Server's error text stays on the
+console exactly as before — it is diagnostics for a human or a log, not the success
+contract, and it must never be parsed to decide whether a run worked:
+
+```powershell
+& tiger-sqlcmd run -c local -f deploy.sql --non-interactive --no-color
+if ($LASTEXITCODE -ne 0) { throw "deploy.sql failed with exit code $LASTEXITCODE." }
+```
+
 ## Running an external tool: `exec`
 
 ### Why the command exists
@@ -517,7 +548,9 @@ Use `--verbosity`, `--log-file`, and `--log-level` for operational diagnostics. 
 connection strings and resolved secrets are never printed. `--no-color` is useful when a
 job captures output, and `--help-env` lists recognized environment variables.
 
-Process exit codes and diagnostics are the automation contract. Run
+Process exit codes and diagnostics are the automation contract. `run` returns `0` only
+when every batch it started succeeded; see
+[Batch failure and the `run` exit code](#batch-failure-and-the-run-exit-code). Run
 `tiger-sqlcmd --help-errors` for the authoritative table. Important values are `0`
 success, `1` batch failure, `2` fatal SQL or connection-domain validation, `3`
 cancellation, `4` connection failure/not found, `5` parse error/already exists, `6`

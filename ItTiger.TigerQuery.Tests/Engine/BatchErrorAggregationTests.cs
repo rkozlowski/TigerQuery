@@ -90,8 +90,9 @@ public sealed class BatchErrorAggregationTests
             """,
             TestContext.Current.CancellationToken);
 
-        // Documented compatibility: an ignored failed batch keeps the run successful.
-        Assert.Equal(ExecutionResultCode.Success, result.ResultCode);
+        // Ignore governs how much of the script runs, not what the run reports: the
+        // later batch executes and the run still ends as a failure.
+        Assert.Equal(ExecutionResultCode.BatchFailed, result.ResultCode);
         Assert.Equal(1, result.FailedBatches);
         Assert.Equal(2, result.ExecutedBatches);
         Assert.Equal(
@@ -261,7 +262,7 @@ public sealed class BatchErrorAggregationTests
             ":ON ERROR IGNORE\r\nREPEAT\r\nGO 3\r\n",
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(ExecutionResultCode.Success, result.ResultCode);
+        Assert.Equal(ExecutionResultCode.BatchFailed, result.ResultCode);
         Assert.Equal(1, result.FailedBatches);
         Assert.Equal(2, result.ExecutedBatches);
         Assert.Equal(3, probe.ExecutionCount);
@@ -285,8 +286,10 @@ public sealed class BatchErrorAggregationTests
         Assert.Equal(["end:1:1:True", "end:2:1:False", "end:3:1:True"],
             events.Where(item => item.StartsWith("end:", StringComparison.Ordinal)));
 
-        // The final result carries no exception because the last attempt succeeded.
+        // The final result carries no exception because the last attempt succeeded, but
+        // that success does not erase the failure recorded for the middle batch.
         Assert.Null(result.Exception);
+        Assert.Equal(ExecutionResultCode.BatchFailed, result.ResultCode);
     }
 
     [Theory]

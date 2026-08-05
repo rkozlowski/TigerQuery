@@ -20,7 +20,7 @@ public enum TigerSqlCmdExitCode
     [TigerText("OK", Description = "Execution completed successfully.")]
     Ok = 0,
 
-    [TigerText("Batch failed", Description = "A batch failed and execution stopped.")]
+    [TigerText("Batch failed", Description = "At least one SQL batch failed, whether or not the run continued past it.")]
     BatchFailed = 1,
 
     [TigerText("Fatal SQL error", Description = "A fatal SQL error ended execution.")]

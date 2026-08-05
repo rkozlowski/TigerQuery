@@ -32,7 +32,11 @@ namespace ItTiger.TigerQuery.Engine;
 /// errors the provider delivers as informational messages instead of throwing. A
 /// failing attempt increments the failed count, ends with an unsuccessful batch-end
 /// carrying a diagnostic, and, unless the effective policy is continue-on-error,
-/// stops the run without starting any later batch.
+/// stops the run without starting any later batch. The effective policy decides
+/// whether later batches run; it does not decide the outcome. Any failed attempt
+/// makes the run's <see cref="ExecutionResult.ResultCode"/> something other than
+/// <see cref="ExecutionResultCode.Success"/>, and a later successful batch never
+/// clears an earlier failure.
 /// </para>
 /// </remarks>
 public sealed class TigerQueryEngine
@@ -434,6 +438,14 @@ public sealed class TigerQueryEngine
             if (stop)
                 break;
         }
+
+        // A batch that failed under an effective continue-on-error policy did not stop
+        // the run, but it is still a failure of the run. The terminal result code is the
+        // automation contract, so reaching the end of the script cannot report success
+        // and a later successful batch cannot erase an earlier failed one. Fatal,
+        // cancellation, and output failures already set a more specific code and keep it.
+        if (resultCode == ExecutionResultCode.Success && failed > 0)
+            resultCode = ExecutionResultCode.BatchFailed;
 
         // Every destination is flushed and closed whether the run succeeded or failed.
         // A cleanup failure never replaces an earlier primary cause.

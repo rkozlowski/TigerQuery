@@ -77,11 +77,14 @@ public sealed class TigerQueryEngineOptions
     /// A batch fails when SQL Server reports an error of severity 11 or higher for
     /// it, whether the provider throws or reports the error as an informational
     /// message. Under an effective exit-on-error policy the triggering batch ends
-    /// unsuccessfully, no further batch is started, and the run's
-    /// <see cref="ExecutionResult.ResultCode"/> is not
-    /// <see cref="ExecutionResultCode.Success"/>. Under an effective continue policy
-    /// the batch still counts towards <see cref="ExecutionResult.FailedBatches"/> and
-    /// the next scheduled batch runs.
+    /// unsuccessfully and no further batch is started. Under an effective continue
+    /// policy the batch still counts towards <see cref="ExecutionResult.FailedBatches"/>
+    /// and the next scheduled batch runs.
+    /// </para>
+    /// <para>
+    /// This policy controls how much of the script runs, not what the run reports.
+    /// Either way the run's <see cref="ExecutionResult.ResultCode"/> is not
+    /// <see cref="ExecutionResultCode.Success"/> once any batch attempt has failed.
     /// </para>
     /// </remarks>
     public bool ContinueOnError { get; init; } = true;

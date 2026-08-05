@@ -387,6 +387,13 @@ public sealed class SqlServerE2eDatabaseLifecycleTests
                 : Task.FromException(ExecuteFailure);
         }
 
+        public Task ExecuteAsync(
+            string connectionString,
+            string script,
+            IReadOnlyDictionary<string, string> parameters,
+            CancellationToken cancellationToken) =>
+            ExecuteAsync(connectionString, script, cancellationToken);
+
         public Task<IReadOnlyList<string>> QueryNamesAsync(
             string connectionString,
             string script,

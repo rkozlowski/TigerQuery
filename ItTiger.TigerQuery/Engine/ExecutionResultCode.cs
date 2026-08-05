@@ -17,21 +17,29 @@ namespace ItTiger.TigerQuery.Engine;
 public enum ExecutionResultCode
 {
     /// <summary>
-    /// Execution completed without a terminal failure.
+    /// Every started batch attempt succeeded.
     /// </summary>
     /// <remarks>
-    /// Ignored nonfatal failures can still make
-    /// <see cref="ExecutionResult.FailedBatches"/> greater than zero. This remains
-    /// true for server errors reported without a thrown exception; an effective
-    /// exit-on-error policy, however, never produces this code.
+    /// This code requires <see cref="ExecutionResult.FailedBatches"/> to be zero. A
+    /// failed attempt that an effective continue-on-error policy ignored still ends the
+    /// run as <see cref="BatchFailed"/>, because the result code is the outcome of the
+    /// run rather than a record of whether it stopped early.
     /// </remarks>
     Success = 0,
 
-    /// <summary>A batch failed and the effective error policy stopped execution.</summary>
+    /// <summary>At least one batch attempt failed without a stronger failure occurring.</summary>
     /// <remarks>
+    /// <para>
     /// The failure is either a caught nonfatal <see cref="Microsoft.Data.SqlClient.SqlException"/>
     /// or a <see cref="SqlBatchErrorException"/> built from server errors the provider
     /// reported as informational messages.
+    /// </para>
+    /// <para>
+    /// The code is produced whether the effective <c>:ON ERROR</c> policy stopped the run
+    /// at the failing batch or continued past it. Under a continue policy, later batches
+    /// still run and <see cref="ExecutionResult.ExecutedBatches"/> counts their successes,
+    /// but they never restore <see cref="Success"/>.
+    /// </para>
     /// </remarks>
     BatchFailed = 1,
 

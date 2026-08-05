@@ -5,6 +5,9 @@ namespace ItTiger.TigerQuery.E2e;
 /// <summary>Creates, clones, drops, and cleans up durable session-scoped E2E resources.</summary>
 public sealed class SqlServerE2eSessionLifecycle
 {
+    /// <summary>The bound name carrying the exact owned database into the teardown batch.</summary>
+    private const string DatabaseNameParameter = "@databaseName";
+
     private readonly SqlServerConnectionStore store;
     private readonly string bootstrapConnectionName;
     private readonly SqlServerE2eDatabaseLifecycleOptions options;
@@ -122,6 +125,30 @@ public sealed class SqlServerE2eSessionLifecycle
     }
 
     /// <summary>Drops or detaches one exact connection authorized by protected metadata.</summary>
+    /// <param name="connectionName">The exact saved connection to act on.</param>
+    /// <param name="sessionId">The session that must own <paramref name="connectionName"/>.</param>
+    /// <param name="cancellationToken">A token observed during SQL work.</param>
+    /// <remarks>
+    /// <para>
+    /// A connection recording <c>ittiger.e2e.database.allow-drop=false</c> is detached and
+    /// nothing else: its database is never opened, altered, or dropped.
+    /// </para>
+    /// <para>
+    /// An owning connection reaches the teardown in
+    /// <see cref="BuildForcedDropScript"/> only after every ownership check has passed —
+    /// the exact saved connection, <c>ittiger.e2e.enabled=true</c>,
+    /// <c>ittiger.e2e.bootstrap=false</c>, an exact session match, the exact recorded
+    /// database name, <c>ittiger.e2e.database.allow-drop=true</c>, the protected
+    /// <see cref="SqlServerE2eNames.DatabasePrefix"/> guard, and an authorized bootstrap.
+    /// That teardown forces single-user mode with immediate rollback so an owned database
+    /// left in use by an abandoned or interrupted script is still torn down
+    /// deterministically. Nothing here scans, adopts, or sweeps by prefix.
+    /// </para>
+    /// <para>
+    /// The owning connection record is removed only after the database is gone. A failed
+    /// teardown leaves it in place so the identical operation can be retried.
+    /// </para>
+    /// </remarks>
     public async Task<SqlServerE2eDropResult> DropAsync(
         string connectionName,
         Guid sessionId,
@@ -161,10 +188,16 @@ public sealed class SqlServerE2eSessionLifecycle
         var disposition = SqlServerE2eDropDisposition.DatabaseAbsentAndConnectionRemoved;
         if (exactMatch)
         {
+            // Returns this process's own idle pooled sessions before the forced teardown
+            // asks SQL Server to remove everybody else's.
             executor.ClearPool(BuildConnectionString(bootstrap, databaseName));
             await executor.ExecuteAsync(
                 master,
-                $"DROP DATABASE {QuoteIdentifier(databaseName)};",
+                BuildForcedDropScript(databaseName),
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [DatabaseNameParameter] = databaseName
+                },
                 cancellationToken).ConfigureAwait(false);
             disposition = SqlServerE2eDropDisposition.DatabaseDroppedAndConnectionRemoved;
         }
@@ -174,6 +207,14 @@ public sealed class SqlServerE2eSessionLifecycle
     }
 
     /// <summary>Cleans every protected non-bootstrap connection for one exact session.</summary>
+    /// <param name="sessionId">The session whose records are candidates.</param>
+    /// <param name="cancellationToken">A token observed during SQL work.</param>
+    /// <remarks>
+    /// Each candidate goes through <see cref="DropAsync"/> with the same ownership checks
+    /// and the same forced teardown. One failing record does not stop the others; it is
+    /// reported, its owning connection is kept for a retry, and
+    /// <see cref="SqlServerE2eCleanupResult.IsComplete"/> is false for the whole run.
+    /// </remarks>
     public async Task<SqlServerE2eCleanupResult> CleanupAsync(
         Guid sessionId,
         CancellationToken cancellationToken = default)
@@ -284,6 +325,42 @@ public sealed class SqlServerE2eSessionLifecycle
     {
         if (sessionId == Guid.Empty)
             throw new ArgumentException("A non-empty E2E session ID is required.", nameof(sessionId));
+    }
+
+    /// <summary>
+    /// Builds the guarded teardown batch for one exact, already-authorized owned database.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The existence test is parameterized. A database name cannot be a parameter where
+    /// T-SQL wants an identifier, so <c>ALTER DATABASE</c> and <c>DROP DATABASE</c> use the
+    /// quoted exact name — the same name the caller has already matched against the
+    /// protected metadata record and the <see cref="SqlServerE2eNames.DatabasePrefix"/>
+    /// grammar, which admits no quoting-relevant character.
+    /// </para>
+    /// <para>
+    /// Everything is one batch on one connection on purpose. Splitting the mode change
+    /// from the drop would leave a window in which another connection could take the
+    /// single-user slot, and the drop would fail exactly as it did before the mode change.
+    /// The <c>IF</c> guard also makes a database that disappeared between the existence
+    /// query and this statement a no-op rather than an error.
+    /// </para>
+    /// </remarks>
+    private static string BuildForcedDropScript(string databaseName)
+    {
+        var quoted = QuoteIdentifier(databaseName);
+        return $"""
+            USE [master];
+
+            IF DB_ID({DatabaseNameParameter}) IS NOT NULL
+            BEGIN
+                ALTER DATABASE {quoted}
+                    SET SINGLE_USER
+                    WITH ROLLBACK IMMEDIATE;
+
+                DROP DATABASE {quoted};
+            END
+            """;
     }
 
     private static string QuoteIdentifier(string value) =>

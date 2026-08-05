@@ -279,6 +279,19 @@ bootstrap, and removes the connection only after the drop succeeds or the exact 
 is confirmed absent. With `allow-drop=false`, it never connects to SQL and removes only the
 saved connection.
 
+Because a database TigerQuery owns is disposable and its teardown has to be deterministic,
+the `allow-drop=true` path does not merely attempt `DROP DATABASE`. Once every check above
+has passed, it submits one guarded batch on one connection that tests the exact name with a
+bound parameter, sets the database `SINGLE_USER WITH ROLLBACK IMMEDIATE`, and drops it. Work
+left open by an interrupted or abandoned session in that database is rolled back. Keeping
+the mode change and the drop in one batch is what stops another connection from taking the
+single-user slot in between. A database that is already absent makes the batch a no-op and
+the connection record is still removed; a failure keeps the record for an exact retry.
+
+This is the only place TigerQuery forces anything. It is unreachable from an
+`allow-drop=false` record, which authorizes no SQL whatsoever against its target, and it is
+never reached by name, prefix, age, or apparent inactivity.
+
 Cleanup enumerates matching protected non-bootstrap connection records, never database
 names or prefixes. It continues after each failure, reports dropped, absent, detached, and
 failed items, and returns non-zero while any matching record remains incomplete. Bootstrap
@@ -478,7 +491,10 @@ removes an optional copied profile only after the database drop succeeds.
 If drop fails or is cancelled, `SqlServerE2eDatabaseCleanupException.DatabaseName`
 identifies the exact database that may remain. Ownership state and any generated profile
 are retained so the same cleanup can be retried. Active connections are not forcibly
-adopted or killed; they can make the drop fail.
+adopted or killed; they can make this drop fail. That is the deliberate difference between
+this in-process lifecycle and the durable session lifecycle behind `e2e drop` and
+`e2e cleanup`: ownership here lives only in the instance, so it cannot survive the process
+to authorize a stronger teardown later, while a session record on disk can and does.
 
 `AddDatabaseProfile` uses Core's same-store copy path, preserving protected values and
 external references while setting the created database as the catalog. A full
@@ -652,6 +668,9 @@ without turning them into universal library defaults.
   second guard, but only the lifecycle's successful create record authorizes cleanup.
 - **Retryable cleanup preserves evidence.** A failed drop retains the exact name and
   copied profile instead of concealing or broadening the failure.
+- **Force follows proof, never precedes it.** A session-owned database is torn down with a
+  forced rollback because its ownership was already established by an exact record, not in
+  order to establish it. No amount of force is applied to anything a record does not name.
 - **References stay references.** Resolving only in memory lets automation use rotating
   secrets without persisting them or exposing them through inspection.
 - **Orphans are reported, not swept.** Automated code cannot prove that a similarly named
@@ -666,6 +685,9 @@ without turning them into universal library defaults.
   failure; SQL-auth-compatible live tests can still run.
 - DPAPI-protected literal passwords are bound to the Windows user and machine. Use
   external references or a host-selected protector for portable automation.
+- The forced single-user teardown belongs to the durable session lifecycle only. The
+  in-process `SqlServerE2eDatabaseLifecycle` still fails its drop when something else is
+  connected to the database it created.
 - A full connection-string profile is retargeted through a persisted initial-catalog
   override when TigerQuery creates a per-database copy. The referenced connection string
   remains unresolved and is never written back.

@@ -198,16 +198,17 @@ parsed.
 | `FailedBatches` | Incremented | Incremented |
 | `ExecutedBatches` | Not incremented for the failing attempt | Not incremented for the failing attempt |
 | Later batches | Not started — no `BatchStart` or `BatchEnd` is raised for them | The next scheduled batch runs |
-| `ResultCode` | `BatchFailed`, or `Fatal` for a fatal server error | `Success` |
+| `ResultCode` | `BatchFailed`, or `Fatal` for a fatal server error | `BatchFailed`, or `Fatal` for a fatal server error |
 
 `GO n` repeat counts follow the same rule per iteration: under exit-on-error a
 failing iteration stops the remaining iterations, under continue-on-error they
 proceed. A fatal server error stops the run under either policy.
 
-For compatibility, an ignored failure keeps `ResultCode` at `Success` while
-`FailedBatches` is greater than zero — so a caller that must not tolerate any
-failed batch should check `FailedBatches`, not only the result code. Exit-on-error
-never returns `Success`.
+The policy decides how much of the script runs; it does not decide what the run
+reports. `ResultCode` is `Success` only when `FailedBatches` is zero. Continuing
+past a failed batch still ends the run as `BatchFailed`, and a later successful
+batch never clears an earlier failure — reaching the end of a script is not
+evidence that it worked.
 
 Diagnostics reach `OnMessage` in server order with their original number,
 severity, state, procedure, and line, and a diagnostic delivered both as a
