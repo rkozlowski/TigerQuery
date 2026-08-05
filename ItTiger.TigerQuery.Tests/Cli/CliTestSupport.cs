@@ -90,8 +90,10 @@ internal static class CliTestRunner
         Func<TigerCliAppTestHost, TigerCliAppTestHost>? configure,
         params string[] args)
     {
-        var app = TigerSqlCmdApp.Build(store.FilePath, environmentReader);
-        var host = TigerCliAppTestHost.For(app).WithArgs(args);
+        // Compose, not Build: a test run must split the `exec` child command line off the
+        // argument list exactly the way Program does.
+        var (app, hostArguments) = TigerSqlCmdApp.Compose(args, store.FilePath, environmentReader);
+        var host = TigerCliAppTestHost.For(app).WithArgs(hostArguments);
         if (configure is not null)
             host = configure(host);
 

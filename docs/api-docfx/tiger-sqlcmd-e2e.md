@@ -269,6 +269,82 @@ If the exact owned database exists, TigerQuery drops it and then removes the con
 If it is already absent, TigerQuery removes the connection. If the drop fails, the
 owning record remains so the same exact operation can be retried.
 
+## Handing the session connection to an external tool
+
+A session database is usually not the end of the job. Something has to deploy a schema into
+it, and that something is often an external tool that takes a connection string and cannot
+take a TigerSqlCmd connection name. `tiger-sqlcmd exec` bridges that gap without the job
+having to rebuild the connection string itself: it resolves the same saved connection from
+the same selected store and hands the result to one child process.
+
+This workflow creates the session resources, deploys with an external tool through `exec`,
+runs verification SQL against the same connection, and cleans up the same session. The
+deployment tool is a stand-in — `exec` adds no product-specific behavior for any tool.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$storeFile = 'C:\agent\state\job-42\connections.json'
+$sessionId = [Guid]::NewGuid().ToString('D')
+
+$createOutput = @(& tiger-sqlcmd e2e create `
+  --session-id $sessionId --name-part orders `
+  --non-interactive --no-color --tq-connection-store-file $storeFile)
+if ($LASTEXITCODE -ne 0) { throw "E2E create failed with exit code $LASTEXITCODE." }
+$createOutput | Write-Host
+
+$connectionName = $createOutput |
+  Select-String '^Created E2E connection (?<name>E2E-[A-Za-z0-9_-]+)\.$' |
+  ForEach-Object { $_.Matches[0].Groups['name'].Value } |
+  Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($connectionName)) {
+  throw 'TigerSqlCmd did not report the created E2E connection name.'
+}
+
+try {
+  # 1. Deploy with an external tool that reads a connection string from its environment.
+  #    Preferred: the value never reaches the child's command line.
+  & tiger-sqlcmd exec --connection $connectionName `
+    --connection-string-env DEPLOY_CONNECTION_STRING `
+    --non-interactive --no-color --tq-connection-store-file $storeFile `
+    -- deploy-tool --apply .\schema
+  if ($LASTEXITCODE -ne 0) { throw "Schema deployment failed with exit code $LASTEXITCODE." }
+
+  # 2. Verify with TigerSqlCmd itself, against the very same saved connection.
+  & tiger-sqlcmd run --connection $connectionName `
+    --query 'SELECT COUNT(*) AS TableCount FROM sys.tables;' `
+    --mode SqlCmdEx --non-interactive --no-color `
+    --tq-connection-store-file $storeFile
+  if ($LASTEXITCODE -ne 0) { throw "Verification SQL failed with exit code $LASTEXITCODE." }
+}
+finally {
+  & tiger-sqlcmd e2e cleanup --session-id $sessionId `
+    --non-interactive --no-color --tq-connection-store-file $storeFile
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "E2E cleanup was incomplete for session $sessionId."
+  }
+}
+```
+
+`exec` returns the deployment tool's own exit code unchanged, so `$LASTEXITCODE` is the
+tool's contract, not a TigerSqlCmd translation of it. Exit code `21` means the tool could not
+be started at all, and `20` means the `exec` handoff configuration was rejected before the
+connection was resolved.
+
+Use argument substitution only when the tool has no environment-variable input:
+
+```powershell
+& tiger-sqlcmd exec --connection $connectionName `
+  --non-interactive --no-color --tq-connection-store-file $storeFile `
+  -- deploy-tool --apply .\schema --target '{connection-string}'
+```
+
+That form puts the resolved connection string into the child's command line, where any
+process listing on the agent can read it. On a shared or long-lived build agent, prefer the
+environment form. Quote the placeholder in PowerShell as shown so `{connection-string}`
+reaches `tiger-sqlcmd` intact; `exec` performs no other expansion and starts the tool
+directly, with no shell in between. The complete contract is in
+[Running an external tool: `exec`](tiger-sqlcmd.md#running-an-external-tool-exec).
+
 ## Existing database: non-owning clone example
 
 `connection clone-e2e` performs no SQL operation. It copies a source profile within the

@@ -139,6 +139,7 @@ command groups and commands are:
 | --- | --- |
 | `tiger-sqlcmd -c <name> -q <sql>` | Friendly inline-query command; prompts for missing required values when interactive. |
 | `tiger-sqlcmd run` | Inline SQL or file execution with sqlcmd mode, variables, output routing, verbosity, and logging. |
+| `tiger-sqlcmd exec` | Run an external program against a saved connection, handing it the resolved connection string. |
 | `tiger-sqlcmd connection` | Manage saved connections. The group name is singular. |
 | `tiger-sqlcmd e2e` | Create, drop, and clean session-scoped E2E resources. |
 
@@ -317,6 +318,183 @@ tiger-sqlcmd run -c local -f deploy.sql --mode SqlCmdEx -v TargetDatabase=Contro
 
 Use `--mode Normal` only when sqlcmd directives should be sent as ordinary SQL text.
 
+## Running an external tool: `exec`
+
+### Why the command exists
+
+A saved connection is a TigerQuery concept. Plenty of useful tools — schema comparers,
+migration runners, data loaders, reporting utilities, `SqlPackage` — need a SQL Server
+connection string and have no idea what a TigerSqlCmd connection name is. Without `exec`,
+the only way to bridge that gap is to build the connection string somewhere else, which
+means duplicating the store, the external references, and the authentication rules that
+`tiger-sqlcmd` already implements, and usually parking the result in a variable or a file.
+
+`exec` closes the gap without widening the exposure. It resolves the named connection with
+exactly the same store selection, external-reference resolution, authentication handling,
+validation, and non-interactive policy as `run`, then hands the resulting connection string
+to one child process and nothing else:
+
+```console
+tiger-sqlcmd exec --connection local --connection-string-env DB_CONNECTION -- my-tool --report
+```
+
+The command is deliberately generic. It knows nothing about any particular tool, and
+TigerQuery adds no product-specific behavior for one.
+
+### Direct execution, not shell execution
+
+`exec` starts the executable directly. There is no `cmd.exe`, no `/bin/sh`, and no implied
+shell of any other kind. Nothing between `tiger-sqlcmd` and the child re-parses, word-splits,
+expands, globs, or interprets quoting: the child receives exactly the argument tokens that
+appeared after `--`, with only the `{connection-string}` substitution applied.
+
+Consequences worth stating explicitly:
+
+- Arguments containing spaces are passed as single arguments; they are not re-split.
+- Executable paths containing spaces work without extra quoting.
+- `*.sql`, `$HOME`, `%PATH%`, backticks, `&&`, `|`, and `>` are literal argument text, not
+  operators. If a pipeline or redirection is wanted, write it in the calling shell around
+  `tiger-sqlcmd exec`, not inside the child command line.
+- Shell built-ins are not executables and cannot be run.
+
+Everything after the first `--` is the child command line: the first token is the executable
+and the rest are its arguments. A later `--` is an ordinary child argument. The separator is
+recognized only for `exec`; every other TigerSqlCmd command treats `--` exactly as it always
+has.
+
+The child inherits standard input, standard output, standard error, the caller's working
+directory, and the caller's environment. Output is inherited, not captured and replayed, so
+the child's console behavior, interleaving, and progress rendering are unchanged and there is
+no redirected-pipe buffer to deadlock on.
+
+### Argument substitution
+
+The exact token `{connection-string}` in any child argument is replaced by the resolved
+connection string:
+
+```console
+tiger-sqlcmd exec --connection local -- my-tool --target={connection-string} --report
+```
+
+The rules are narrow on purpose:
+
+- Only the exact token `{connection-string}` is substituted. `{Connection-String}`,
+  `{connection-string }`, and `${connection-string}` are ordinary text.
+- It is substituted inside a larger argument, as in `--target={connection-string}`.
+- Every occurrence in every argument is substituted.
+- All other argument text is preserved byte for byte. No environment expansion, no quoting
+  interpretation, no template language.
+- The placeholder is **not** substituted into the executable itself; that is rejected.
+
+### Environment-variable injection
+
+`--connection-string-env <variable-name>` sets that variable to the resolved connection
+string for the child process only:
+
+```console
+tiger-sqlcmd exec --connection local --connection-string-env DB_CONNECTION -- my-tool --report
+```
+
+The variable name must be a portable identifier: a letter or underscore followed by letters,
+digits, or underscores. The child inherits the rest of the caller's environment unchanged,
+and the `tiger-sqlcmd` process's own environment is not modified — the value exists only in
+the child's environment block. TigerSqlCmd never prints it.
+
+### Choosing a handoff, and using both
+
+At least one handoff is required. A run with no `{connection-string}` placeholder and no
+`--connection-string-env` fails as invalid arguments, because the child would otherwise start
+without the value the command exists to deliver.
+
+Both together are allowed and are applied together when explicitly requested: the placeholder
+is substituted in the arguments *and* the variable is set. This suits a tool that reads the
+variable for one purpose and takes a connection string argument for another.
+
+**Prefer environment injection when the child supports it.** Argument substitution puts the
+connection string — including any password it carries — into the child process's command
+line, where it is visible to anyone who can inspect processes on the machine: `ps`, Task
+Manager, `Get-CimInstance Win32_Process`, process-auditing agents, and crash or diagnostic
+dumps. That is accepted, documented behavior of the placeholder, not a defect, and it is the
+only option for a tool that has no environment-variable input. An environment variable is
+narrower but is not secret either: it is readable by anything that can inspect the child
+process's environment, and the child may itself log or re-export it. `exec` reduces exposure
+compared with putting the connection string in your shell, a script, or a file; it does not
+make the value private.
+
+### Non-interactive use
+
+`exec` follows the same interaction model as every other command. Add `--non-interactive` for
+scripts, CI jobs, and agents; a missing `--connection` then fails immediately instead of
+prompting, and a SQL password is never prompted for, so unattended SQL authentication needs
+an [external value reference](#sql-authentication). The store is selected by
+`--tq-connection-store-file`, then `TIGERQUERY_CONNECTION_STORE_FILE`, then the application
+default, exactly as for `run`. Resolved secrets are never written back to the store.
+
+An invalid handoff configuration is reported before the connection is resolved, so a bad
+command line never reads an external reference or a stored secret.
+
+### Exit codes
+
+The child's exit code is returned unchanged. That is the point of the command: a wrapper that
+remapped exit codes would break every caller that already checks the tool's own contract.
+
+Two codes are TigerSqlCmd's own and are produced before the child runs or instead of it:
+
+| Exit code | Meaning |
+| --- | --- |
+| `20` | The handoff configuration was invalid: no `--`, no executable after `--`, no handoff method, an invalid environment-variable name, or the placeholder in the executable. |
+| `4` | The saved connection could not be resolved. |
+| `21` | The child executable could not be started at all — not found, not executable, or refused by the operating system. |
+| `2` | Framework validation rejected the command line, such as a missing `--connection` in non-interactive mode. |
+
+Because the child's code passes through unchanged, a child may itself return `2`, `4`, `20`,
+or `21`. There is no way to distinguish those from TigerSqlCmd's own codes by number alone;
+TigerSqlCmd writes its own failures to standard error, and a caller that needs certainty can
+have the child use a distinct code of its own.
+
+### Diagnostics and redaction
+
+TigerSqlCmd never prints the resolved connection string, and it never prints the resolved
+child command line. It writes nothing at all to standard output on success — everything the
+caller sees comes from the child.
+
+When a start failure is reported, the child command line is shown with the *unsubstituted*
+placeholder, so the resolved value cannot appear:
+
+```text
+Could not start the child executable 'my-tool': ...
+Child command line: my-tool /TargetConnectionString:{connection-string}
+```
+
+Only values TigerSqlCmd resolved are guaranteed absent from that line. Text you typed into an
+argument yourself is echoed as typed, so do not paste a literal connection string into a child
+argument — use the placeholder or the environment variable.
+
+Errors written by the child itself are outside TigerSqlCmd's control and pass through
+untouched, including anything the child chooses to print about its own connection string.
+
+### Cancellation
+
+On a console, Ctrl+C reaches the child as well as `tiger-sqlcmd`. TigerSqlCmd absorbs the
+first Ctrl+C so it stays alive long enough to report the child's real exit code, and never
+kills the child itself. A second Ctrl+C is passed through and ends `tiger-sqlcmd`, so a child
+that ignores Ctrl+C cannot hold the caller indefinitely.
+
+### An illustration with SqlPackage
+
+`SqlPackage` is one example of a tool that takes a connection string and cannot take a saved
+connection name. It is used here purely as an illustration; TigerQuery has no DacFx
+integration and no `SqlPackage`-specific behavior.
+
+```console
+tiger-sqlcmd exec --connection local --non-interactive -- sqlpackage /Action:Script /SourceFile:App.dacpac /TargetConnectionString:{connection-string} /OutputPath:deploy.sql
+```
+
+Every `SqlPackage` switch above is passed through verbatim; TigerSqlCmd only substituted the
+one placeholder. `SqlPackage` reads target connection strings from arguments, so this example
+accepts the process-inspection exposure described above. Where a tool offers an
+environment-variable input instead, use `--connection-string-env`.
+
 ## Output, diagnostics, and automation
 
 Without routing options, result sets are rendered as console tables and SQL messages use
@@ -343,7 +521,9 @@ Process exit codes and diagnostics are the automation contract. Run
 `tiger-sqlcmd --help-errors` for the authoritative table. Important values are `0`
 success, `1` batch failure, `2` fatal SQL or connection-domain validation, `3`
 cancellation, `4` connection failure/not found, `5` parse error/already exists, `6`
-unhandled exception, `7` fatal exception, `8` output failure, and `20` invalid or
-incomplete command-line usage. A failed or cancelled run can leave valid partial output
+unhandled exception, `7` fatal exception, `8` output failure, `20` invalid or
+incomplete command-line usage, and `21` an `exec` child that could not be started.
+`exec` otherwise returns its child's exit code unchanged; see
+[Exit codes](#exit-codes). A failed or cancelled run can leave valid partial output
 files and SQL side effects that completed before the failure; automation must treat a
 nonzero exit as a failed step and retain diagnostics.

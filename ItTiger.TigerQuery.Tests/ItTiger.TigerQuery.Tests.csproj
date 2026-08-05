@@ -42,6 +42,27 @@
     <ProjectReference Include="..\ItTiger.TigerQuery.CliCore\ItTiger.TigerQuery.CliCore.csproj" />
     <ProjectReference Include="..\ItTiger.TigerQuery\ItTiger.TigerQuery.csproj" />
 	<ProjectReference Include="..\ItTiger.TigerSqlCmd\ItTiger.TigerSqlCmd.csproj" />
+    <!-- Built for its apphost, not referenced as a library: the exec tests start it as a
+         real child executable. CopyTestChild below places the whole runnable output in a
+         subdirectory so it cannot collide with the test host's own files. -->
+    <ProjectReference Include="..\ItTiger.TigerQuery.TestChild\ItTiger.TigerQuery.TestChild.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <TestChildOutputDirectory>$(MSBuildThisFileDirectory)..\ItTiger.TigerQuery.TestChild\bin\$(Configuration)\$(TargetFramework)\</TestChildOutputDirectory>
+  </PropertyGroup>
+
+  <Target Name="CopyTestChild" AfterTargets="Build">
+    <ItemGroup>
+      <TestChildFiles Include="$(TestChildOutputDirectory)**\*" />
+    </ItemGroup>
+    <Error Condition="'@(TestChildFiles)' == ''"
+           Text="The exec test child produced no output at $(TestChildOutputDirectory)." />
+    <Copy SourceFiles="@(TestChildFiles)"
+          DestinationFolder="$(OutDir)testchild\%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

@@ -7,7 +7,10 @@ namespace ItTiger.TigerSqlCmd;
 /// The tiger-sqlcmd process exit-code contract. Values 0–8 mirror the engine's
 /// <see cref="ExecutionResultCode"/> one-to-one so script-visible codes are unchanged;
 /// Code 20 is reserved for framework-produced usage failures mapped through the app's
-/// TigerCli exit-code policy in <see cref="TigerSqlCmdApp"/>.
+/// TigerCli exit-code policy in <see cref="TigerSqlCmdApp"/>, and code 21 for an
+/// <c>exec</c> child that could not be started at all. <c>exec</c> otherwise returns the
+/// child's own exit code unchanged, so a child may well return a value this enum also
+/// defines; the caller knows which command it ran.
 /// Connection-command outcomes are mapped onto host-owned aliases so their historical
 /// script-visible values remain stable without CliCore owning concrete process codes.
 /// </summary>
@@ -52,6 +55,9 @@ public enum TigerSqlCmdExitCode
 
     [TigerText("Invalid arguments", Description = "The command line was invalid or incomplete.")]
     InvalidArguments = 20,
+
+    [TigerText("Child process start failed", Description = "The 'exec' child executable could not be started.")]
+    ChildProcessStartFailed = 21,
 
 }
 

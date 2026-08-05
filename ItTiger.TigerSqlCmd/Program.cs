@@ -4,9 +4,10 @@ namespace ItTiger.TigerSqlCmd
     {
         static async Task<int> Main(string[] args)
         {
-            var app = TigerSqlCmdApp.Build();
+            // Compose splits off any `exec` child command line before TigerCli parses the rest.
+            var (app, hostArguments) = TigerSqlCmdApp.Compose(args);
 
-            return await app.RunAsync(args);
+            return await app.RunAsync(hostArguments);
         }
     }
 }
