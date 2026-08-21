@@ -89,8 +89,11 @@ public sealed class TigerSqlCmdExecCommandTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(result.StdErr));
     }
 
+    // The tail is declared Required, so TigerCli — not this application — rejects both a
+    // missing separator and an empty one, and both land on the usage exit code.
+
     [Fact]
-    public async Task MissingSeparator_ReportsInvalidArguments()
+    public async Task MissingSeparator_IsRejectedByTheFrameworkAsAMissingRequiredTail()
     {
         await AddConnectionAsync("local");
 
@@ -102,7 +105,7 @@ public sealed class TigerSqlCmdExecCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task MissingExecutableAfterSeparator_ReportsInvalidArguments()
+    public async Task EmptyTailAfterSeparator_IsRejectedByTheFrameworkAsAMissingRequiredTail()
     {
         await AddConnectionAsync("local");
 
@@ -110,7 +113,42 @@ public sealed class TigerSqlCmdExecCommandTests : IDisposable
             "exec", "-c", "local", "--non-interactive", "--connection-string-env", "DB", "--");
 
         Assert.Equal((int)TigerSqlCmdExitCode.InvalidArguments, result.ExitCode);
-        Assert.Contains("No child executable", result.StdErr);
+        Assert.Contains("'--'", result.StdErr);
+    }
+
+    /// <summary>
+    /// Only <c>exec</c> declares a raw tail. Every other command rejects one as a usage
+    /// error instead of silently swallowing it, which is what the removed application-owned
+    /// splitter used to guarantee by never splitting for them.
+    /// </summary>
+    [Theory]
+    [InlineData("run", "-c", "local", "-q", "SELECT 1;")]
+    [InlineData("connection", "list")]
+    public async Task ACommandWithoutARawTail_RejectsOne(params string[] command)
+    {
+        await AddConnectionAsync("local");
+
+        var result = await RunAsync([.. command, "--non-interactive", "--", "extra"]);
+
+        Assert.Equal((int)TigerSqlCmdExitCode.InvalidArguments, result.ExitCode);
+        Assert.Contains("'--'", result.StdErr);
+    }
+
+    /// <summary>
+    /// A tail token is never matched against an option, so <c>--connection-string-env</c>
+    /// written after <c>--</c> is a child argument and leaves the run with no handoff at all.
+    /// </summary>
+    [Fact]
+    public async Task AnOptionNameInTheTail_DoesNotSatisfyTheHeadOption()
+    {
+        await AddConnectionAsync("local");
+
+        var result = await RunAsync(
+            "exec", "-c", "local", "--non-interactive",
+            "--", NeverStarted, "--connection-string-env", "DB");
+
+        Assert.Equal((int)TigerSqlCmdExitCode.InvalidArguments, result.ExitCode);
+        Assert.Contains("No connection-string handoff", result.StdErr);
     }
 
     [Fact]

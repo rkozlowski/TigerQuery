@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -55,6 +55,33 @@ public sealed class TigerQueryEngineOptions
     /// <see cref="SqlCmdMode.Normal"/>.
     /// </remarks>
     public IDictionary<string, string>? Variables { get; init; }
+
+    /// <summary>
+    /// Gets the SQL command timeout, in seconds, applied to every batch this run executes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the batch execution timeout, not the connection-open timeout: the latter
+    /// belongs to the connection string (<c>Connect Timeout</c>) and is unaffected. The
+    /// value is applied to each batch independently, so a script of ten batches may run for
+    /// ten times this long without any batch timing out.
+    /// </para>
+    /// <para>
+    /// The default is <see langword="null"/>, which leaves
+    /// <see cref="Microsoft.Data.SqlClient.SqlCommand.CommandTimeout"/> untouched at the
+    /// provider's own default of 30 seconds. <c>0</c> means no limit and is passed to the
+    /// provider as such. A negative value is rejected: run methods throw
+    /// <see cref="ArgumentOutOfRangeException"/> before opening a connection.
+    /// </para>
+    /// <para>
+    /// A batch that exceeds the timeout fails the way any other SQL error fails. It counts
+    /// towards <see cref="ExecutionResult.FailedBatches"/>, the effective continue-on-error
+    /// policy decides whether later batches still run, and the run's
+    /// <see cref="ExecutionResult.ResultCode"/> is not
+    /// <see cref="ExecutionResultCode.Success"/>.
+    /// </para>
+    /// </remarks>
+    public int? CommandTimeoutSeconds { get; init; }
 
     /// <summary>
     /// Gets a reserved transaction preference.

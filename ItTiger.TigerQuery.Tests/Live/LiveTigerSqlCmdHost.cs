@@ -119,7 +119,14 @@ internal sealed class LiveTigerSqlCmdHost : IDisposable
     }
 
     /// <summary>Runs the CLI with the private store selected explicitly.</summary>
-    public Task<TigerSqlCmdProcessResult> RunAsync(params string[] arguments)
+    public Task<TigerSqlCmdProcessResult> RunAsync(params string[] arguments) =>
+        RunAsync(TigerSqlCmdProcessRunner.DefaultTimeout, arguments);
+
+    /// <summary>
+    /// Runs the CLI with the private store selected explicitly, allowing a run that is
+    /// meant to take a long time — a deliberately long SQL batch — to do so.
+    /// </summary>
+    public Task<TigerSqlCmdProcessResult> RunAsync(TimeSpan timeout, params string[] arguments)
     {
         var environment = externalValues.ToDictionary(
             item => item.Key,
@@ -133,6 +140,7 @@ internal sealed class LiveTigerSqlCmdHost : IDisposable
         return TigerSqlCmdProcessRunner.RunAsync(
             environment,
             directory,
+            timeout,
             [.. arguments, "--non-interactive", "--no-color",
                 "--tq-connection-store-file", StorePath]);
     }

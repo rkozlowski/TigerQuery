@@ -63,8 +63,9 @@ internal sealed class TigerSqlCmdExecPlan
     /// Validates a child command line and the requested environment-variable handoff.
     /// </summary>
     /// <param name="childCommandLine">
-    /// The tokens after <c>--</c>: null when the separator was absent, empty when it was
-    /// present with nothing after it.
+    /// The raw trailing tokens TigerCli bound from after <c>--</c>. A declared-required
+    /// tail means the framework already rejected a missing separator and an empty tail, so
+    /// the empty case below is only a defensive backstop for a direct caller.
     /// </param>
     /// <param name="environmentVariableName">
     /// The <c>--connection-string-env</c> value, or null when the option was omitted.
@@ -74,19 +75,13 @@ internal sealed class TigerSqlCmdExecPlan
     /// <paramref name="error"/> that contains no resolved value.
     /// </returns>
     public static bool TryCreate(
-        IReadOnlyList<string>? childCommandLine,
+        IReadOnlyList<string> childCommandLine,
         string? environmentVariableName,
         out TigerSqlCmdExecPlan? plan,
         out string? error)
     {
+        ArgumentNullException.ThrowIfNull(childCommandLine);
         plan = null;
-
-        if (childCommandLine is null)
-        {
-            error = "No child command was supplied. Write '--' after the exec options, "
-                + "followed by the executable and its arguments.";
-            return false;
-        }
 
         if (childCommandLine.Count == 0)
         {

@@ -32,15 +32,16 @@ internal static class TigerSqlCmdApp
     /// <summary>The profile name used by <c>connection add-e2e-bootstrap</c> by default.</summary>
     public const string DefaultE2eBootstrapConnectionName = "tiger-sqlcmd-e2e";
 
-    /// <summary>The one command path that consumes a <c>--</c> child command line.</summary>
+    /// <summary>The one command path that declares a TigerCli raw trailing-argument tail.</summary>
     public const string ExecCommandName = "exec";
 
     private const string ExecCommandDescription =
         "Run an external program against a saved connection, passing it the resolved connection "
         + "string. The program is started directly; no shell is involved, so nothing re-parses, "
         + "expands, or globs the child command line.\n"
-        + "Everything after [Key]--[/] is the child executable and its arguments. At least one "
-        + "handoff is required, and both together are allowed:\n"
+        + "Every tiger-sqlcmd option goes before [Key]--[/]. Everything after it is the child "
+        + "executable and its arguments, passed through literally. At least one handoff is "
+        + "required, and both together are allowed:\n"
         + "[Key]{connection-string}[/] in any child argument is replaced by the resolved "
         + "connection string, also inside a larger argument; all other text is preserved.\n"
         + "[Key]--connection-string-env <variable-name>[/] sets that variable to the resolved "
@@ -86,29 +87,6 @@ internal static class TigerSqlCmdApp
     public static TigerCliApp Build() => Build(DefaultConnectionStoreFile);
 
     /// <summary>
-    /// Splits a raw process argument list and builds the app for it, returning the arguments
-    /// TigerCli should parse.
-    /// </summary>
-    /// <remarks>
-    /// The <c>--</c> child command line has to be removed before TigerCli sees the arguments
-    /// and given to the <c>exec</c> factory while the app is composed, so both halves belong
-    /// to one step. <see cref="Program"/> and the CLI tests share it, which is what keeps a
-    /// test run's argument handling identical to a shipped run's.
-    /// </remarks>
-    internal static (TigerCliApp App, string[] HostArguments) Compose(
-        IReadOnlyList<string> arguments,
-        string? defaultConnectionStoreFile = null,
-        Func<string, string?>? environmentReader = null)
-    {
-        var (hostArguments, childCommandLine) = TigerSqlCmdChildCommandLine.Split(arguments);
-        var app = Build(
-            defaultConnectionStoreFile ?? DefaultConnectionStoreFile,
-            environmentReader,
-            childCommandLine);
-        return (app, hostArguments);
-    }
-
-    /// <summary>
     /// Builds the app over a chosen application-default store path, and optionally a
     /// substitute environment lookup.
     /// </summary>
@@ -120,10 +98,6 @@ internal static class TigerSqlCmdApp
     /// The lookup behind <see cref="SqlServerConnectionStoreEnvironment.ConnectionStoreFile"/>,
     /// or null to read the process environment as a shipped run does.
     /// </param>
-    /// <param name="childCommandLine">
-    /// The tokens after <c>--</c> for <c>exec</c>, or null when the run supplied no
-    /// separator. Normally produced by <see cref="Compose"/>.
-    /// </param>
     /// <remarks>
     /// Injection replaces the *application default* deliberately, so
     /// <c>--tq-connection-store-file</c> and the environment variable still outrank it. A
@@ -132,8 +106,7 @@ internal static class TigerSqlCmdApp
     /// </remarks>
     internal static TigerCliApp Build(
         string defaultConnectionStoreFile,
-        Func<string, string?>? environmentReader = null,
-        IReadOnlyList<string>? childCommandLine = null)
+        Func<string, string?>? environmentReader = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(defaultConnectionStoreFile);
 
@@ -226,11 +199,12 @@ internal static class TigerSqlCmdApp
                 "Advanced sqlcmd execution: run a script file or query with variables, output routing, mode, verbosity and logging.",
                 descriptionResourceKey: "Cmd_Run_Description")
             // Generic subprocess bridge for tools that need a connection string and cannot
-            // read a saved connection name. The child command line was already split off the
-            // argument list by Compose; nothing about it reaches the parser.
+            // read a saved connection name. Its settings declare a TigerCli raw-argument
+            // tail, so the framework splits at `--` and binds the child command line; this
+            // host never inspects the argument list itself.
             .AddCommand(
                 ExecCommandName,
-                () => new TigerSqlCmdExecCommand(connections, childCommandLine),
+                () => new TigerSqlCmdExecCommand(connections),
                 ExecCommandDescription)
             .Build();
     }

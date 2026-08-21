@@ -4,9 +4,24 @@ namespace ItTiger.TigerQuery.Tests.Cli;
 
 internal static class TigerSqlCmdProcessRunner
 {
+    /// <summary>
+    /// How long a run may take before the test kills it. Generous for a command that should
+    /// finish in well under a second, and short enough that a hung child fails the test
+    /// rather than the run. A test that deliberately waits longer — anything exercising the
+    /// SQL command timeout — passes its own.
+    /// </summary>
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+
+    public static Task<TigerSqlCmdProcessResult> RunAsync(
+        IReadOnlyDictionary<string, string?> environment,
+        string workingDirectory,
+        params string[] arguments)
+        => RunAsync(environment, workingDirectory, DefaultTimeout, arguments);
+
     public static async Task<TigerSqlCmdProcessResult> RunAsync(
         IReadOnlyDictionary<string, string?> environment,
         string workingDirectory,
+        TimeSpan timeout,
         params string[] arguments)
     {
         var assemblyPath = Path.Combine(AppContext.BaseDirectory, "tiger-sqlcmd.dll");
@@ -38,19 +53,20 @@ internal static class TigerSqlCmdProcessRunner
             ?? throw new InvalidOperationException("Could not start tiger-sqlcmd.");
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
+        using var expiry = CancellationTokenSource.CreateLinkedTokenSource(
             TestContext.Current.CancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        expiry.CancelAfter(timeout);
 
         try
         {
-            await process.WaitForExitAsync(timeout.Token);
+            await process.WaitForExitAsync(expiry.Token);
         }
         catch (OperationCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
         {
             if (!process.HasExited)
                 process.Kill(entireProcessTree: true);
-            throw new TimeoutException("tiger-sqlcmd did not exit within 30 seconds.");
+            throw new TimeoutException(
+                $"tiger-sqlcmd did not exit within {timeout.TotalSeconds:0.#} seconds.");
         }
 
         return new TigerSqlCmdProcessResult(

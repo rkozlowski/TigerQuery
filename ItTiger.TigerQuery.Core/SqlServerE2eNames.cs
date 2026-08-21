@@ -59,7 +59,41 @@ public static class SqlServerE2eNames
     public static string Connection(string? part, string suffix) =>
         $"{ConnectionPrefix}{SanitizePart(part)}-{ValidateSuffix(suffix)}";
 
-    /// <summary>Validates a database as an exact protected E2E drop target.</summary>
+    /// <summary>The filegroup suffix for a database provisioned for memory-optimized tables.</summary>
+    public const string MemoryOptimizedFilegroupSuffix = "_MOD_FG";
+
+    /// <summary>The logical-file suffix for the memory-optimized data container.</summary>
+    public const string MemoryOptimizedContainerSuffix = "_MOD_FILE";
+
+    /// <summary>The directory-name suffix for the memory-optimized data container.</summary>
+    public const string MemoryOptimizedContainerDirectorySuffix = "_MOD_DIR";
+
+    /// <summary>Names the memory-optimized filegroup belonging to one exact E2E database.</summary>
+    /// <param name="databaseName">The exact owned database the filegroup is added to.</param>
+    public static string MemoryOptimizedFilegroup(string databaseName) =>
+        DeriveFromDatabase(databaseName, MemoryOptimizedFilegroupSuffix);
+
+    /// <summary>Names the memory-optimized container's logical file for one exact E2E database.</summary>
+    /// <param name="databaseName">The exact owned database the container belongs to.</param>
+    public static string MemoryOptimizedContainer(string databaseName) =>
+        DeriveFromDatabase(databaseName, MemoryOptimizedContainerSuffix);
+
+    /// <summary>
+    /// Names the memory-optimized container's directory for one exact E2E database. It is a
+    /// single directory name, to be combined with a location SQL Server itself reports.
+    /// </summary>
+    /// <param name="databaseName">The exact owned database the container belongs to.</param>
+    /// <remarks>
+    /// The name is derived from an already-validated E2E database name, whose grammar admits
+    /// only ASCII letters, digits, underscore, and hyphen. It can therefore contain no path
+    /// separator, no drive or UNC prefix, no <c>..</c> segment, and no quoting-relevant
+    /// character, so combining it with a server-reported directory cannot escape that
+    /// directory.
+    /// </remarks>
+    public static string MemoryOptimizedContainerDirectory(string databaseName) =>
+        DeriveFromDatabase(databaseName, MemoryOptimizedContainerDirectorySuffix);
+
+    /// <summary>Validates a database as an exact protected E2E drop target.</summary>    /// <summary>Validates a database as an exact protected E2E drop target.</summary>
     public static void ValidateDroppableDatabase(string databaseName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
@@ -72,6 +106,30 @@ public static class SqlServerE2eNames
             throw new InvalidOperationException(
                 $"Database '{databaseName}' does not satisfy the protected E2E database prefix and length guards.");
         }
+    }
+
+    /// <summary>
+    /// Builds one owned-resource name from the exact database it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// The database name goes through <see cref="ValidateDroppableDatabase"/> first, so a
+    /// derived name is only ever produced for a name that already satisfies the protected
+    /// E2E prefix, length, and character guards. A generated database name is at most 105
+    /// characters, which leaves every suffix here inside <c>sysname</c>; the check stays so
+    /// that a caller-supplied name cannot silently produce a truncated or invalid one.
+    /// </remarks>
+    private static string DeriveFromDatabase(string databaseName, string suffix)
+    {
+        ValidateDroppableDatabase(databaseName);
+        var name = databaseName + suffix;
+        if (name.Length > 128)
+        {
+            throw new ArgumentException(
+                $"The generated E2E name '{name}' exceeds 128 characters.",
+                nameof(databaseName));
+        }
+
+        return name;
     }
 
     private static string ValidateSuffix(string suffix)

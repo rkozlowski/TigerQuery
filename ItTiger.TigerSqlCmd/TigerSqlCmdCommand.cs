@@ -69,6 +69,7 @@ public sealed class TigerSqlCmdCommand(TigerQueryCliOptions connections)
         {
             ConnectionString = connectionString,
             Mode = settings.Mode,
+            CommandTimeoutSeconds = settings.CommandTimeout,
             Variables = variables,
             Logger = logger,
             OutputRouting = settings.ToOutputRoutingOptions(),

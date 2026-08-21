@@ -1,4 +1,4 @@
-﻿using ItTiger.TigerCli.Commands;
+using ItTiger.TigerCli.Commands;
 using ItTiger.TigerQuery;
 using ItTiger.TigerQuery.Engine;
 using Microsoft.Extensions.Logging;
@@ -33,6 +33,14 @@ public sealed class TigerSqlCmdSettings : TigerCliSettings
     [TigerCliOption("-m|--mode", Description = "Execution mode.",
         DescriptionResourceKey = "Opt_Run_Mode_Description")]
     public SqlCmdMode Mode { get; set; } = SqlCmdMode.SqlCmd;
+
+    // The SQL batch timeout, distinct from the profile's connect timeout. Omitted leaves
+    // the provider default in place, so an existing command line keeps the behavior it has.
+    [TigerCliOption("--command-timeout", ValueName = "seconds",
+        Description = "Seconds each SQL batch may run before it is cancelled. 0 means no limit; "
+            + "omit for the 30-second provider default. This is not the connection timeout.",
+        DescriptionResourceKey = "Opt_Run_CommandTimeout_Description")]
+    public int? CommandTimeout { get; set; }
 
     // Result-output options stay application-owned. The engine remains responsible for
     // paths, file names, serialization, routing state, and file lifetime.
@@ -89,6 +97,9 @@ public sealed class TigerSqlCmdSettings : TigerCliSettings
 
         if (ErrorOutputPath is not null && string.IsNullOrWhiteSpace(ErrorOutputPath))
             return TigerCliValidationResult.Error(T("--error-output must not be empty or whitespace."));
+
+        if (CommandTimeout is < 0)
+            return TigerCliValidationResult.Error(T("--command-timeout must be 0 (no limit) or a positive number of seconds."));
 
         if (OutputEncoding is not null)
         {

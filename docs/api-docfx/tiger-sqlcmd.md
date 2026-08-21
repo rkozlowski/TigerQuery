@@ -318,6 +318,52 @@ tiger-sqlcmd run -c local -f deploy.sql --mode SqlCmdEx -v TargetDatabase=Contro
 
 Use `--mode Normal` only when sqlcmd directives should be sent as ordinary SQL text.
 
+### Batch timeouts: `--command-timeout`
+
+Every SQL batch `run` executes is bounded by a command timeout. Without the option, that is
+the SqlClient default of **30 seconds per batch**, which is why a single long-running
+statement — a large index rebuild, a bulk migration, a heavy `MERGE` — could be cancelled
+part way through, and why callers used to split one script into several `tiger-sqlcmd`
+invocations to stay under it. `--command-timeout` removes that need:
+
+```console
+tiger-sqlcmd run -c local -f migrate.sql --command-timeout 600 --non-interactive
+tiger-sqlcmd run -c local -f migrate.sql --command-timeout 0 --non-interactive
+tiger-sqlcmd run -c local -q "ALTER INDEX ALL ON dbo.Orders REBUILD;" --command-timeout 1800 --non-interactive
+```
+
+The semantics are narrow on purpose:
+
+| Value | Meaning |
+| --- | --- |
+| omitted | Unchanged from before the option existed: the SqlClient default of 30 seconds per batch. |
+| *n* > 0 | Each batch may run for *n* seconds. |
+| `0` | No limit, the SqlClient meaning of `SqlCommand.CommandTimeout = 0`. A batch runs until it finishes, fails, or is cancelled with Ctrl+C. |
+| negative | Rejected as a validation error before any SQL runs. |
+
+Points worth stating explicitly:
+
+- **It is per batch, not per run.** A script of ten batches under `--command-timeout 60` may
+  legitimately run for ten minutes; no single batch may exceed sixty seconds. The value is
+  applied to each batch independently, including each iteration of a `GO <n>` repeat.
+- **It is not the connection timeout.** Opening the connection is governed by the saved
+  profile's `--connect-timeout` (the connection string's `Connect Timeout`), which
+  `--command-timeout` does not touch. The two are independent, and a small command timeout
+  will not make connecting fail.
+- **It applies to both execution paths.** `-q`/`--query` and `-f`/`--file` run through the
+  same engine, so the timeout behaves identically for inline SQL and script files.
+- **It applies in both modes.** `SqlCmd` and `SqlCmdEx` differ in variable handling, not in
+  batch execution, so the timeout is the same in each — and in `Normal` mode too.
+- **It works the same interactively and with `--non-interactive`.** Nothing about it is
+  prompted.
+- **A timeout is an ordinary batch failure.** The timed-out batch counts as failed, the
+  effective `:on error` policy decides whether later batches still run, and the process exits
+  nonzero exactly as described below. SQL Server's timeout text stays on the console as
+  diagnostics.
+
+`--command-timeout` is a `run` option. The basic default command has no timeout knob; use
+`run` when a query needs one.
+
 ### Batch failure and the `run` exit code
 
 **Any SQL batch failure makes `run` return a nonzero exit code.** A batch fails when SQL
@@ -388,10 +434,48 @@ Consequences worth stating explicitly:
   `tiger-sqlcmd exec`, not inside the child command line.
 - Shell built-ins are not executables and cannot be run.
 
-Everything after the first `--` is the child command line: the first token is the executable
-and the rest are its arguments. A later `--` is an ordinary child argument. The separator is
-recognized only for `exec`; every other TigerSqlCmd command treats `--` exactly as it always
-has.
+### Where the separator comes from
+
+`--` is not something TigerSqlCmd looks for in its own arguments. It is TigerCli's **raw
+trailing arguments** feature: `exec` declares that it accepts a raw tail, and the framework
+splits the command line at the first `--` and binds every later token to the command,
+literally and in order.
+
+That fixes the shape of an `exec` invocation:
+
+```console
+tiger-sqlcmd exec [tiger-sqlcmd options] -- <executable> [arguments...]
+```
+
+- **Everything before `--` is parsed.** `-c`/`--connection`, `--connection-string-env`,
+  framework options such as `--non-interactive`, `--no-color`, and `--culture`, and app-wide
+  options such as `--tq-connection-store-file` all belong here. Placing one after `--` does
+  not configure `tiger-sqlcmd`; it becomes a child argument.
+- **Everything after `--` belongs to the child.** The first token is the executable and the
+  rest are its arguments. Tail tokens are never matched against an option, never prompted
+  for, and never validated against a provider.
+- **Only the first `--` splits.** A later `--` is an ordinary child argument, as are tokens
+  beginning with `-` or `--`, repeated tokens, and empty strings.
+- **The separator itself is not passed on.** The child receives the tokens after it, not `--`.
+
+So this hands the child its own `--non-interactive`, while `tiger-sqlcmd` still prompts as
+usual:
+
+```console
+tiger-sqlcmd exec -c local --connection-string-env DB -- my-tool --non-interactive --report
+```
+
+and this is the other way round — `tiger-sqlcmd` runs non-interactively and the child gets
+only `--report`:
+
+```console
+tiger-sqlcmd exec -c local --non-interactive --connection-string-env DB -- my-tool --report
+```
+
+The tail is required. Omitting `--`, or writing `--` with nothing after it, is a usage error
+(exit code `20`) reported before anything else happens. `exec` is the only command that
+accepts a tail; supplying one to `run`, `connection`, or `e2e` is likewise a usage error
+rather than silently ignored text.
 
 The child inherits standard input, standard output, standard error, the caller's working
 directory, and the caller's environment. Output is inherited, not captured and replayed, so
@@ -454,12 +538,21 @@ make the value private.
 
 ### Non-interactive use
 
-`exec` follows the same interaction model as every other command. Add `--non-interactive` for
-scripts, CI jobs, and agents; a missing `--connection` then fails immediately instead of
-prompting, and a SQL password is never prompted for, so unattended SQL authentication needs
-an [external value reference](#sql-authentication). The store is selected by
-`--tq-connection-store-file`, then `TIGERQUERY_CONNECTION_STORE_FILE`, then the application
-default, exactly as for `run`. Resolved secrets are never written back to the store.
+`exec` follows the same interaction model as every other command. Add `--non-interactive`
+**before `--`** for scripts, CI jobs, and agents; a missing `--connection` then fails
+immediately instead of prompting, and a SQL password is never prompted for, so unattended SQL
+authentication needs an [external value reference](#sql-authentication). The store is selected
+by `--tq-connection-store-file`, then `TIGERQUERY_CONNECTION_STORE_FILE`, then the application
+default, exactly as for `run`; the store option also belongs before `--`. Resolved secrets are
+never written back to the store.
+
+```console
+tiger-sqlcmd exec -c build-db --non-interactive --tq-connection-store-file C:gent\connections.json --connection-string-env DB_CONNECTION -- my-tool --report
+```
+
+The child command line is never prompted for either. A required tail is a usage error in both
+interaction modes, so a missing `--` fails identically whether or not `--non-interactive` was
+supplied.
 
 An invalid handoff configuration is reported before the connection is resolved, so a bad
 command line never reads an external reference or a stored secret.
@@ -473,7 +566,7 @@ Two codes are TigerSqlCmd's own and are produced before the child runs or instea
 
 | Exit code | Meaning |
 | --- | --- |
-| `20` | The handoff configuration was invalid: no `--`, no executable after `--`, no handoff method, an invalid environment-variable name, or the placeholder in the executable. |
+| `20` | The command line was invalid: no `--` or nothing after it (a framework usage error, because the raw tail is required), no handoff method, an invalid environment-variable name, or the placeholder in the executable. |
 | `4` | The saved connection could not be resolved. |
 | `21` | The child executable could not be started at all — not found, not executable, or refused by the operating system. |
 | `2` | Framework validation rejected the command line, such as a missing `--connection` in non-interactive mode. |
@@ -544,8 +637,10 @@ containing batch, execution, and result-set coordinates. `--output-encoding` acc
 script. See [Result output routing](../features/result-output-routing.md) for the exact
 CSV, overwrite, naming, encoding, and partial-file contract.
 
-Use `--verbosity`, `--log-file`, and `--log-level` for operational diagnostics. Saved
-connection strings and resolved secrets are never printed. `--no-color` is useful when a
+Use `--verbosity`, `--log-file`, and `--log-level` for operational diagnostics, and
+`--command-timeout` when a batch legitimately runs longer than the 30-second default; see
+[Batch timeouts](#batch-timeouts---command-timeout). Saved connection strings and resolved
+secrets are never printed. `--no-color` is useful when a
 job captures output, and `--help-env` lists recognized environment variables.
 
 Process exit codes and diagnostics are the automation contract. `run` returns `0` only

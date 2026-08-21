@@ -220,6 +220,36 @@ thrown exception, `BatchEnd.Exception` and `ExecutionResult.Exception` carry a
 Prepared and streaming execution share one coordinator, so this behavior,
 the batch lifecycle, and the counts are identical in both modes.
 
+## Batch command timeout
+
+[CommandTimeoutSeconds](xref:ItTiger.TigerQuery.Engine.TigerQueryEngineOptions.CommandTimeoutSeconds)
+bounds how long each executed batch may run:
+
+```csharp
+var options = new TigerQueryEngineOptions
+{
+    ConnectionString = connectionString,
+    CommandTimeoutSeconds = 600
+};
+```
+
+| Value | Meaning |
+| --- | --- |
+| `null` (default) | The engine sets nothing, so `SqlCommand.CommandTimeout` keeps the provider default of 30 seconds. |
+| *n* > 0 | Each batch may run for *n* seconds. |
+| `0` | No limit, the SqlClient meaning of `CommandTimeout = 0`. |
+| negative | Rejected: the run methods throw `ArgumentOutOfRangeException` before parsing, opening the connection, or creating an output file. |
+
+The value is applied to each batch independently — including each iteration of a
+`GO n` repeat — so it bounds a batch rather than a run. It is unrelated to the
+connection-open timeout, which belongs to the connection string's
+`Connect Timeout`.
+
+A batch that exceeds the timeout fails exactly like any other batch failure: it
+increments `FailedBatches`, the effective `:on error` policy decides whether
+later batches run, and `ResultCode` is not `Success`. Parsing mode and execution
+mode do not affect it; every mode executes batches through the same path.
+
 ## `:Out` and `:Error` directives
 
 In `SqlCmd` and `SqlCmdEx` modes the parser recognizes and validates the

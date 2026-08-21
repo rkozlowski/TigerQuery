@@ -69,6 +69,47 @@ copy: applying an initial-catalog override would either violate strict full-stri
 versus field mode or persist resolved plaintext. Use the lifecycle's setup and
 teardown helpers directly in that case.
 
+## Session-scoped create options
+
+`SqlServerE2eSessionLifecycle` is the durable, session-correlated counterpart that
+`tiger-sqlcmd e2e create` uses. Its create overload takes a
+[SqlServerE2eCreateOptions](xref:ItTiger.TigerQuery.E2e.SqlServerE2eCreateOptions),
+which carries the generated name parts and the capabilities the **new database** is
+provisioned with:
+
+```csharp
+var lifecycle = new SqlServerE2eSessionLifecycle(store, bootstrapConnectionName);
+
+var created = await lifecycle.CreateAsync(
+    sessionId,
+    new SqlServerE2eCreateOptions
+    {
+        DatabaseNamePart = "inmemory",
+        ConnectionNamePart = "inmemory",
+        MemoryOptimized = true
+    },
+    cancellationToken);
+```
+
+`MemoryOptimized` adds a `MEMORY_OPTIMIZED_DATA` filegroup and its data container to
+the exact database just created, so it can host memory-optimized tables. It creates no
+schema of any kind. The container's location is read from SQL Server itself
+(`SERVERPROPERTY('InstanceDefaultDataPath')`, falling back to `master`'s own data-file
+directory) rather than assumed, and every generated name derives from the exact owned
+database.
+
+The capability belongs to the created database, not to the bootstrap profile: nothing
+is written to bootstrap metadata, and the default (`false`) creates the ordinary
+disposable database.
+
+The call returns only once SQL Server's catalog confirms the filegroup and container.
+If provisioning fails, both the database and its paired connection are rolled back
+through the same ownership-checked teardown `DropAsync` performs, and a
+[SqlServerE2eProvisionException](xref:ItTiger.TigerQuery.E2e.SqlServerE2eProvisionException)
+reports the failure and whether that rollback succeeded. The paired connection still
+records `ittiger.e2e.database.allow-drop=true`, so ordinary drop and cleanup remove a
+provisioned database with no special caller action.
+
 ## Ownership and cleanup guards
 
 A lifecycle instance can create at most one database. It records the exact name

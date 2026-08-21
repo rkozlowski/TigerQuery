@@ -47,18 +47,56 @@ public sealed class SqlServerE2eSessionLifecycle
             ?? throw new ArgumentNullException(nameof(uniqueSuffixFactory));
     }
 
-    /// <summary>Creates one database and its inseparable owning connection record.</summary>
-    public async Task<SqlServerE2eCreateResult> CreateAsync(
+    /// <summary>Creates one ordinary database and its inseparable owning connection record.</summary>
+    public Task<SqlServerE2eCreateResult> CreateAsync(
         Guid sessionId,
         string? databaseNamePart = null,
         string? connectionNamePart = null,
+        CancellationToken cancellationToken = default) =>
+        CreateAsync(
+            sessionId,
+            new SqlServerE2eCreateOptions
+            {
+                DatabaseNamePart = databaseNamePart,
+                ConnectionNamePart = connectionNamePart
+            },
+            cancellationToken);
+
+    /// <summary>Creates one database and its inseparable owning connection record.</summary>
+    /// <param name="sessionId">The session that will own both resources.</param>
+    /// <param name="options">The name parts and the capabilities the database is created with.</param>
+    /// <param name="cancellationToken">A token observed during SQL work.</param>
+    /// <remarks>
+    /// <para>
+    /// The connection record is persisted before any requested capability is provisioned, so
+    /// a provisioning failure can be rolled back through <see cref="DropAsync"/> — the same
+    /// ownership-checked forced teardown a caller would use, applied to the exact pair this
+    /// call created. Success therefore means a fully provisioned database, never a partly
+    /// prepared one.
+    /// </para>
+    /// <para>
+    /// Requested capabilities belong to the created database. The bootstrap profile is only
+    /// the authorized route to <c>master</c>; its metadata is read for authorization and is
+    /// never written to here.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="SqlServerE2eCreateException">
+    /// The connection record could not be persisted; reports the database rollback result.
+    /// </exception>
+    /// <exception cref="SqlServerE2eProvisionException">
+    /// The database could not be provisioned; reports the rollback result for both resources.
+    /// </exception>
+    public async Task<SqlServerE2eCreateResult> CreateAsync(
+        Guid sessionId,
+        SqlServerE2eCreateOptions options,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
         ValidateSessionId(sessionId);
         var bootstrap = ResolveBootstrap(requireDatabaseCreation: true);
         var suffix = uniqueSuffixFactory();
-        var databaseName = SqlServerE2eNames.Database(databaseNamePart, suffix);
-        var connectionName = SqlServerE2eNames.Connection(connectionNamePart, suffix);
+        var databaseName = SqlServerE2eNames.Database(options.DatabaseNamePart, suffix);
+        var connectionName = SqlServerE2eNames.Connection(options.ConnectionNamePart, suffix);
 
         await executor.ExecuteAsync(
             BuildConnectionString(bootstrap, "master"),
@@ -101,7 +139,65 @@ public sealed class SqlServerE2eSessionLifecycle
                 persistenceFailure);
         }
 
+        if (options.MemoryOptimized)
+        {
+            await ProvisionMemoryOptimizedAsync(
+                bootstrap, databaseName, connectionName, sessionId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         return new SqlServerE2eCreateResult(databaseName, connectionName);
+    }
+
+    /// <summary>
+    /// Adds the memory-optimized filegroup and container to the exact database just created,
+    /// rolling the whole pair back through the ordinary owned teardown if anything fails.
+    /// </summary>
+    /// <remarks>
+    /// Rollback goes through <see cref="DropAsync"/> rather than a private drop, so every
+    /// ownership check still applies: the exact saved connection, the exact session, the
+    /// exact recorded database name, the recorded drop authorization, and the protected
+    /// prefix guard. A rollback that cannot complete is reported rather than swallowed, and
+    /// leaves the owning connection in place so the identical teardown can be retried.
+    /// </remarks>
+    private async Task ProvisionMemoryOptimizedAsync(
+        SqlServerConnectionProfile bootstrap,
+        string databaseName,
+        string connectionName,
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await executor.ExecuteAsync(
+                BuildConnectionString(bootstrap, "master"),
+                SqlServerE2eMemoryOptimizedProvisioning.Script,
+                SqlServerE2eMemoryOptimizedProvisioning.BuildParameters(databaseName),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception provisioningFailure)
+        {
+            try
+            {
+                await DropAsync(connectionName, sessionId, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception rollbackFailure)
+            {
+                throw new SqlServerE2eProvisionException(
+                    databaseName,
+                    connectionName,
+                    rollbackSucceeded: false,
+                    provisioningFailure,
+                    rollbackFailure);
+            }
+
+            throw new SqlServerE2eProvisionException(
+                databaseName,
+                connectionName,
+                rollbackSucceeded: true,
+                provisioningFailure);
+        }
     }
 
     /// <summary>Clones a source connection for an existing database without owning it.</summary>

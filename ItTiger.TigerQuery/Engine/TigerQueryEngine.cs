@@ -1,4 +1,4 @@
-﻿using ItTiger.TigerQuery.Events;
+using ItTiger.TigerQuery.Events;
 using ItTiger.TigerQuery.Output;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -678,6 +678,9 @@ public sealed class TigerQueryEngine
     /// <exception cref="ArgumentNullException">
     /// <paramref name="input"/> is <see langword="null"/>.
     /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <see cref="TigerQueryEngineOptions.CommandTimeoutSeconds"/> is negative.
+    /// </exception>
     /// <exception cref="TigerQueryException">TigerQuery/sqlcmd structure is malformed.</exception>
     /// <exception cref="OperationCanceledException">
     /// Cancellation is observed outside an active batch provider operation.
@@ -691,7 +694,18 @@ public sealed class TigerQueryEngine
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        // Routing configuration is validated first: encoding, base directory, and enum
+        // A negative command timeout is a caller mistake rather than a script, routing, or
+        // connection problem, so it is rejected here — before parsing, connection opening,
+        // or output-file creation — for every run entry point at once.
+        if (_options.CommandTimeoutSeconds is < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                $"{nameof(_options)}.{nameof(TigerQueryEngineOptions.CommandTimeoutSeconds)}",
+                _options.CommandTimeoutSeconds,
+                "The SQL command timeout must be 0 (no limit) or a positive number of seconds.");
+        }
+
+        // Routing configuration is validated next: encoding, base directory, and enum
         // values must be usable before parsing, connection opening, or file creation.
         var routingConfiguration = OutputRoutingConfiguration.Create(_options.OutputRouting);
 

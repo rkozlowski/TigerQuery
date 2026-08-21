@@ -94,6 +94,66 @@ public sealed class TigerSqlCmdExecProcessTests : IDisposable
     private static IReadOnlyList<string> ChildArguments(string stdout) =>
         TigerSqlCmdTestChild.Arguments(stdout);
 
+    // ── Raw trailing-argument binding ────────────────────────────────
+
+    /// <summary>
+    /// TigerCli binds every token after the first <c>--</c> literally and in order. This is
+    /// the strongest form of that claim: the tail carries framework options, an app-wide
+    /// contributed option pointing at a store that does not exist, a second <c>--</c>, a
+    /// lone <c>-x</c>, and an empty string, and the child's real argv reproduces all of it.
+    /// A parser that inspected the tail would either consume these tokens or fail the run.
+    /// </summary>
+    [Fact]
+    public async Task TheRawTailReachesTheChildLiterally_OptionLookingTokensIncluded()
+    {
+        var result = await RunExecAsync(
+            "--", ChildExecutable,
+            "--non-interactive",
+            "--no-color",
+            "--tq-connection-store-file", "tq-exec-not-a-store.json",
+            "--",
+            "--theme",
+            "-x",
+            string.Empty,
+            Placeholder);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(
+            [
+                "--non-interactive",
+                "--no-color",
+                "--tq-connection-store-file", "tq-exec-not-a-store.json",
+                "--",
+                "--theme",
+                "-x",
+                string.Empty,
+                _expectedConnectionString
+            ],
+            ChildArguments(result.StdOut));
+    }
+
+    /// <summary>
+    /// The head keeps its own grammar while the tail is passed through: the same option name
+    /// means the option before <c>--</c> and an ordinary child argument after it.
+    /// </summary>
+    [Fact]
+    public async Task TheSameOptionNameIsParsedInTheHeadAndPassedThroughInTheTail()
+    {
+        var result = await RunExecAsync(
+            "--connection-string-env", EnvironmentVariable,
+            "--", ChildExecutable,
+            "--connection-string-env", "CHILD_OWN_VALUE",
+            "--echo-env", EnvironmentVariable);
+
+        Assert.Equal(0, result.ExitCode);
+        // The head option took effect...
+        Assert.Contains($"ENV[{EnvironmentVariable}]={_expectedConnectionString}", result.StdOut);
+        // ...and the identical tail token was handed to the child unchanged.
+        Assert.Equal(
+            ["--connection-string-env", "CHILD_OWN_VALUE", "--echo-env", EnvironmentVariable],
+            ChildArguments(result.StdOut));
+    }
+
     // ── Argument substitution ────────────────────────────────────────
 
     [Fact]

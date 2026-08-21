@@ -3,96 +3,18 @@ using ItTiger.TigerSqlCmd;
 namespace ItTiger.TigerQuery.Tests.Cli;
 
 /// <summary>
-/// Unit tests for the two pieces of <c>exec</c> that decide everything before a process
-/// exists: the <c>--</c> split and the handoff plan. Neither touches SQL Server, the
-/// connection store, or the operating system, so the substitution and redaction contracts
-/// can be locked exactly.
+/// Unit tests for the handoff plan, the piece of <c>exec</c> that decides everything
+/// before a process exists. TigerCli owns the <c>--</c> split and binds the tail, so these
+/// tests start from an already-bound child command line and touch neither SQL Server, the
+/// connection store, nor the operating system; the substitution and redaction contracts
+/// can therefore be locked exactly.
 /// </summary>
 public sealed class TigerSqlCmdExecPlanTests
 {
     private const string Placeholder = TigerSqlCmdExecPlan.ConnectionStringPlaceholder;
     private const string Resolved = "Server=sql01;Database=AppDb;Password=not-a-real-secret";
 
-    // ── The -- split ─────────────────────────────────────────────────
-
-    [Fact]
-    public void Split_WithoutExec_LeavesEveryOtherCommandUntouched()
-    {
-        // A "--" anywhere else keeps whatever meaning TigerCli already gave it.
-        var (host, child) = TigerSqlCmdChildCommandLine.Split(
-            ["run", "-c", "local", "-q", "select 1", "--", "extra"]);
-
-        Assert.Equal(["run", "-c", "local", "-q", "select 1", "--", "extra"], host);
-        Assert.Null(child);
-    }
-
-    [Fact]
-    public void Split_EmptyArguments_ReturnsNoChildCommandLine()
-    {
-        var (host, child) = TigerSqlCmdChildCommandLine.Split([]);
-
-        Assert.Empty(host);
-        Assert.Null(child);
-    }
-
-    [Fact]
-    public void Split_ExecWithoutSeparator_ReportsNoChildCommandLine()
-    {
-        var (host, child) = TigerSqlCmdChildCommandLine.Split(["exec", "-c", "local"]);
-
-        Assert.Equal(["exec", "-c", "local"], host);
-        Assert.Null(child);
-    }
-
-    [Fact]
-    public void Split_ExecWithSeparator_SplitsHostArgumentsFromTheChildCommandLine()
-    {
-        var (host, child) = TigerSqlCmdChildCommandLine.Split(
-            ["exec", "-c", "local", "--", "my-tool", "--flag", "value"]);
-
-        Assert.Equal(["exec", "-c", "local"], host);
-        Assert.Equal(["my-tool", "--flag", "value"], child);
-    }
-
-    [Fact]
-    public void Split_TrailingSeparator_ReportsAnEmptyChildCommandLine()
-    {
-        // Distinct from "no separator": the caller asked for a child but named none.
-        var (host, child) = TigerSqlCmdChildCommandLine.Split(["exec", "-c", "local", "--"]);
-
-        Assert.Equal(["exec", "-c", "local"], host);
-        Assert.NotNull(child);
-        Assert.Empty(child);
-    }
-
-    [Fact]
-    public void Split_SecondSeparator_StaysAnOrdinaryChildArgument()
-    {
-        var (_, child) = TigerSqlCmdChildCommandLine.Split(
-            ["exec", "-c", "local", "--", "my-tool", "--", "after"]);
-
-        Assert.Equal(["my-tool", "--", "after"], child);
-    }
-
-    [Fact]
-    public void Split_ExecIsMatchedTheWayTigerCliMatchesCommandPaths()
-    {
-        var (host, child) = TigerSqlCmdChildCommandLine.Split(["EXEC", "-c", "local", "--", "my-tool"]);
-
-        Assert.Equal(["EXEC", "-c", "local"], host);
-        Assert.Equal(["my-tool"], child);
-    }
-
     // ── Handoff validation ───────────────────────────────────────────
-
-    [Fact]
-    public void TryCreate_NoSeparator_ExplainsHowToNameAChild()
-    {
-        Assert.False(TigerSqlCmdExecPlan.TryCreate(null, null, out var plan, out var error));
-
-        Assert.Null(plan);
-        Assert.Contains("'--'", error);
-    }
 
     [Fact]
     public void TryCreate_NoExecutableAfterSeparator_Fails()

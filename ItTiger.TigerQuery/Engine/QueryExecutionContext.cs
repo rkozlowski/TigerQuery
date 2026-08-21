@@ -1,4 +1,4 @@
-﻿using ItTiger.TigerQuery.Events;
+using ItTiger.TigerQuery.Events;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using System;
@@ -200,14 +200,18 @@ public sealed class QueryExecutionContext
     /// <returns>Zero after execution, including for an empty batch.</returns>
     /// <remarks>
     /// A null or whitespace-only batch is skipped. The supplied connection must
-    /// already be open. Result sets are fully read before they are delivered. When
+    /// already be open. <see cref="TigerQueryEngineOptions.CommandTimeoutSeconds"/>, when
+    /// set, bounds this one batch rather than the run. Result sets are fully read before they are delivered. When
     /// the engine has redirected the result-set channel to a file, the result set is
     /// written there and the callback is not invoked.
     /// </remarks>
     /// <exception cref="OperationCanceledException">
     /// <paramref name="cancellationToken"/> is cancelled during provider work.
     /// </exception>
-    /// <exception cref="SqlException">SQL Server rejects or fails the batch.</exception>
+    /// <exception cref="SqlException">
+    /// SQL Server rejects or fails the batch, including when the batch exceeds
+    /// <see cref="TigerQueryEngineOptions.CommandTimeoutSeconds"/>.
+    /// </exception>
     /// <exception cref="OutputRoutingException">
     /// A redirected result set could not be serialized or written.
     /// </exception>
@@ -223,6 +227,12 @@ public sealed class QueryExecutionContext
         await using var command = _connection.CreateCommand();
         command.CommandText = batch.Text;
         command.CommandType = CommandType.Text;
+
+        // Applied per batch, and only when the run asked for it: leaving the property alone
+        // keeps the provider's own 30-second default, which is what every run that omits the
+        // option has always used. Zero is the provider's "no limit" and is passed through.
+        if (_options.CommandTimeoutSeconds is int commandTimeoutSeconds)
+            command.CommandTimeout = commandTimeoutSeconds;
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         int resultSetIndex = 0;

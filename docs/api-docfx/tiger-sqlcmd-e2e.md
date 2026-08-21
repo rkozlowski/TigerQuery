@@ -26,6 +26,7 @@ model is described in
 | Operation | Semi-interactive | Unattended |
 | --- | --- | --- |
 | Create an owned database and connection | `tiger-sqlcmd e2e create --session-id <guid> --name-part smoke` | `tiger-sqlcmd e2e create --session-id <guid> --name-part smoke --non-interactive` |
+| Create one that can host memory-optimized tables | `tiger-sqlcmd e2e create --session-id <guid> --name-part inmemory --memory-optimized` | `tiger-sqlcmd e2e create --session-id <guid> --name-part inmemory --memory-optimized --non-interactive` |
 | Clone for an existing database | `tiger-sqlcmd connection clone-e2e source --database ExistingDb --session-id <guid> --name-part readonly` | `tiger-sqlcmd connection clone-e2e source --database ExistingDb --session-id <guid> --name-part readonly --non-interactive` |
 | Drop one exact resource | `tiger-sqlcmd e2e drop --connection <exact-name> --session-id <guid>` | `tiger-sqlcmd e2e drop --connection <exact-name> --session-id <guid> --non-interactive` |
 | Clean one exact session | `tiger-sqlcmd e2e cleanup --session-id <guid>` | `tiger-sqlcmd e2e cleanup --session-id <guid> --non-interactive` |
@@ -144,6 +145,93 @@ Generated database names are
 `_TQ_E2E_<database-part>_<random-suffix>`; generated connection names are
 `E2E-<connection-part>-<random-suffix>`. A paired create uses the same suffix for both.
 Prefixes are fixed. Name parts are sanitized and do not become ownership evidence.
+
+## Memory-optimized databases: `e2e create --memory-optimized`
+
+SQL Server will not create a memory-optimized table in a database that has no
+`MEMORY_OPTIMIZED_DATA` filegroup. A plain `e2e create` database has none, so
+`CREATE TABLE ... WITH (MEMORY_OPTIMIZED = ON)` against it fails. Add `--memory-optimized`
+when the session needs one:
+
+```console
+tiger-sqlcmd e2e create --session-id 11111111-2222-3333-4444-555555555555 --name-part inmemory --memory-optimized --non-interactive
+```
+
+```text
+Created E2E database _TQ_E2E_inmemory_<exact-suffix>.
+Provisioned it for memory-optimized tables.
+Created E2E connection E2E-inmemory-<exact-suffix>.
+```
+
+### When you need it
+
+Use it when the code under test creates or reads memory-optimized tables — natively
+compiled procedures, `SCHEMA_ONLY` staging tables, in-memory table types. Everything else
+should keep the default: an ordinary disposable database is cheaper to create and to drop,
+and `--memory-optimized` changes nothing else about the session.
+
+### What TigerSqlCmd creates
+
+`--memory-optimized` is a property of **the database being created**, not of the bootstrap
+connection. Nothing is written to bootstrap metadata, and two `e2e create` calls against the
+same bootstrap — one with the switch and one without — are independent.
+
+Against the exact database it just created, and through the same authorized bootstrap,
+TigerSqlCmd adds generic SQL Server in-memory OLTP support and nothing else:
+
+```sql
+ALTER DATABASE [_TQ_E2E_inmemory_<exact-suffix>]
+    ADD FILEGROUP [_TQ_E2E_inmemory_<exact-suffix>_MOD_FG]
+    CONTAINS MEMORY_OPTIMIZED_DATA;
+
+ALTER DATABASE [_TQ_E2E_inmemory_<exact-suffix>]
+    ADD FILE (NAME = N'_TQ_E2E_inmemory_<exact-suffix>_MOD_FILE',
+              FILENAME = N'<server data directory>_TQ_E2E_inmemory_<exact-suffix>_MOD_DIR')
+    TO FILEGROUP [_TQ_E2E_inmemory_<exact-suffix>_MOD_FG];
+```
+
+- **No schema.** No table, index, procedure, or type is created. You write your own
+  memory-optimized DDL exactly as you would against any prepared database.
+- **Names are derived from the exact owned database**, so a second provisioned database on
+  the same instance can never collide with the first. They inherit the `_TQ_E2E_` grammar,
+  which admits only letters, digits, underscore, and hyphen.
+- **The container path comes from SQL Server, not from the caller.** The batch reads
+  `SERVERPROPERTY('InstanceDefaultDataPath')`, falling back to the directory holding
+  `master`'s own data file, and appends the generated directory name. The container lives on
+  the *server's* filesystem, which is frequently not the machine running `tiger-sqlcmd`, so
+  a caller-supplied path would be meaningless. There is no `--init-file` and no
+  general-purpose initialization-script mechanism.
+- **Success means provisioned.** Before reporting success, the batch confirms the filegroup
+  and its container in the new database's own catalog. A partly prepared database is never
+  handed back.
+- **A failure rolls the whole pair back.** If provisioning fails, the exact database and its
+  paired connection are removed through the same ownership-checked forced teardown described
+  in [Forced teardown of an owned database](#forced-teardown-of-an-owned-database), and the
+  command reports the failure and what the rollback achieved.
+
+### Using it
+
+```console
+tiger-sqlcmd run --connection E2E-inmemory-<exact-suffix> --non-interactive --query "CREATE TABLE dbo.Staging (Id int NOT NULL PRIMARY KEY NONCLUSTERED, Marker nvarchar(50) NOT NULL) WITH (MEMORY_OPTIMIZED = ON, DURABILITY = SCHEMA_ONLY);"
+```
+
+### Cleaning it up
+
+Nothing special. The paired connection still records
+`ittiger.e2e.database.allow-drop=true`, so `e2e drop` and `e2e cleanup` remove a provisioned
+database — and its container directory — through the ordinary forced owned-database
+teardown, including while it is in use:
+
+```console
+tiger-sqlcmd e2e cleanup --session-id 11111111-2222-3333-4444-555555555555 --non-interactive
+```
+
+`connection clone-e2e` is unaffected. It targets a database that already exists and never
+provisions anything, so it neither adds a filegroup nor gains the ability to remove one.
+
+If the instance does not support In-Memory OLTP at all, `e2e create --memory-optimized`
+fails with that reason, rolls back both resources, and returns a nonzero exit code. Plain
+`e2e create` continues to work on such an instance.
 
 ## Disposable database: complete PowerShell workflow
 
@@ -319,6 +407,13 @@ take a TigerSqlCmd connection name. `tiger-sqlcmd exec` bridges that gap without
 having to rebuild the connection string itself: it resolves the same saved connection from
 the same selected store and hands the result to one child process.
 
+`exec` uses TigerCli's native raw trailing arguments. Every `tiger-sqlcmd` option —
+`--connection`, `--connection-string-env`, `--non-interactive`, `--no-color`,
+`--tq-connection-store-file` — goes **before** `--`, and everything after `--` is handed to
+the child literally, including tokens that look like options. Note that in the workflow below
+the session store option belongs to `tiger-sqlcmd`, so it precedes the separator, while
+`--apply` belongs to the deployment tool and follows it.
+
 This workflow creates the session resources, deploys with an external tool through `exec`,
 runs verification SQL against the same connection, and cleans up the same session. The
 deployment tool is a stand-in — `exec` adds no product-specific behavior for any tool.
@@ -384,8 +479,28 @@ That form puts the resolved connection string into the child's command line, whe
 process listing on the agent can read it. On a shared or long-lived build agent, prefer the
 environment form. Quote the placeholder in PowerShell as shown so `{connection-string}`
 reaches `tiger-sqlcmd` intact; `exec` performs no other expansion and starts the tool
-directly, with no shell in between. The complete contract is in
-[Running an external tool: `exec`](tiger-sqlcmd.md#running-an-external-tool-exec).
+directly, with no shell in between. The complete contract, including the exact rules for the
+`--` separator, is in
+[Running an external tool: `exec`](tiger-sqlcmd.md#running-an-external-tool-exec) and
+[Where the separator comes from](tiger-sqlcmd.md#where-the-separator-comes-from).
+
+### Long-running session SQL
+
+Schema deployment and data seeding are the usual reason a session batch outruns the
+30-second default command timeout. Rather than splitting the script across several
+invocations, give the run an explicit per-batch budget:
+
+```powershell
+& tiger-sqlcmd run --connection $connectionName `
+  --file .\seed-large-dataset.sql `
+  --command-timeout 900 --non-interactive --no-color `
+  --tq-connection-store-file $storeFile
+if ($LASTEXITCODE -ne 0) { throw "Seeding failed with exit code $LASTEXITCODE." }
+```
+
+Use `--command-timeout 0` for no limit at all. The value bounds each batch rather than the
+run, and it is not the connection timeout; see
+[Batch timeouts](tiger-sqlcmd.md#batch-timeouts---command-timeout).
 
 ## Existing database: non-owning clone example
 

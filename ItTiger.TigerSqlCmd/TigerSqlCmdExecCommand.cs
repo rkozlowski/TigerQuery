@@ -6,9 +6,8 @@ using ItTiger.TigerQuery.CliCore;
 namespace ItTiger.TigerSqlCmd;
 
 /// <summary>
-/// Settings for <c>exec</c>. The child executable and its arguments are not settings: they
-/// arrive through the <c>--</c> passthrough that <see cref="TigerSqlCmdChildCommandLine"/>
-/// removes before TigerCli parses anything.
+/// Settings for <c>exec</c>: the parsed head before <c>--</c>, plus the raw trailing tail
+/// after it that carries the child executable and its arguments.
 /// </summary>
 internal sealed class TigerSqlCmdExecSettings : TigerCliSettings
 {
@@ -28,6 +27,24 @@ internal sealed class TigerSqlCmdExecSettings : TigerCliSettings
         Description = "Set this environment variable to the resolved connection string for the "
             + "child process only. Preferred over argument substitution when the child can read it.")]
     public string? ConnectionStringEnvironmentVariable { get; set; }
+
+    /// <summary>
+    /// The child command line: every token after the first <c>--</c>, bound literally and
+    /// in order by TigerCli.
+    /// </summary>
+    /// <remarks>
+    /// TigerCli owns the separator. It parses only the head, never matches a tail token
+    /// against an option (app, framework, or contributed), never prompts for one, and never
+    /// validates one against a provider, so a child switch such as <c>--non-interactive</c>
+    /// or a later <c>--</c> reaches the child untouched. <c>Required</c> makes both a
+    /// missing separator and an empty tail a framework usage error, which is why nothing
+    /// here scans the argument list for <c>--</c>.
+    /// </remarks>
+    [TigerCliRawArguments(
+        Name = "child-command",
+        Description = "The child executable and its arguments, passed through unchanged.",
+        Required = true)]
+    public IReadOnlyList<string> ChildCommandLine { get; init; } = [];
 }
 
 /// <summary>
@@ -39,17 +56,12 @@ internal sealed class TigerSqlCmdExecSettings : TigerCliSettings
 /// The run-shared TigerQuery state the app composed, from which this command reads the
 /// store the run selected.
 /// </param>
-/// <param name="childCommandLine">
-/// The tokens after <c>--</c>, or null when the run supplied no separator.
-/// </param>
 /// <remarks>
 /// The handler returns a raw <see cref="int"/> rather than
 /// <see cref="TigerSqlCmdExitCode"/> because TigerCli passes an integer handler result
 /// through to the process unmapped, which is what lets the child's own exit code survive.
 /// </remarks>
-internal sealed class TigerSqlCmdExecCommand(
-    TigerQueryCliOptions connections,
-    IReadOnlyList<string>? childCommandLine)
+internal sealed class TigerSqlCmdExecCommand(TigerQueryCliOptions connections)
     : TigerCliAsyncCommandHandler<TigerSqlCmdExecSettings>
 {
     public override async Task<int> ExecuteAsync(TigerSqlCmdExecSettings settings)
@@ -57,7 +69,7 @@ internal sealed class TigerSqlCmdExecCommand(
         // Handoff configuration is validated first and on its own: an invalid command line
         // must never reach the connection store, let alone resolve an external secret.
         if (!TigerSqlCmdExecPlan.TryCreate(
-                childCommandLine,
+                settings.ChildCommandLine,
                 settings.ConnectionStringEnvironmentVariable,
                 out var plan,
                 out var error))

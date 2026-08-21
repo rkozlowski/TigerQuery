@@ -35,6 +35,15 @@ internal sealed class TigerSqlCmdE2eCreateSettings : TigerSqlCmdE2eSessionSettin
     [TigerCliOption("--connection-name-part", ValueName = "text",
         Description = "Connection name part, overriding --name-part.")]
     public string? ConnectionNamePart { get; set; }
+
+    // A capability of the database being created, not of the bootstrap connection: a plain
+    // switch, defaulting off, so `e2e create` without it stays the ordinary creation path.
+    [TigerCliOption("--memory-optimized",
+        Description = "Also provision the new database with a MEMORY_OPTIMIZED_DATA filegroup "
+            + "and container so it can host memory-optimized tables. Creates no schema, and is "
+            + "cleaned up by the ordinary e2e drop/cleanup teardown.",
+        Promptable = TigerCliPromptable.No)]
+    public bool MemoryOptimized { get; set; }
 }
 
 internal sealed class TigerSqlCmdE2eDropSettings : TigerSqlCmdE2eSessionSettings
@@ -59,17 +68,28 @@ internal sealed class TigerSqlCmdE2eCreateCommand(TigerQueryCliOptions tigerQuer
             var lifecycle = CreateLifecycle(tigerQuery);
             var result = await lifecycle.CreateAsync(
                 sessionId,
-                settings.DatabaseNamePart ?? settings.NamePart,
-                settings.ConnectionNamePart ?? settings.NamePart,
+                new SqlServerE2eCreateOptions
+                {
+                    DatabaseNamePart = settings.DatabaseNamePart ?? settings.NamePart,
+                    ConnectionNamePart = settings.ConnectionNamePart ?? settings.NamePart,
+                    MemoryOptimized = settings.MemoryOptimized
+                },
                 CancellationToken.None).ConfigureAwait(false);
             TigerConsole.MarkupLine(
                 $"Created E2E database [Value]{CliMarkupParser.Escape(result.DatabaseName)}[/].");
+            if (settings.MemoryOptimized)
+            {
+                TigerConsole.MarkupLine(
+                    "Provisioned it for [Accent]memory-optimized[/] tables.");
+            }
+
             TigerConsole.MarkupLine(
                 $"Created E2E connection [Value]{CliMarkupParser.Escape(result.ConnectionName)}[/].");
             return TigerCliExitKind.Success;
         }
         catch (Exception ex) when (
-            ex is ArgumentException or InvalidOperationException or SqlServerE2eCreateException)
+            ex is ArgumentException or InvalidOperationException
+                or SqlServerE2eCreateException or SqlServerE2eProvisionException)
         {
             TigerConsole.MarkupErrorLine(CliMarkupParser.Escape(ex.Message));
             return TigerCliExitKind.ValidationError;

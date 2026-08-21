@@ -90,10 +90,10 @@ internal static class CliTestRunner
         Func<TigerCliAppTestHost, TigerCliAppTestHost>? configure,
         params string[] args)
     {
-        // Compose, not Build: a test run must split the `exec` child command line off the
-        // argument list exactly the way Program does.
-        var (app, hostArguments) = TigerSqlCmdApp.Compose(args, store.FilePath, environmentReader);
-        var host = TigerCliAppTestHost.For(app).WithArgs(hostArguments);
+        // The app receives the argument list untouched, exactly as Program hands it over:
+        // TigerCli owns the `--` separator and binds the `exec` tail itself.
+        var app = TigerSqlCmdApp.Build(store.FilePath, environmentReader);
+        var host = TigerCliAppTestHost.For(app).WithArgs(args);
         if (configure is not null)
             host = configure(host);
 
