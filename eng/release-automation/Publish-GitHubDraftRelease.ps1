@@ -17,11 +17,14 @@ param(
     [string] $ReleaseNotesHeaderPath,
 
     [string] $Repository = 'rkozlowski/TigerQuery',
-    [switch] $PlanOnly
+    [switch] $PlanOnly,
+    [switch] $AllowDifferentHeadForRecovery
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+. (Join-Path $PSScriptRoot 'GitHubReleaseState.ps1')
 
 if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
     throw "Invalid release version '$Version'."
@@ -74,9 +77,49 @@ foreach ($command in @('git', 'gh')) {
     }
 }
 
+function Get-GitHubReleases {
+    $releasePagesJson = & gh api --paginate --slurp "repos/$Repository/releases?per_page=100"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not list GitHub Releases for $Repository, including drafts."
+    }
+
+    $releasePages = $releasePagesJson | ConvertFrom-Json
+    $releases = [Collections.Generic.List[object]]::new()
+    foreach ($page in @($releasePages)) {
+        foreach ($release in @($page)) {
+            $releases.Add($release)
+        }
+    }
+    return $releases.ToArray()
+}
+
+function Get-GitHubReleaseById {
+    param(
+        [Parameter(Mandatory)]
+        [long] $ReleaseId
+    )
+
+    $releaseJson = & gh api "repos/$Repository/releases/$ReleaseId"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not inspect GitHub Release ID $ReleaseId for $Repository."
+    }
+    $release = $releaseJson | ConvertFrom-Json
+    if ([long] $release.id -ne $ReleaseId) {
+        throw "GitHub returned release ID '$($release.id)' while inspecting release ID $ReleaseId."
+    }
+    Assert-CompatibleGitHubDraftRelease -Release $release -Tag $tag -Title $title
+    return $release
+}
+
 $head = (& git rev-parse HEAD | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $head -cne $CommitSha) {
-    throw "Checked-out commit '$head' does not match release commit '$CommitSha'."
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not resolve the checked-out commit.'
+}
+if ($head -cne $CommitSha) {
+    if (-not $AllowDifferentHeadForRecovery) {
+        throw "Checked-out commit '$head' does not match release commit '$CommitSha'."
+    }
+    Write-Warning "Recovery helper commit '$head' differs from release commit '$CommitSha'; the retained artifact manifest and existing tag must still match the release commit exactly."
 }
 
 $remoteTag = (& git ls-remote --tags origin "refs/tags/$tag" | Out-String).Trim()
@@ -95,18 +138,16 @@ else {
     if ($LASTEXITCODE -ne 0) { throw "Could not fetch existing tag $tag." }
     $tagCommit = (& git rev-list -n 1 $tag | Out-String).Trim()
     $tagType = (& git cat-file -t $tag | Out-String).Trim()
-    if ($tagCommit -cne $CommitSha) {
-        throw "Tag $tag points to '$tagCommit', not '$CommitSha'. Never move an existing release tag."
-    }
-    if ($tagType -cne 'tag') {
-        throw "Tag $tag is not annotated. Manual intervention is required; it will not be replaced."
-    }
+    Assert-ExistingAnnotatedReleaseTag `
+        -Tag $tag `
+        -ExpectedCommitSha $CommitSha `
+        -ActualCommitSha $tagCommit `
+        -ObjectType $tagType
     Write-Host "Existing annotated tag $tag already points to $CommitSha."
 }
 
-$releaseJson = & gh release view $tag --repo $Repository --json name,isDraft,isPrerelease,tagName 2>$null
-$releaseFound = $LASTEXITCODE -eq 0
-if (-not $releaseFound) {
+$release = Resolve-CompatibleGitHubRelease -Releases @(Get-GitHubReleases) -Tag $tag -Title $title
+if ($null -eq $release) {
     $header = (Get-Content -LiteralPath $ReleaseNotesHeaderPath -Raw).Trim()
     & gh release create $tag `
         --repo $Repository `
@@ -117,59 +158,44 @@ if (-not $releaseFound) {
         --notes $header
     if ($LASTEXITCODE -ne 0) { throw "Could not create draft GitHub Release for $tag." }
     Write-Host "Created draft GitHub Release $tag."
+    $release = Resolve-CompatibleGitHubRelease -Releases @(Get-GitHubReleases) -Tag $tag -Title $title
+    if ($null -eq $release) {
+        throw "GitHub reported successful creation of draft release $tag, but it was not returned by the draft-capable releases API."
+    }
 }
 else {
-    $release = $releaseJson | ConvertFrom-Json
-    if (-not $release.isDraft) {
-        throw "GitHub Release $tag is already published. This workflow never edits a published release."
-    }
-    if ($release.isPrerelease -or $release.tagName -cne $tag -or $release.name -cne $title) {
-        throw "Existing draft release $tag has conflicting title, tag, or prerelease state."
-    }
     Write-Host "Existing draft GitHub Release $tag is compatible with this run."
 }
 
-$releaseApiJson = & gh api "repos/$Repository/releases/tags/$tag"
-if ($LASTEXITCODE -ne 0) { throw "Could not inspect assets for release $tag." }
-$releaseApi = $releaseApiJson | ConvertFrom-Json
-if (-not $releaseApi.draft) { throw "Release $tag is not a draft." }
+$releaseId = [long] $release.id
+Write-Host "Using draft GitHub Release ID $releaseId for $tag."
+$releaseApi = Get-GitHubReleaseById -ReleaseId $releaseId
 
 $existingAssets = @($releaseApi.assets)
-$unexpectedAssets = @($existingAssets | Where-Object { $_.name -cnotin $assetNames })
-if ($unexpectedAssets.Count -ne 0) {
-    throw "Draft release $tag contains unexpected assets: $($unexpectedAssets.name -join ', ')."
+$missingAssets = @(Get-MissingCompatibleGitHubReleaseAssets `
+    -ExistingAssets $existingAssets `
+    -ExpectedAssets $assets `
+    -Tag $tag)
+$missingAssetNames = @($missingAssets | ForEach-Object { [string] $_.Name })
+foreach ($asset in $assets | Where-Object { [string] $_.Name -cnotin $missingAssetNames }) {
+    Write-Host "Verified existing release asset $($asset.Name) ($($asset.Digest))."
 }
 
-foreach ($asset in $assets) {
-    $matches = @($existingAssets | Where-Object { $_.name -ceq $asset.Name })
-    if ($matches.Count -gt 1) { throw "Draft release $tag contains duplicate asset '$($asset.Name)'." }
-    if ($matches.Count -eq 1) {
-        $remoteAsset = $matches[0]
-        if ($remoteAsset.state -cne 'uploaded' -or $remoteAsset.size -ne $asset.Length -or $remoteAsset.digest -cne $asset.Digest) {
-            throw "Existing asset '$($asset.Name)' has different bytes or incomplete metadata. It will not be replaced automatically."
-        }
-        Write-Host "Verified existing release asset $($asset.Name) ($($asset.Digest))."
-        continue
-    }
-
+foreach ($asset in $missingAssets) {
     & gh release upload $tag $asset.Path --repo $Repository
     if ($LASTEXITCODE -ne 0) { throw "Could not upload release asset '$($asset.Name)'." }
     Write-Host "Uploaded release asset $($asset.Name)."
 }
 
-$verifiedReleaseJson = & gh api "repos/$Repository/releases/tags/$tag"
-if ($LASTEXITCODE -ne 0) { throw "Could not verify uploaded assets for release $tag." }
-$verifiedAssets = @(($verifiedReleaseJson | ConvertFrom-Json).assets)
-$verifiedUnexpected = @($verifiedAssets | Where-Object { $_.name -cnotin $assetNames })
-if ($verifiedAssets.Count -ne $assets.Count -or $verifiedUnexpected.Count -ne 0) {
+$verifiedRelease = Get-GitHubReleaseById -ReleaseId $releaseId
+$verifiedAssets = @($verifiedRelease.assets)
+$stillMissingAssets = @(Get-MissingCompatibleGitHubReleaseAssets `
+    -ExistingAssets $verifiedAssets `
+    -ExpectedAssets $assets `
+    -Tag $tag)
+if ($stillMissingAssets.Count -ne 0) {
     throw "Draft release $tag does not contain the exact expected asset-name set."
 }
-foreach ($asset in $assets) {
-    $match = @($verifiedAssets | Where-Object { $_.name -ceq $asset.Name })
-    if ($match.Count -ne 1 -or $match[0].state -cne 'uploaded' -or $match[0].digest -cne $asset.Digest) {
-        throw "Release asset '$($asset.Name)' failed post-upload digest verification."
-    }
-}
 
-Write-Host "Draft GitHub Release $tag contains the exact validated asset set and remains unpublished."
+Write-Host "Draft GitHub Release $tag (ID $releaseId) contains the exact validated asset set and remains unpublished."
 

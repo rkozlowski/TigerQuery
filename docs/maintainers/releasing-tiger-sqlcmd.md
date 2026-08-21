@@ -49,7 +49,11 @@ versions and never uses duplicate-skipping.
   validated commit and use the retained artifact with
   `eng/release-automation/Publish-GitHubDraftRelease.ps1`. Run `-PlanOnly` first. Execution accepts
   only the same annotated tag/commit, the same compatible draft, and identical existing
-  asset digests; it uploads only missing assets.
+  asset digests; it uploads only missing assets. It finds drafts through the authenticated
+  releases list, retains the numeric release ID, and rechecks that exact draft by ID. If
+  the helper fix necessarily postdates the validated release commit, run it from the fixed
+  checkout with `-AllowDifferentHeadForRecovery`; the retained manifest and tag must still
+  match the original release commit exactly.
 - Never move an existing tag. Never pass `--clobber` for a release asset. If a draft asset
   has different bytes, inspect and remove it manually only after confirming the retained
   artifact is authoritative. Never alter a published release asset.
