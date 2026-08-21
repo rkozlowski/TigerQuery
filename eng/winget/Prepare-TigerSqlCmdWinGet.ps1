@@ -74,7 +74,7 @@ if (
 }
 
 $installerManifest = @"
-# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 PackageIdentifier: $packageIdentifier
 PackageVersion: $version
 InstallerLocale: en-US
@@ -108,11 +108,11 @@ Installers:
   InstallerUrl: $InstallerUrl
   InstallerSha256: $installerSha256
 ManifestType: installer
-ManifestVersion: 1.9.0
+ManifestVersion: 1.12.0
 "@
 
 $localeManifest = @"
-# yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
 PackageIdentifier: $packageIdentifier
 PackageVersion: $version
 PackageLocale: en-US
@@ -139,16 +139,16 @@ Tags:
 - sql-server
 ReleaseNotesUrl: https://github.com/rkozlowski/TigerQuery/releases/tag/v$version
 ManifestType: defaultLocale
-ManifestVersion: 1.9.0
+ManifestVersion: 1.12.0
 "@
 
 $versionManifest = @"
-# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.9.0.schema.json
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.1.12.0.schema.json
 PackageIdentifier: $packageIdentifier
 PackageVersion: $version
 DefaultLocale: en-US
 ManifestType: version
-ManifestVersion: 1.9.0
+ManifestVersion: 1.12.0
 "@
 
 Set-Content -LiteralPath (Join-Path $manifestDirectory "$packageIdentifier.installer.yaml") `
