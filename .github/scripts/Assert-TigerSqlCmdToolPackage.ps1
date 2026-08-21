@@ -84,9 +84,13 @@ try {
 
     if (-not [string]::IsNullOrWhiteSpace($ExpectedRepositoryCommit)) {
         $repository = $metadata.SelectSingleNode("*[local-name()='repository']")
-        if ($null -eq $repository -or $repository.GetAttribute('commit') -cne $ExpectedRepositoryCommit) {
+        if (
+            $null -eq $repository -or
+            $repository.GetAttribute('url') -cne 'https://github.com/rkozlowski/TigerQuery' -or
+            $repository.GetAttribute('commit') -cne $ExpectedRepositoryCommit
+        ) {
             $actualRepositoryCommit = if ($null -eq $repository) { '<missing>' } else { $repository.GetAttribute('commit') }
-            throw "$PackagePath repository commit '$actualRepositoryCommit' does not match '$ExpectedRepositoryCommit'."
+            throw "$PackagePath repository URL or commit '$actualRepositoryCommit' does not match the release source."
         }
     }
 
@@ -132,6 +136,13 @@ try {
     $libEntries = @($archive.Entries | Where-Object { $_.FullName.StartsWith('lib/', [StringComparison]::Ordinal) })
     if ($libEntries.Count -ne 0) {
         throw "$PackagePath contains library-package content under lib/ instead of only a tool payload."
+    }
+
+    $forbiddenEntries = @($archive.Entries | Where-Object {
+        $_.FullName -match '(?i)(TigerQuery\.Tests|testhost|\.trx$|connections\.json$|\.user$)'
+    })
+    if ($forbiddenEntries.Count -ne 0) {
+        throw "$PackagePath contains test, connection-store, or user payloads: $($forbiddenEntries.FullName -join ', ')."
     }
 }
 finally {

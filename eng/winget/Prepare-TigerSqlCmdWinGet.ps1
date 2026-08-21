@@ -2,6 +2,9 @@
 param(
     [string]$InstallerPath,
     [string]$OutputRoot,
+    [string]$ExpectedVersion,
+    [string]$InstallerUrl,
+    [string]$ExpectedInstallerSha256,
     [switch]$Validate
 )
 
@@ -13,6 +16,9 @@ $versionFile = Join-Path $repositoryRoot 'Version.props'
 $version = [string]$versionXml.Project.PropertyGroup.Version
 if ([string]::IsNullOrWhiteSpace($version)) {
     throw "Could not read Version from $versionFile."
+}
+if (-not [string]::IsNullOrWhiteSpace($ExpectedVersion) -and $version -cne $ExpectedVersion) {
+    throw "Version.props version '$version' does not match expected version '$ExpectedVersion'."
 }
 
 $filenameVersion = $version -replace '\.', '_'
@@ -33,6 +39,17 @@ $OutputRoot = [System.IO.Path]::GetFullPath($OutputRoot)
 $packageIdentifier = 'ItTiger.TigerSqlCmd'
 $manifestDirectory = Join-Path $OutputRoot (
     "manifests\i\ItTiger\TigerSqlCmd\$version")
+if (Test-Path -LiteralPath $manifestDirectory) {
+    $resolvedOutputRoot = $OutputRoot.TrimEnd(
+        [IO.Path]::DirectorySeparatorChar,
+        [IO.Path]::AltDirectorySeparatorChar
+    ) + [IO.Path]::DirectorySeparatorChar
+    $resolvedManifestDirectory = [IO.Path]::GetFullPath($manifestDirectory)
+    if (-not $resolvedManifestDirectory.StartsWith($resolvedOutputRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean manifest directory outside $OutputRoot."
+    }
+    Remove-Item -LiteralPath $resolvedManifestDirectory -Recurse -Force
+}
 New-Item -ItemType Directory -Path $manifestDirectory -Force | Out-Null
 
 $installerFileName = Split-Path -Leaf $InstallerPath
@@ -41,8 +58,20 @@ if ($installerFileName -cne $expectedInstallerFileName) {
     throw "Expected installer filename '$expectedInstallerFileName'; found '$installerFileName'."
 }
 
-$installerUrl = "https://github.com/rkozlowski/TigerQuery/releases/download/v$version/$installerFileName"
+$expectedInstallerUrl = "https://github.com/rkozlowski/TigerQuery/releases/download/v$version/$installerFileName"
+if ([string]::IsNullOrWhiteSpace($InstallerUrl)) {
+    $InstallerUrl = $expectedInstallerUrl
+}
+if ($InstallerUrl -cne $expectedInstallerUrl) {
+    throw "Installer URL must be the immutable expected release URL '$expectedInstallerUrl'."
+}
 $installerSha256 = (Get-FileHash -LiteralPath $InstallerPath -Algorithm SHA256).Hash.ToUpperInvariant()
+if (
+    -not [string]::IsNullOrWhiteSpace($ExpectedInstallerSha256) -and
+    $installerSha256 -cne $ExpectedInstallerSha256.ToUpperInvariant()
+) {
+    throw "Installer SHA-256 '$installerSha256' does not match '$ExpectedInstallerSha256'."
+}
 
 $installerManifest = @"
 # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
@@ -76,7 +105,7 @@ AppsAndFeaturesEntries:
   InstallerType: inno
 Installers:
 - Architecture: x64
-  InstallerUrl: $installerUrl
+  InstallerUrl: $InstallerUrl
   InstallerSha256: $installerSha256
 ManifestType: installer
 ManifestVersion: 1.9.0
@@ -130,7 +159,7 @@ Set-Content -LiteralPath (Join-Path $manifestDirectory "$packageIdentifier.yaml"
     -Value $versionManifest -Encoding utf8NoBOM
 
 Write-Host "Prepared WinGet manifests: $manifestDirectory" -ForegroundColor Green
-Write-Host "Installer URL: $installerUrl"
+Write-Host "Installer URL: $InstallerUrl"
 Write-Host "Installer SHA-256: $installerSha256"
 
 if ($Validate) {

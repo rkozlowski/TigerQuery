@@ -1,75 +1,87 @@
-name: Publish NuGet packages
-run-name: Publish NuGet packages ${{ inputs.version }}
+name: Release TigerQuery
+run-name: Release TigerQuery ${{ inputs.version }}
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Package version already recorded in Version.props
+        description: Release version already recorded in Version.props
         required: true
-        default: "0.8.6"
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-packages-${{ inputs.version }}
+  group: release-tigerquery-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
   validate:
-    name: Build, test, pack, and inspect
+    name: Build and validate exact release artifacts
     runs-on: windows-latest
     outputs:
-      tiger-sqlcmd-sha256: ${{ steps.tiger-sqlcmd-hash.outputs.sha256 }}
+      manifest-sha256: ${{ steps.manifest-hash.outputs.sha256 }}
     permissions:
       contents: read
     steps:
-      - name: Checkout
+      - name: Check out the dispatched commit
         uses: actions/checkout@v6
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: "10.0.x"
+          ref: ${{ github.sha }}
+          fetch-depth: 0
 
-      - name: Validate requested version
+      - name: Verify release commit, version, and tag availability
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          $ErrorActionPreference = "Stop"
+          $ErrorActionPreference = 'Stop'
 
+          if ($env:GITHUB_REF -cne 'refs/heads/main') {
+            throw "Releases must be dispatched from main; this run uses '$env:GITHUB_REF'."
+          }
           if ($env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
             throw "Invalid release version '$env:RELEASE_VERSION'."
           }
 
-          [xml]$versionProps = Get-Content -Raw Version.props
-          $configuredVersion = [string]$versionProps.Project.PropertyGroup.Version
-          if ($configuredVersion -ne $env:RELEASE_VERSION) {
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:GITHUB_SHA) {
+            throw "Checked-out commit '$head' does not match workflow commit '$env:GITHUB_SHA'."
+          }
+          if (git status --porcelain) {
+            throw 'Release checkout is not clean.'
+          }
+
+          [xml] $versionProps = Get-Content -Raw -LiteralPath Version.props
+          $configuredVersion = [string] $versionProps.Project.PropertyGroup.Version
+          if ($configuredVersion -cne $env:RELEASE_VERSION) {
             throw "Workflow input '$env:RELEASE_VERSION' does not match Version.props '$configuredVersion'."
           }
 
-      - name: Reject an already-published release version
+          $tag = "v$env:RELEASE_VERSION"
+          $remoteTag = (git ls-remote --tags origin "refs/tags/$tag" | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "Could not inspect remote tag $tag." }
+          if (-not [string]::IsNullOrWhiteSpace($remoteTag)) {
+            git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+            if ($LASTEXITCODE -ne 0) { throw "Could not fetch existing tag $tag." }
+            $tagCommit = (git rev-list -n 1 $tag).Trim()
+            if ($tagCommit -cne $env:GITHUB_SHA) {
+              throw "Tag $tag points to '$tagCommit', not '$env:GITHUB_SHA'. It will never be moved."
+            }
+            throw "Tag $tag already exists at the requested commit. This fresh-release workflow will not overwrite or silently resume publication; follow the documented recovery procedure."
+          }
+
+      - name: Reject an already-published NuGet version
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          $ErrorActionPreference = "Stop"
+        run: ./eng/release-automation/Assert-NuGetVersionAvailable.ps1 -Version $env:RELEASE_VERSION
 
-          foreach ($id in @(
-            "ItTiger.TigerQuery.Core",
-            "ItTiger.TigerQuery",
-            "ItTiger.TigerQuery.CliCore",
-            "ItTiger.TigerSqlCmd"
-          )) {
-            $lowerId = $id.ToLowerInvariant()
-            $index = Invoke-RestMethod "https://api.nuget.org/v3-flatcontainer/$lowerId/index.json"
-            if (@($index.versions) -contains ($env:RELEASE_VERSION).ToLowerInvariant()) {
-              throw "$id $env:RELEASE_VERSION already exists on NuGet.org. Choose a new version; published packages are immutable."
-            }
-          }
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
 
       - name: Restore .NET tools
         run: dotnet tool restore
@@ -77,465 +89,325 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore TigerQuery.sln
 
-      - name: Build Release
-        run: dotnet build TigerQuery.sln -c Release --no-restore
+      - name: Prepare clean release staging
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $artifactsRoot = [IO.Path]::GetFullPath((Join-Path $PWD 'artifacts'))
+          $repositoryRoot = [IO.Path]::GetFullPath($PWD)
+          $requiredPrefix = $repositoryRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+          if (-not $artifactsRoot.StartsWith($requiredPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to clean staging outside $repositoryRoot."
+          }
+          if (Test-Path -LiteralPath $artifactsRoot) {
+            Remove-Item -LiteralPath $artifactsRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path (Join-Path $artifactsRoot 'release') -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $artifactsRoot 'winget') -Force | Out-Null
 
-      - name: Test Release
-        run: dotnet test TigerQuery.sln -c Release --no-build
+      - name: Build Release
+        run: >-
+          dotnet build TigerQuery.sln
+          -c Release
+          --no-restore
+          -p:ContinuousIntegrationBuild=true
+          -m:1
+          /nodeReuse:false
+
+      - name: Validate live-test safety when unconfigured
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $store = Join-Path $env:RUNNER_TEMP (Join-Path ('TigerQuery-live-safe-' + [Guid]::NewGuid().ToString('N')) 'connections.json')
+          $env:TIGERQUERY_CONNECTION_STORE_FILE = $store
+          try {
+            dotnet test ItTiger.TigerQuery.Tests/ItTiger.TigerQuery.Tests.csproj `
+              -c Release `
+              --filter 'FullyQualifiedName~ItTiger.TigerQuery.Tests.Live' `
+              --no-restore `
+              --no-build `
+              --logger 'console;verbosity=normal' `
+              -m:1 `
+              /nodeReuse:false
+            $testExit = $LASTEXITCODE
+            $storeCreated = Test-Path -LiteralPath $store
+          }
+          finally {
+            Remove-Item Env:TIGERQUERY_CONNECTION_STORE_FILE -ErrorAction Ignore
+          }
+          if ($testExit -ne 0) { throw "Live-safe validation failed with exit code $testExit." }
+          if ($storeCreated) { throw "Unconfigured live tests created a connection store: $store" }
+
+      - name: Test Release against an unconfigured store
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $store = Join-Path $env:RUNNER_TEMP (Join-Path ('TigerQuery-unconfigured-' + [Guid]::NewGuid().ToString('N')) 'connections.json')
+          $env:TIGERQUERY_CONNECTION_STORE_FILE = $store
+          try {
+            dotnet test TigerQuery.sln `
+              -c Release `
+              --no-restore `
+              --no-build `
+              --logger 'console;verbosity=normal' `
+              -m:1 `
+              /nodeReuse:false
+            $testExit = $LASTEXITCODE
+            $storeCreated = Test-Path -LiteralPath $store
+          }
+          finally {
+            Remove-Item Env:TIGERQUERY_CONNECTION_STORE_FILE -ErrorAction Ignore
+          }
+          if ($testExit -ne 0) { throw "Release tests failed with exit code $testExit." }
+          if ($storeCreated) { throw "Unconfigured tests created a connection store: $store" }
 
       - name: Build DocFX site
         run: dotnet docfx docs/api-docfx/docfx.json
 
-      - name: Prepare clean package staging directory
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $packageDirectory = [IO.Path]::GetFullPath((Join-Path $PWD "artifacts/packages"))
-          $artifactsDirectory = [IO.Path]::GetFullPath((Join-Path $PWD "artifacts"))
-          $expectedPrefix = $artifactsDirectory.TrimEnd(
-            [IO.Path]::DirectorySeparatorChar,
-            [IO.Path]::AltDirectorySeparatorChar
-          ) + [IO.Path]::DirectorySeparatorChar
-          if (-not $packageDirectory.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "Refusing to clean package directory outside $artifactsDirectory."
-          }
-          if (Test-Path -LiteralPath $packageDirectory) {
-            Remove-Item -LiteralPath $packageDirectory -Recurse -Force
-          }
-          New-Item -ItemType Directory -Path $packageDirectory | Out-Null
-
       - name: Pack ItTiger.TigerQuery.Core
         run: >-
           dotnet pack ItTiger.TigerQuery.Core/ItTiger.TigerQuery.Core.csproj
-          -c Release
-          --no-build
-          --no-restore
-          --output artifacts/packages
+          -c Release --no-build --no-restore
+          -p:ContinuousIntegrationBuild=true
+          -p:RepositoryCommit=${{ github.sha }}
+          --output artifacts/release
 
       - name: Pack ItTiger.TigerQuery
         run: >-
           dotnet pack ItTiger.TigerQuery/ItTiger.TigerQuery.csproj
-          -c Release
-          --no-build
-          --no-restore
-          --output artifacts/packages
+          -c Release --no-build --no-restore
+          -p:ContinuousIntegrationBuild=true
+          -p:RepositoryCommit=${{ github.sha }}
+          --output artifacts/release
 
       - name: Pack ItTiger.TigerQuery.CliCore
         run: >-
           dotnet pack ItTiger.TigerQuery.CliCore/ItTiger.TigerQuery.CliCore.csproj
-          -c Release
-          --no-build
-          --no-restore
-          --output artifacts/packages
+          -c Release --no-build --no-restore
+          -p:ContinuousIntegrationBuild=true
+          -p:RepositoryCommit=${{ github.sha }}
+          --output artifacts/release
 
       - name: Pack ItTiger.TigerSqlCmd
         run: >-
           dotnet pack ItTiger.TigerSqlCmd/ItTiger.TigerSqlCmd.csproj
-          -c Release
-          --no-build
-          --no-restore
-          --output artifacts/packages
+          -c Release --no-build --no-restore
+          -p:ContinuousIntegrationBuild=true
+          -p:RepositoryCommit=${{ github.sha }}
+          --output artifacts/release
 
-      - name: Inspect ItTiger.TigerSqlCmd tool package
+      - name: Inspect library packages
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          $ErrorActionPreference = "Stop"
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          ./eng/release-automation/Assert-TigerQueryLibraryPackages.ps1 `
+            -PackageDirectory artifacts/release `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -ExpectedRepositoryCommit $env:GITHUB_SHA
 
-          $id = "ItTiger.TigerSqlCmd"
-          $packagePath = "artifacts/packages/$id.$env:RELEASE_VERSION.nupkg"
-          $symbolsPath = "artifacts/packages/$id.$env:RELEASE_VERSION.snupkg"
-          foreach ($path in @($packagePath, $symbolsPath)) {
-            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-              throw "Missing package: $path"
-            }
-          }
-
-          $archive = [System.IO.Compression.ZipFile]::OpenRead(
-            (Resolve-Path -LiteralPath $packagePath)
-          )
-          try {
-            $nuspecEntry = $archive.GetEntry("$id.nuspec")
-            if ($null -eq $nuspecEntry) {
-              throw "$packagePath does not contain $id.nuspec."
-            }
-            $reader = [System.IO.StreamReader]::new($nuspecEntry.Open())
-            try {
-              [xml]$nuspec = $reader.ReadToEnd()
-            }
-            finally {
-              $reader.Dispose()
-            }
-
-            $metadata = $nuspec.SelectSingleNode(
-              "/*[local-name()='package']/*[local-name()='metadata']"
-            )
-            if ([string]$metadata.id -ne $id -or [string]$metadata.version -ne $env:RELEASE_VERSION) {
-              throw "$packagePath has unexpected ID or version metadata."
-            }
-            if ([string]$metadata.readme -ne "README.md" -or $null -eq $archive.GetEntry("README.md")) {
-              throw "$packagePath does not contain the configured README.md."
-            }
-            if ([string]$metadata.icon -ne "TigerQuery256.png" -or $null -eq $archive.GetEntry("TigerQuery256.png")) {
-              throw "$packagePath does not contain the configured icon."
-            }
-            $packageType = $nuspec.SelectSingleNode("//*[local-name()='packageType']")
-            if ($null -eq $packageType -or $packageType.GetAttribute("name") -ne "DotnetTool") {
-              throw "$packagePath is not marked as a DotnetTool package."
-            }
-            if (@($nuspec.SelectNodes("//*[local-name()='dependency']")).Count -ne 0) {
-              throw "$packagePath must contain its tool payload instead of package dependencies."
-            }
-            if ($null -eq $archive.GetEntry("tools/net10.0/any/DotnetToolSettings.xml")) {
-              throw "$packagePath does not contain DotnetToolSettings.xml."
-            }
-            if ($null -eq $archive.GetEntry("tools/net10.0/any/tiger-sqlcmd.dll")) {
-              throw "$packagePath does not contain the tiger-sqlcmd assembly."
-            }
-          }
-          finally {
-            $archive.Dispose()
-          }
-
-      - name: Validate exact ItTiger.TigerSqlCmd package structure
+      - name: Inspect TigerSqlCmd .NET tool package
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           ./.github/scripts/Assert-TigerSqlCmdToolPackage.ps1 `
-            -PackagePath "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg" `
+            -PackagePath "artifacts/release/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg" `
             -ExpectedVersion $env:RELEASE_VERSION `
             -ExpectedRepositoryCommit $env:GITHUB_SHA
 
-      - name: Validate ItTiger.TigerSqlCmd tool installation
+      - name: Inspect all symbol packages
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          $ErrorActionPreference = "Stop"
-          $toolPath = Join-Path $env:RUNNER_TEMP "tiger-sqlcmd-tool"
-          dotnet tool install ItTiger.TigerSqlCmd `
-            --tool-path $toolPath `
-            --add-source artifacts/packages `
-            --version $env:RELEASE_VERSION `
-            --ignore-failed-sources
-          if ($LASTEXITCODE -ne 0) {
-            throw "Tool installation failed with exit code $LASTEXITCODE."
-          }
-          $versionOutput = & (Join-Path $toolPath "tiger-sqlcmd.exe") --version | Out-String
-          if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch [regex]::Escape($env:RELEASE_VERSION)) {
-            throw "Installed tool did not report version $env:RELEASE_VERSION."
-          }
-          $helpOutput = & (Join-Path $toolPath "tiger-sqlcmd.exe") --help | Out-String
-          if ($LASTEXITCODE -ne 0 -or -not $helpOutput.Contains("Usage:")) {
-            throw "Installed tool help validation failed."
-          }
+          ./eng/release-automation/Assert-ReleaseSymbolPackages.ps1 `
+            -PackageDirectory artifacts/release `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -ExpectedRepositoryCommit $env:GITHUB_SHA
+
+      - name: Validate TigerSqlCmd tool installation
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $toolPath = Join-Path $env:RUNNER_TEMP 'tiger-sqlcmd-tool'
+          dotnet tool install ItTiger.TigerSqlCmd --tool-path $toolPath --add-source artifacts/release --version $env:RELEASE_VERSION --ignore-failed-sources
+          if ($LASTEXITCODE -ne 0) { throw "Tool installation failed with exit code $LASTEXITCODE." }
+          $versionOutput = & (Join-Path $toolPath 'tiger-sqlcmd.exe') --version | Out-String
+          if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch [regex]::Escape($env:RELEASE_VERSION)) { throw 'Installed tool version validation failed.' }
+          $helpOutput = & (Join-Path $toolPath 'tiger-sqlcmd.exe') --help | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not $helpOutput.Contains('Usage:')) { throw 'Installed tool help validation failed.' }
           dotnet tool uninstall ItTiger.TigerSqlCmd --tool-path $toolPath
+          if ($LASTEXITCODE -ne 0) { throw "Tool uninstall failed with exit code $LASTEXITCODE." }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed with exit code $LASTEXITCODE." }
+
+      - name: Build TigerSqlCmd installer from validated outputs
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          ./ItTiger.TigerSqlCmd.Installer/BuildInstaller.ps1 `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -OutputDirectory artifacts/release `
+            -NoBuild
+
+      - name: Validate TigerSqlCmd installer metadata and behavior
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $installer = "artifacts/release/TigerSqlCmdSetup_$($env:RELEASE_VERSION -replace '\.', '_').exe"
+          ./eng/release-automation/Assert-TigerSqlCmdInstaller.ps1 -InstallerPath $installer -ExpectedVersion $env:RELEASE_VERSION -ValidateBehavior
+
+      - name: Record exact release payload hashes
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          ./eng/release-automation/New-ReleaseArtifactManifest.ps1 `
+            -ArtifactDirectory artifacts/release `
+            -Version $env:RELEASE_VERSION `
+            -CommitSha $env:GITHUB_SHA
+
+      - name: Install WinGet for manifest validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($null -eq (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Install-Module Microsoft.WinGet.Client -Repository PSGallery -Force
+            Import-Module Microsoft.WinGet.Client
+            Repair-WinGetPackageManager -AllUsers
+          }
+          winget --info
+          if ($LASTEXITCODE -ne 0) { throw 'WinGet is unavailable after provisioning.' }
+
+      - name: Generate and validate WinGet manifests
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $installer = "artifacts/release/TigerSqlCmdSetup_$($env:RELEASE_VERSION -replace '\.', '_').exe"
+          $installerHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
+          $installerUrl = "https://github.com/rkozlowski/TigerQuery/releases/download/v$env:RELEASE_VERSION/$([IO.Path]::GetFileName($installer))"
+          ./eng/winget/Prepare-TigerSqlCmdWinGet.ps1 `
+            -InstallerPath $installer `
+            -OutputRoot artifacts/winget `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -InstallerUrl $installerUrl `
+            -ExpectedInstallerSha256 $installerHash `
+            -Validate
+
+      - name: Verify final release artifact set
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 `
+            -ArtifactDirectory artifacts/release `
+            -ManifestPath artifacts/release/release-artifacts.json `
+            -ExpectedVersion $env:RELEASE_VERSION `
+            -ExpectedCommit $env:GITHUB_SHA
+
+      - name: Verify release construction did not mutate committed inputs
+        shell: pwsh
+        run: |
+          git diff --exit-code
           if ($LASTEXITCODE -ne 0) {
-            throw "Tool uninstall failed with exit code $LASTEXITCODE."
+            throw 'Release construction changed tracked files. Commit generated inputs before releasing.'
           }
 
-      - name: Inspect packages
+      - name: Record release transfer metadata
+        id: manifest-hash
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          $ErrorActionPreference = "Stop"
-
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-
-          function Get-PackageReferences {
-            param(
-              [Parameter(Mandatory)]
-              [string]$ProjectPath
-            )
-
-            [xml]$project = Get-Content -Raw -LiteralPath $ProjectPath
-            $references = @{}
-            foreach ($reference in @($project.Project.ItemGroup.PackageReference)) {
-              if ($null -eq $reference) {
-                continue
-              }
-
-              $id = [string]$reference.Include
-              $version = [string]$reference.Version
-              if ([string]::IsNullOrWhiteSpace($version)) {
-                $version = [string]$reference.Version.'#text'
-              }
-
-              if ([string]::IsNullOrWhiteSpace($id) -or [string]::IsNullOrWhiteSpace($version)) {
-                throw "Could not read a package reference from $ProjectPath."
-              }
-
-              $references[$id] = $version
-            }
-
-            return $references
-          }
-
-          $packages = @(
-            @{
-              Id = "ItTiger.TigerQuery.Core"
-              Project = "ItTiger.TigerQuery.Core/ItTiger.TigerQuery.Core.csproj"
-              Icon = "TigerQuery256.png"
-            },
-            @{
-              Id = "ItTiger.TigerQuery"
-              Project = "ItTiger.TigerQuery/ItTiger.TigerQuery.csproj"
-              Icon = "TigerQuery256.png"
-            },
-            @{
-              Id = "ItTiger.TigerQuery.CliCore"
-              Project = "ItTiger.TigerQuery.CliCore/ItTiger.TigerQuery.CliCore.csproj"
-              Icon = "TigerQuery256.png"
-            }
-          )
-
-          foreach ($package in $packages) {
-            $id = $package.Id
-            $packagePath = "artifacts/packages/$id.$env:RELEASE_VERSION.nupkg"
-            $symbolsPath = "artifacts/packages/$id.$env:RELEASE_VERSION.snupkg"
-
-            if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) {
-              throw "Missing package: $packagePath"
-            }
-            if (-not (Test-Path -LiteralPath $symbolsPath -PathType Leaf)) {
-              throw "Missing symbol package: $symbolsPath"
-            }
-
-            $archive = [System.IO.Compression.ZipFile]::OpenRead(
-              (Resolve-Path -LiteralPath $packagePath)
-            )
-            try {
-              $nuspecEntry = $archive.GetEntry("$id.nuspec")
-              if ($null -eq $nuspecEntry) {
-                throw "$packagePath does not contain $id.nuspec."
-              }
-
-              $reader = [System.IO.StreamReader]::new($nuspecEntry.Open())
-              try {
-                [xml]$nuspec = $reader.ReadToEnd()
-              }
-              finally {
-                $reader.Dispose()
-              }
-
-              $metadata = $nuspec.SelectSingleNode(
-                "/*[local-name()='package']/*[local-name()='metadata']"
-              )
-              if ([string]$metadata.id -ne $id) {
-                throw "$packagePath has package ID '$($metadata.id)', expected '$id'."
-              }
-              if ([string]$metadata.version -ne $env:RELEASE_VERSION) {
-                throw "$packagePath has version '$($metadata.version)', expected '$env:RELEASE_VERSION'."
-              }
-              if ([string]$metadata.readme -ne "README.md" -or $null -eq $archive.GetEntry("README.md")) {
-                throw "$packagePath does not contain the configured root README.md."
-              }
-              if ([string]$metadata.icon -ne $package.Icon -or $null -eq $archive.GetEntry($package.Icon)) {
-                throw "$packagePath does not contain the configured root icon '$($package.Icon)'."
-              }
-              if ($null -eq $archive.GetEntry("lib/net10.0/$id.dll")) {
-                throw "$packagePath does not contain lib/net10.0/$id.dll."
-              }
-              if ($null -eq $archive.GetEntry("lib/net10.0/$id.xml")) {
-                throw "$packagePath does not contain XML documentation at lib/net10.0/$id.xml."
-              }
-
-              $repository = $nuspec.SelectSingleNode(
-                "/*[local-name()='package']/*[local-name()='metadata']/*[local-name()='repository']"
-              )
-              if ($null -eq $repository) {
-                throw "$packagePath does not contain repository metadata."
-              }
-              if ($repository.GetAttribute("url") -ne "https://github.com/rkozlowski/TigerQuery") {
-                throw "$packagePath has unexpected repository URL '$($repository.GetAttribute("url"))'."
-              }
-              $repositoryCommit = $repository.GetAttribute("commit")
-              if ([string]::IsNullOrWhiteSpace($repositoryCommit)) {
-                throw "$packagePath does not contain repository commit metadata."
-              }
-              if (
-                -not [string]::IsNullOrWhiteSpace($env:GITHUB_SHA) -and
-                $repositoryCommit -ne $env:GITHUB_SHA
-              ) {
-                throw "$packagePath has repository commit '$repositoryCommit', expected '$env:GITHUB_SHA'."
-              }
-
-              $forbiddenAssemblies = @(
-                $archive.Entries |
-                  Where-Object {
-                    $_.FullName -match '(?i)(TigerSqlCmd|TigerQuery\.Tests).*\.dll$'
-                  }
-              )
-              if ($forbiddenAssemblies.Count -ne 0) {
-                throw "$packagePath contains a TigerSqlCmd or test assembly: $($forbiddenAssemblies.FullName -join ', ')."
-              }
-
-              $dependencies = @(
-                $nuspec.SelectNodes("//*[local-name()='dependency']")
-              )
-              $forbiddenDependencies = @(
-                $dependencies |
-                  Where-Object {
-                    $_.GetAttribute("id") -match '(?i)NLog|Spectre'
-                  }
-              )
-              if ($forbiddenDependencies.Count -ne 0) {
-                throw "$packagePath contains an unexpected NLog or Spectre dependency: $($forbiddenDependencies.id -join ', ')."
-              }
-
-              if ($id -eq "ItTiger.TigerQuery") {
-                $tigerQueryForbidden = @(
-                  $dependencies |
-                    Where-Object {
-                      $_.GetAttribute("id") -match '(?i)TigerCli|TigerQuery\.CliCore|NLog|Spectre'
-                    }
-                )
-                if ($tigerQueryForbidden.Count -ne 0) {
-                  throw "$packagePath contains a forbidden dependency: $($tigerQueryForbidden.id -join ', ')."
-                }
-              }
-
-              $expectedDependencies = Get-PackageReferences -ProjectPath $package.Project
-              if ($id -in @("ItTiger.TigerQuery", "ItTiger.TigerQuery.CliCore")) {
-                $expectedDependencies["ItTiger.TigerQuery.Core"] = $env:RELEASE_VERSION
-              }
-
-              if ($dependencies.Count -ne $expectedDependencies.Count) {
-                throw "$packagePath has $($dependencies.Count) dependencies; expected $($expectedDependencies.Count)."
-              }
-
-              foreach ($expectedDependency in $expectedDependencies.GetEnumerator()) {
-                $matches = @(
-                  $dependencies |
-                    Where-Object {
-                      $_.GetAttribute("id") -eq $expectedDependency.Key
-                    }
-                )
-                if ($matches.Count -ne 1) {
-                  throw "$packagePath must contain exactly one '$($expectedDependency.Key)' dependency."
-                }
-                if ($matches[0].GetAttribute("version") -ne $expectedDependency.Value) {
-                  throw "$packagePath depends on '$($expectedDependency.Key)' version '$($matches[0].GetAttribute("version"))', expected '$($expectedDependency.Value)'."
-                }
-              }
-
-              if ($id -eq "ItTiger.TigerQuery.CliCore") {
-                $coreDependency = @(
-                  $dependencies |
-                    Where-Object {
-                      $_.GetAttribute("id") -eq "ItTiger.TigerQuery.Core"
-                    }
-                )
-                if ($coreDependency.Count -ne 1) {
-                  throw "$packagePath must contain exactly one ItTiger.TigerQuery.Core dependency."
-                }
-                if ($coreDependency[0].GetAttribute("version") -ne $env:RELEASE_VERSION) {
-                  throw "$packagePath depends on ItTiger.TigerQuery.Core '$($coreDependency[0].GetAttribute("version"))', expected '$env:RELEASE_VERSION'."
-                }
-
-                $tigerCliDependency = @(
-                  $dependencies |
-                    Where-Object {
-                      $_.GetAttribute("id") -eq "ItTiger.TigerCli"
-                    }
-                )
-                $configuredTigerCliVersion = $expectedDependencies["ItTiger.TigerCli"]
-                if ($tigerCliDependency.Count -ne 1) {
-                  throw "$packagePath must contain exactly one ItTiger.TigerCli dependency."
-                }
-                if ($tigerCliDependency[0].GetAttribute("version") -ne $configuredTigerCliVersion) {
-                  throw "$packagePath depends on ItTiger.TigerCli '$($tigerCliDependency[0].GetAttribute("version"))', expected configured version '$configuredTigerCliVersion'."
-                }
-              }
-            }
-            finally {
-              $archive.Dispose()
-            }
-
-            Write-Host "Validated $packagePath and $symbolsPath"
-          }
-
-      - name: Record exact validated ItTiger.TigerSqlCmd package hash
-        id: tiger-sqlcmd-hash
-        shell: pwsh
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          $ErrorActionPreference = "Stop"
-          $packagePath = "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg"
-          $hash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          Set-Content `
-            -LiteralPath "$packagePath.sha256" `
-            -Value "$hash  $([IO.Path]::GetFileName($packagePath))" `
-            -Encoding utf8NoBOM
+          $hash = (Get-FileHash -LiteralPath artifacts/release/release-artifacts.json -Algorithm SHA256).Hash.ToLowerInvariant()
           "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          Write-Host "Approved package candidate SHA-256: $hash"
+          $installerPath = "artifacts/release/TigerSqlCmdSetup_$($env:RELEASE_VERSION -replace '\.', '_').exe"
+          "installer_path=$installerPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Release manifest transfer SHA-256: $hash"
 
-      - name: Upload validated packages
+      - name: Upload exact validated release artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: NuGet-packages-${{ inputs.version }}
+          name: TigerQuery-release-${{ inputs.version }}-${{ github.sha }}
           path: |
-            artifacts/packages/ItTiger.TigerQuery.Core.${{ inputs.version }}.nupkg
-            artifacts/packages/ItTiger.TigerQuery.Core.${{ inputs.version }}.snupkg
-            artifacts/packages/ItTiger.TigerQuery.${{ inputs.version }}.nupkg
-            artifacts/packages/ItTiger.TigerQuery.${{ inputs.version }}.snupkg
-            artifacts/packages/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.nupkg
-            artifacts/packages/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.snupkg
-            artifacts/packages/ItTiger.TigerSqlCmd.${{ inputs.version }}.nupkg
-            artifacts/packages/ItTiger.TigerSqlCmd.${{ inputs.version }}.snupkg
-            artifacts/packages/ItTiger.TigerSqlCmd.${{ inputs.version }}.nupkg.sha256
+            artifacts/release/ItTiger.TigerQuery.${{ inputs.version }}.nupkg
+            artifacts/release/ItTiger.TigerQuery.${{ inputs.version }}.snupkg
+            artifacts/release/ItTiger.TigerQuery.Core.${{ inputs.version }}.nupkg
+            artifacts/release/ItTiger.TigerQuery.Core.${{ inputs.version }}.snupkg
+            artifacts/release/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.nupkg
+            artifacts/release/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.snupkg
+            artifacts/release/ItTiger.TigerSqlCmd.${{ inputs.version }}.nupkg
+            artifacts/release/ItTiger.TigerSqlCmd.${{ inputs.version }}.snupkg
+            ${{ steps.manifest-hash.outputs.installer_path }}
+            artifacts/release/release-artifacts.json
+            artifacts/release/SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Upload prepared WinGet manifests
+        uses: actions/upload-artifact@v7
+        with:
+          name: TigerSqlCmd-WinGet-${{ inputs.version }}-${{ github.sha }}
+          path: |
+            artifacts/winget/manifests/i/ItTiger/TigerSqlCmd/${{ inputs.version }}/ItTiger.TigerSqlCmd.installer.yaml
+            artifacts/winget/manifests/i/ItTiger/TigerSqlCmd/${{ inputs.version }}/ItTiger.TigerSqlCmd.locale.en-US.yaml
+            artifacts/winget/manifests/i/ItTiger/TigerSqlCmd/${{ inputs.version }}/ItTiger.TigerSqlCmd.yaml
+          if-no-files-found: error
+          retention-days: 30
 
   publish:
-    name: Approve and publish
+    name: Publish validated bytes and create draft release
     needs: validate
     runs-on: windows-latest
     environment: release
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
-      - name: Checkout validation script
+      - name: Check out the validated commit
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: 10.0.x
 
-      - name: Download validated packages
+      - name: Download validated release artifacts
         uses: actions/download-artifact@v7
         with:
-          name: NuGet-packages-${{ inputs.version }}
-          path: artifacts/packages
+          name: TigerQuery-release-${{ inputs.version }}-${{ github.sha }}
+          path: artifacts/release
 
-      - name: Verify approved package bytes and tool structure
+      - name: Verify artifact transfer and exact payload bytes
         shell: pwsh
         env:
-          EXPECTED_TIGER_SQLCMD_SHA256: ${{ needs.validate.outputs.tiger-sqlcmd-sha256 }}
+          EXPECTED_MANIFEST_SHA256: ${{ needs.validate.outputs.manifest-sha256 }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          $ErrorActionPreference = "Stop"
-          $packagePath = "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg"
-          $hashPath = "$packagePath.sha256"
-
-          $actualHash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          $recordedHashLine = (Get-Content -LiteralPath $hashPath -Raw).Trim()
-          $expectedHashLine = "$env:EXPECTED_TIGER_SQLCMD_SHA256  $([IO.Path]::GetFileName($packagePath))"
-          if ($actualHash -cne $env:EXPECTED_TIGER_SQLCMD_SHA256 -or $recordedHashLine -cne $expectedHashLine) {
-            throw "Downloaded tool package SHA-256 '$actualHash' does not match the pre-approval hash '$env:EXPECTED_TIGER_SQLCMD_SHA256'."
+          $actualManifestHash = (Get-FileHash -LiteralPath artifacts/release/release-artifacts.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualManifestHash -cne $env:EXPECTED_MANIFEST_SHA256) {
+            throw "Transferred manifest SHA-256 '$actualManifestHash' does not match '$env:EXPECTED_MANIFEST_SHA256'."
           }
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
 
-          ./.github/scripts/Assert-TigerSqlCmdToolPackage.ps1 `
-            -PackagePath $packagePath `
-            -ExpectedVersion $env:RELEASE_VERSION `
-            -ExpectedRepositoryCommit $env:GITHUB_SHA
+      - name: Recheck NuGet version availability at publication boundary
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: ./eng/release-automation/Assert-NuGetVersionAvailable.ps1 -Version $env:RELEASE_VERSION
 
       - name: Verify NuGet.org Trusted Publishing configuration
         shell: pwsh
@@ -543,12 +415,10 @@ jobs:
           NUGET_USER: ${{ vars.NUGET_USER }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:NUGET_USER)) {
-            Write-Error "Set the NUGET_USER repository variable to the nuget.org profile username used by the Trusted Publishing policy."
-            exit 1
+            throw 'Set NUGET_USER to the nuget.org profile username used by the Trusted Publishing policy.'
           }
-          # NuGet.org Trusted Publishing is configured for package owner ItTiger,
-          # repository owner rkozlowski, repository TigerQuery, workflow
-          # publish-packages.yml, and environment release.
+          # Trusted Publishing is bound to rkozlowski/TigerQuery,
+          # publish-packages.yml, and environment release. Keep this filename stable.
 
       - name: Get short-lived NuGet.org API key
         id: nuget-login
@@ -556,73 +426,70 @@ jobs:
         with:
           user: ${{ vars.NUGET_USER }}
 
-      - name: Publish ItTiger.TigerQuery.Core to NuGet.org
+      - name: Publish ItTiger.TigerQuery.Core exact bytes
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.Core.$env:RELEASE_VERSION.nupkg" `
-            --source https://api.nuget.org/v3/index.json `
-            --api-key "$env:NUGET_API_KEY" `
-            --skip-duplicate `
-            --no-symbols
-          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.Core.$env:RELEASE_VERSION.snupkg" `
-            --source https://api.nuget.org/v3/index.json `
-            --api-key "$env:NUGET_API_KEY" `
-            --skip-duplicate
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          dotnet nuget push "artifacts/release/ItTiger.TigerQuery.Core.$env:RELEASE_VERSION.nupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --no-symbols
+          if ($LASTEXITCODE -ne 0) { throw 'ItTiger.TigerQuery.Core package publication failed.' }
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          dotnet nuget push "artifacts/release/ItTiger.TigerQuery.Core.$env:RELEASE_VERSION.snupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY
+          if ($LASTEXITCODE -ne 0) { throw 'ItTiger.TigerQuery.Core symbols publication failed.' }
 
-      - name: Publish ItTiger.TigerQuery to NuGet.org
+      - name: Publish ItTiger.TigerQuery exact bytes
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.$env:RELEASE_VERSION.nupkg" `
-            --source https://api.nuget.org/v3/index.json `
-            --api-key "$env:NUGET_API_KEY" `
-            --skip-duplicate `
-            --no-symbols
-          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.$env:RELEASE_VERSION.snupkg" `
-            --source https://api.nuget.org/v3/index.json `
-            --api-key "$env:NUGET_API_KEY" `
-            --skip-duplicate
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          dotnet nuget push "artifacts/release/ItTiger.TigerQuery.$env:RELEASE_VERSION.nupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --no-symbols
+          if ($LASTEXITCODE -ne 0) { throw 'ItTiger.TigerQuery package publication failed.' }
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          dotnet nuget push "artifacts/release/ItTiger.TigerQuery.$env:RELEASE_VERSION.snupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY
+          if ($LASTEXITCODE -ne 0) { throw 'ItTiger.TigerQuery symbols publication failed.' }
 
-      - name: Publish ItTiger.TigerQuery.CliCore to NuGet.org
+      - name: Publish ItTiger.TigerQuery.CliCore exact bytes
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.CliCore.$env:RELEASE_VERSION.nupkg" `
-            --source https://api.nuget.org/v3/index.json `
-            --api-key "$env:NUGET_API_KEY" `
-            --skip-duplicate `
-            --no-symbols
-          dotnet nuget push "artifacts/packages/ItTiger.TigerQuery.CliCore.$env:RELEASE_VERSION.snupkg" `
-            --source https://api.nuget.org/v3/index.json `
-            --api-key "$env:NUGET_API_KEY" `
-            --skip-duplicate
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          dotnet nuget push "artifacts/release/ItTiger.TigerQuery.CliCore.$env:RELEASE_VERSION.nupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --no-symbols
+          if ($LASTEXITCODE -ne 0) { throw 'ItTiger.TigerQuery.CliCore package publication failed.' }
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          dotnet nuget push "artifacts/release/ItTiger.TigerQuery.CliCore.$env:RELEASE_VERSION.snupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY
+          if ($LASTEXITCODE -ne 0) { throw 'ItTiger.TigerQuery.CliCore symbols publication failed.' }
 
-      - name: Publish ItTiger.TigerSqlCmd to NuGet.org
+      - name: Publish ItTiger.TigerSqlCmd exact bytes
         shell: pwsh
         env:
-          EXPECTED_TIGER_SQLCMD_SHA256: ${{ needs.validate.outputs.tiger-sqlcmd-sha256 }}
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          $ErrorActionPreference = "Stop"
-          $packagePath = "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg"
-          $actualHash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualHash -cne $env:EXPECTED_TIGER_SQLCMD_SHA256) {
-            throw "Refusing to publish tool package SHA-256 '$actualHash'; approved SHA-256 is '$env:EXPECTED_TIGER_SQLCMD_SHA256'."
-          }
-          dotnet nuget push $packagePath `
-            --source https://api.nuget.org/v3/index.json `
-            --api-key "$env:NUGET_API_KEY" `
-            --skip-duplicate `
-            --no-symbols
-          dotnet nuget push "artifacts/packages/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.snupkg" `
-            --source https://api.nuget.org/v3/index.json `
-            --api-key "$env:NUGET_API_KEY" `
-            --skip-duplicate
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          ./.github/scripts/Assert-TigerSqlCmdToolPackage.ps1 -PackagePath "artifacts/release/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg" -ExpectedVersion $env:RELEASE_VERSION -ExpectedRepositoryCommit $env:GITHUB_SHA
+          dotnet nuget push "artifacts/release/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.nupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --no-symbols
+          if ($LASTEXITCODE -ne 0) { throw 'ItTiger.TigerSqlCmd package publication failed.' }
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          dotnet nuget push "artifacts/release/ItTiger.TigerSqlCmd.$env:RELEASE_VERSION.snupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY
+          if ($LASTEXITCODE -ne 0) { throw 'ItTiger.TigerSqlCmd symbols publication failed.' }
+
+      - name: Create annotated tag and exact draft GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          ./eng/release-automation/Assert-ReleaseArtifactManifest.ps1 -ArtifactDirectory artifacts/release -ManifestPath artifacts/release/release-artifacts.json -ExpectedVersion $env:RELEASE_VERSION -ExpectedCommit $env:GITHUB_SHA
+          ./eng/release-automation/Publish-GitHubDraftRelease.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -CommitSha $env:GITHUB_SHA `
+            -ArtifactDirectory artifacts/release `
+            -ManifestPath artifacts/release/release-artifacts.json `
+            -ReleaseNotesHeaderPath docs/maintainers/release-notes-header.md `
+            -Repository $env:GITHUB_REPOSITORY

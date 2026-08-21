@@ -1,6 +1,5 @@
 ; ============================================
 ; TigerSqlCmd Installer Script
-; Version:     0.8.6
 ; InstallType: Machine-wide (admin required)
 ; Author:      IT Tiger
 ; ============================================
@@ -13,6 +12,11 @@
 #endif
 #include "WorkingDir\DotNetRuntime.iss"
 
+#ifnexist "WorkingDir\ReleaseMetadata.iss"
+  #error "WorkingDir\ReleaseMetadata.iss is missing - run BuildInstaller.ps1 to generate it"
+#endif
+#include "WorkingDir\ReleaseMetadata.iss"
+
 #include "environment.iss"
 #include "dotnet.iss"
 
@@ -20,17 +24,17 @@
 ; Stable installer identity used for upgrades and by package managers. It must never change.
 AppId=ItTiger.TigerSqlCmd
 AppName=TigerSqlCmd
-AppVersion=0.8.6
+AppVersion={#TigerSqlCmdVersion}
 DefaultDirName={autopf}\ItTiger\TigerSqlCmd
 DefaultGroupName=TigerSqlCmd
-OutputBaseFilename=TigerSqlCmdSetup_0_8_6
+OutputBaseFilename={#TigerSqlCmdOutputBaseFilename}
 Compression=lzma
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
 VersionInfoDescription=TigerSqlCmd installer
-VersionInfoVersion=0.8.6.0
+VersionInfoVersion={#TigerSqlCmdVersionInfo}
 UninstallDisplayIcon={app}\cli\tiger-sqlcmd.exe
 AlwaysShowDirOnReadyPage=yes
 
