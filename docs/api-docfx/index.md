@@ -16,6 +16,16 @@ Start with [TigerSqlCmd interaction modes and usage](tiger-sqlcmd.md), or use th
 [TigerSqlCmd E2E scenarios](tiger-sqlcmd-e2e.md) guide for safe unattended database
 lifecycle automation.
 
+## TigerSqlCmd task guides
+
+- [Install TigerSqlCmd and manage saved connections](tiger-sqlcmd.md#installation)
+- [Use the same commands non-interactively in scripts, CI, jobs, and agents](tiger-sqlcmd.md#one-command-model-multiple-interaction-modes)
+- [Run SQL with explicit per-batch command timeouts](tiger-sqlcmd.md#batch-timeouts---command-timeout)
+- [Route SQL results and messages](../features/result-output-routing.md)
+- [Pass a resolved saved connection to an external tool with `exec`](tiger-sqlcmd.md#running-an-external-tool-exec)
+- [Create, use, clone, and safely clean session-scoped E2E resources](tiger-sqlcmd-e2e.md)
+- [Provision an E2E database for memory-optimized tables](tiger-sqlcmd-e2e.md#memory-optimized-databases-e2e-create---memory-optimized)
+
 This site combines a short guide with API documentation generated from the
 libraries' C# source and XML documentation comments.
 

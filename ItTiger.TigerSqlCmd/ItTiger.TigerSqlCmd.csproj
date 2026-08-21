@@ -10,7 +10,7 @@
     <!-- Read at run time by TigerCli's UseAssemblyMetadata: Product backs the display
          name, Description the assembly-attribute fallback for the localized help text. -->
     <Product>TigerSqlCmd</Product>
-    <Description>SQL Server script and query runner built on the TigerQuery engine, with sqlcmd-compatible scripting, saved connections, variables, and logging.</Description>
+    <Description>Modern SQL Server CLI built on TigerQuery for sqlcmd-compatible script execution, saved connection profiles, interactive and non-interactive automation, external-tool handoff, and safe session-scoped E2E database lifecycles.</Description>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -19,13 +19,13 @@
     <ToolCommandName>tiger-sqlcmd</ToolCommandName>
     <PackageId>ItTiger.TigerSqlCmd</PackageId>
     <Title>TigerSqlCmd .NET Tool</Title>
-    <PackageTags>dotnet-tool;sqlcmd;sql;sqlserver;cli;ittiger;tigerquery</PackageTags>
+    <PackageTags>dotnet-tool;sqlcmd;sql;sqlserver;cli;automation;ci;e2e;ittiger;tigerquery</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>TigerQuery256.png</PackageIcon>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="..\docs\assets\TigerQuery256.png" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 

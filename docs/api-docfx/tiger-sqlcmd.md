@@ -13,6 +13,19 @@ use `tiger-sqlcmd` when a shell command is the right interface.
 For disposable databases and session-scoped automation, continue with
 [TigerSqlCmd E2E scenarios](tiger-sqlcmd-e2e.md).
 
+## Common tasks
+
+- [Install the .NET tool or Windows package](#installation)
+- [Use semi-interactive and `--non-interactive` execution](#one-command-model-multiple-interaction-modes)
+- [Create and select saved connection profiles](#saved-connections)
+- [Use external secret and value references](#authentication-and-secrets)
+- [Run inline SQL or files](#running-sql), including
+  [explicit per-batch timeouts](#batch-timeouts---command-timeout)
+- [Route result sets and diagnostics](#output-diagnostics-and-automation)
+- [Pass a resolved connection to an external tool with `exec`](#running-an-external-tool-exec)
+- [Automate session-scoped E2E databases](tiger-sqlcmd-e2e.md), including
+  [memory-optimized provisioning](tiger-sqlcmd-e2e.md#memory-optimized-databases-e2e-create---memory-optimized)
+
 ## One Command Model, Multiple Interaction Modes
 
 TigerSqlCmd follows TigerCli's defining model: one command model serves both guided
@@ -547,7 +560,7 @@ default, exactly as for `run`; the store option also belongs before `--`. Resolv
 never written back to the store.
 
 ```console
-tiger-sqlcmd exec -c build-db --non-interactive --tq-connection-store-file C:gent\connections.json --connection-string-env DB_CONNECTION -- my-tool --report
+tiger-sqlcmd exec -c build-db --non-interactive --tq-connection-store-file C:\agent\connections.json --connection-string-env DB_CONNECTION -- my-tool --report
 ```
 
 The child command line is never prompted for either. A required tail is a usage error in both

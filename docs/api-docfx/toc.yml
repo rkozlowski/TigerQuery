@@ -4,10 +4,24 @@
   href: getting-started.md
 - name: TigerQuery engine
   href: engine.md
-- name: TigerSqlCmd interaction modes and usage
+- name: TigerSqlCmd guide
   href: tiger-sqlcmd.md
-- name: TigerSqlCmd E2E scenarios
+  items:
+  - name: Interaction modes
+    href: tiger-sqlcmd.md#one-command-model-multiple-interaction-modes
+  - name: Command timeouts
+    href: tiger-sqlcmd.md#batch-timeouts---command-timeout
+  - name: External tools with exec
+    href: tiger-sqlcmd.md#running-an-external-tool-exec
+- name: TigerSqlCmd E2E guide
   href: tiger-sqlcmd-e2e.md
+  items:
+  - name: Memory-optimized databases
+    href: tiger-sqlcmd-e2e.md#memory-optimized-databases-e2e-create---memory-optimized
+  - name: External tools in E2E workflows
+    href: tiger-sqlcmd-e2e.md#handing-the-session-connection-to-an-external-tool
+  - name: Non-owning clones
+    href: tiger-sqlcmd-e2e.md#existing-database-non-owning-clone-example
 - name: Result output routing
   href: ../features/result-output-routing.md
 - name: Connection profiles

@@ -9,6 +9,17 @@ The core rule is simple: SQL Server reachability is not authorization. TigerQuer
 exact bootstrap profile, protected metadata, an exact session GUID, and durable connection
 records before it will create or drop a database.
 
+## Common tasks
+
+- [Configure the authorized bootstrap connection](#bootstrap-connection-and-permissions)
+- [Choose a regular or isolated connection store](#regular-and-isolated-stores)
+- [Create an owned database and connection for one session](#disposable-database-complete-powershell-workflow)
+- [Provision the database for memory-optimized tables](#memory-optimized-databases-e2e-create---memory-optimized)
+- [Pass the session connection to an external tool with `exec`](#handing-the-session-connection-to-an-external-tool)
+- [Set an explicit command timeout for long-running session SQL](#long-running-session-sql)
+- [Clone a connection to a pre-existing database without ownership](#existing-database-non-owning-clone-example)
+- [Understand cleanup safety and partial-failure recovery](#parallel-jobs-and-cleanup-safety)
+
 ## One Command Model, Multiple Interaction Modes
 
 TigerSqlCmd E2E commands are not a separate automation API. The same `e2e create`,

@@ -13,12 +13,46 @@ follows TigerCli's **One Command Model, Multiple Interaction Modes**: the same c
 serve normal semi-interactive execution and automation-safe `--non-interactive`
 execution for scripts, CI, scheduled jobs, redirected runs, and coding agents.
 
+## Status
+
+TigerQuery is actively developed and remains pre-1.0. It is well tested, used in
+real SQL Server automation and end-to-end workflows, and suitable for practical use
+today. Pre-1.0 releases can still evolve; compatibility differences and current
+limitations are documented explicitly and protected by tests.
+
+## tiger-sqlcmd: the TigerQuery CLI
+
+`tiger-sqlcmd` is a first-class .NET tool for people and automation that need to run
+SQL Server scripts, reuse saved connection profiles, and get predictable diagnostics
+and exit codes without embedding a library. TigerQuery provides its SQLCMD-compatible
+parser and execution engine; TigerSqlCmd adds connection management, interaction policy,
+output routing, logging, E2E lifecycle commands, and external-process integration.
+
+Install it with the .NET 10 SDK:
+
+```bash
+dotnet tool install --global ItTiger.TigerSqlCmd
+```
+
+Normal invocations are semi-interactive. Add `--non-interactive` to the same commands
+for CI, scheduled jobs, scripts, and agents: missing promptable values fail clearly
+instead of blocking for input. Session-scoped E2E commands create disposable databases
+with explicit ownership and safe cleanup, while non-owning clones can target existing
+databases without making them droppable. The `exec` command resolves a saved connection
+and hands it to an external tool through a supported environment-variable or argument
+handoff.
+
+Start with the [TigerSqlCmd general guide](docs/api-docfx/tiger-sqlcmd.md) and the
+[TigerSqlCmd E2E guide](docs/api-docfx/tiger-sqlcmd-e2e.md).
+
 ## Documentation
 
 **[Read the published TigerQuery documentation](https://rkozlowski.github.io/TigerQuery/).**
 
 - [TigerSqlCmd interaction modes and usage](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html#one-command-model-multiple-interaction-modes)
 - [TigerSqlCmd E2E scenarios](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd-e2e.html)
+- [`exec` external-tool handoff](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html#running-an-external-tool-exec)
+- [SQL batch command timeouts](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html#batch-timeouts---command-timeout)
 
 ---
 
@@ -37,14 +71,33 @@ Unlike sqlcmd or SSMS, TigerQuery:
 
 ## ✨ Features
 
-- ✅ Familiar `:setvar`, `$(var)`, `:on error`, and `GO [n]` handling, including
-  sqlcmd-compatible stop-on-error for severity 11-16 server errors
-- ✅ `SqlCmdEx` protected host variables for automation and embedded tooling
-- ✅ Fully async parser and execution engine
-- ✅ Tracks exact line/column metadata per batch
-- ✅ Structured error handling via `TigerQueryException`
-- ✅ Differentiates between `sqlcmd`, `sqlcmdex`, and normal modes
-- ✅ Easily embeddable in CLI tools or .NET apps
+- ✅ **SQLCMD-compatible script execution** — run inline SQL or files with
+  `:setvar`, `$(var)`, `:on error`, `GO [n]`, variables, repeatable batches, and
+  sqlcmd-compatible stop-on-error behavior.
+- ✅ **Controlled automation and result routing** — use `SqlCmdEx` to protect
+  host-provided values, and route results and messages to the console, CSV output,
+  per-result-set files, or separate error output.
+- ✅ **Reusable connections without embedded secrets** — save named SQL Server
+  profiles and resolve server, database, username, password, or complete connection
+  strings from supported external value references.
+- ✅ **One command model for people and automation** — the same commands work in
+  guided semi-interactive mode and automation-safe `--non-interactive` mode for
+  scripts, CI jobs, scheduled work, redirected runs, and coding agents.
+- ✅ **Session-scoped E2E databases** — create an isolated database and paired
+  connection for one session, optionally provisioned for memory-optimized tables,
+  then clean up by the exact session ID.
+- ✅ **Ownership-safe E2E cleanup** — only explicitly owned databases can be dropped;
+  exact metadata, session, name, and authorization checks guard teardown.
+- ✅ **Non-owning E2E clones** — clone a saved profile to target a pre-existing
+  database without taking ownership or granting cleanup permission to drop it.
+- ✅ **External-tool bridging** — `tiger-sqlcmd exec --connection ... -- <tool> ...`
+  resolves a saved connection and passes it to a child process through supported
+  environment-variable and argument handoff modes.
+- ✅ **Explicit execution budgets** — set a per-batch `--command-timeout`, including
+  `0` for no limit, for migrations, provisioning, and other long-running SQL.
+- ✅ **Composable .NET APIs** — use the asynchronous parser and engine, structured
+  callbacks and results, connection-profile components, or reusable TigerCli commands
+  directly in applications.
 
 ---
 
@@ -260,15 +313,6 @@ installer is also distributed through
 administrator elevation, installs under Program Files, and adds TigerSqlCmd to the system
 PATH. See [TigerSqlCmd concepts and usage](docs/api-docfx/tiger-sqlcmd.md) for all
 installation options and the command reference.
-
----
-
-## 🔧 Status
-
-TigerQuery v0.8.6 is a **snapshot release** — not issue-free, but stable, tested, and ready to use.
-
-It is meant as a transparent, inspectable tool — bugs and all.  
-The test suite tracks known issues, documents differences, and protects your upgrade path.
 
 ---
 
