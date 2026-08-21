@@ -243,20 +243,37 @@ jobs:
           dotnet tool uninstall ItTiger.TigerSqlCmd --tool-path $toolPath
           if ($LASTEXITCODE -ne 0) { throw "Tool uninstall failed with exit code $LASTEXITCODE." }
 
-      - name: Install Inno Setup
+      - name: Provision pinned Inno Setup
         shell: pwsh
+        env:
+          INNO_SETUP_VERSION: '7.1.0'
+          INNO_SETUP_INSTALLER_URI: 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe'
+          INNO_SETUP_INSTALLER_SHA256: '0362A383ED217D4C4239B5933866DD96D3EB2102737DA92F80F6057A4B40DF2F'
         run: |
-          choco install innosetup --yes --no-progress
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed with exit code $LASTEXITCODE." }
+          $ErrorActionPreference = 'Stop'
+          $compilerPath = ./eng/release-automation/Install-InnoSetup.ps1 `
+            -Version $env:INNO_SETUP_VERSION `
+            -InstallerUri $env:INNO_SETUP_INSTALLER_URI `
+            -InstallerSha256 $env:INNO_SETUP_INSTALLER_SHA256
+          if ([string]::IsNullOrWhiteSpace($compilerPath) -or
+              -not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
+            throw "Inno Setup $env:INNO_SETUP_VERSION provisioning did not resolve an existing ISCC.exe path: '$compilerPath'."
+          }
+          "INNO_SETUP_COMPILER=$compilerPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build TigerSqlCmd installer from validated outputs
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:INNO_SETUP_COMPILER) -or
+              -not (Test-Path -LiteralPath $env:INNO_SETUP_COMPILER -PathType Leaf)) {
+            throw "The provisioned Inno Setup compiler is unavailable at '$env:INNO_SETUP_COMPILER'."
+          }
           ./ItTiger.TigerSqlCmd.Installer/BuildInstaller.ps1 `
             -ExpectedVersion $env:RELEASE_VERSION `
             -OutputDirectory artifacts/release `
+            -InnoSetupCompilerPath $env:INNO_SETUP_COMPILER `
             -NoBuild
 
       - name: Validate TigerSqlCmd installer metadata and behavior
@@ -279,15 +296,45 @@ jobs:
 
       - name: Install WinGet for manifest validation
         shell: pwsh
+        env:
+          WINGET_CLIENT_MODULE_VERSION: '1.29.280'
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($null -eq (Get-Command winget -ErrorAction SilentlyContinue)) {
-            Install-Module Microsoft.WinGet.Client -Repository PSGallery -Force
-            Import-Module Microsoft.WinGet.Client
-            Repair-WinGetPackageManager -AllUsers
+
+          function Resolve-WorkingWinGet {
+            $candidate = Get-Command winget.exe -CommandType Application -ErrorAction SilentlyContinue
+            if ($null -eq $candidate -or -not (Test-Path -LiteralPath $candidate.Source -PathType Leaf)) {
+              return $null
+            }
+            & $candidate.Source --info | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "The discovered winget.exe at '$($candidate.Source)' exited with code $LASTEXITCODE."
+              return $null
+            }
+            return $candidate
           }
-          winget --info
-          if ($LASTEXITCODE -ne 0) { throw 'WinGet is unavailable after provisioning.' }
+
+          $winget = Resolve-WorkingWinGet
+          if ($null -eq $winget) {
+            if ($null -eq (Get-Command Install-Module -ErrorAction SilentlyContinue)) {
+              throw 'WinGet is absent or unusable and Install-Module is unavailable, so Microsoft.WinGet.Client cannot repair it.'
+            }
+            Install-Module Microsoft.WinGet.Client `
+              -RequiredVersion $env:WINGET_CLIENT_MODULE_VERSION `
+              -Repository PSGallery `
+              -Scope CurrentUser `
+              -Force
+            Import-Module Microsoft.WinGet.Client -RequiredVersion $env:WINGET_CLIENT_MODULE_VERSION
+            if ($null -eq (Get-Command Repair-WinGetPackageManager -ErrorAction SilentlyContinue)) {
+              throw "Microsoft.WinGet.Client $env:WINGET_CLIENT_MODULE_VERSION did not expose Repair-WinGetPackageManager."
+            }
+            Repair-WinGetPackageManager -AllUsers
+            $winget = Resolve-WorkingWinGet
+          }
+          if ($null -eq $winget) {
+            throw 'WinGet provisioning completed without resolving an executable winget.exe.'
+          }
+          Write-Host "Using WinGet at '$($winget.Source)'."
 
       - name: Generate and validate WinGet manifests
         shell: pwsh
@@ -385,6 +432,22 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Verify publication runner tools before publishing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($commandName in @('dotnet.exe', 'git.exe', 'gh.exe')) {
+            $command = Get-Command $commandName -CommandType Application -ErrorAction SilentlyContinue
+            if ($null -eq $command -or -not (Test-Path -LiteralPath $command.Source -PathType Leaf)) {
+              throw "Required publication command '$commandName' is unavailable on the hosted runner."
+            }
+            Write-Host "$commandName => $($command.Source)"
+          }
+          dotnet --version
+          if ($LASTEXITCODE -ne 0) { throw 'The configured .NET SDK is not executable.' }
+          gh --version
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub CLI is not executable.' }
 
       - name: Download validated release artifacts
         uses: actions/download-artifact@v7

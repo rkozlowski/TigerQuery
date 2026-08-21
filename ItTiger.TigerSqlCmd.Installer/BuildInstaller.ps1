@@ -2,6 +2,7 @@
 param(
     [string] $ExpectedVersion,
     [string] $OutputDirectory,
+    [string] $InnoSetupCompilerPath,
     [switch] $NoBuild
 )
 
@@ -81,13 +82,19 @@ Set-Content -LiteralPath (Join-Path $workingDir 'ReleaseMetadata.iss') `
     -Value $releaseDefines -Encoding utf8NoBOM
 
 Write-Host 'Resolving Inno Setup Compiler (ISCC.exe)...'
-$innoKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 7_is1'
-$innoPath = (Get-ItemProperty -Path $innoKey -ErrorAction SilentlyContinue).InstallLocation
-if (-not $innoPath -or -not (Test-Path -LiteralPath (Join-Path $innoPath 'ISCC.exe'))) {
-    throw 'Inno Setup Compiler (ISCC.exe) not found. Install Inno Setup 7.'
+if ([string]::IsNullOrWhiteSpace($InnoSetupCompilerPath)) {
+    $innoKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 7_is1'
+    $innoPath = (Get-ItemProperty -LiteralPath $innoKey -ErrorAction SilentlyContinue).InstallLocation
+    if (-not $innoPath) {
+        throw "Inno Setup 7 is not registered at '$innoKey'. Install Inno Setup 7 or pass -InnoSetupCompilerPath."
+    }
+    $InnoSetupCompilerPath = Join-Path $innoPath 'ISCC.exe'
 }
 
-$innoSetupExe = Join-Path $innoPath 'ISCC.exe'
+if (-not (Test-Path -LiteralPath $InnoSetupCompilerPath -PathType Leaf)) {
+    throw "Inno Setup Compiler (ISCC.exe) was not found at '$InnoSetupCompilerPath'."
+}
+$innoSetupExe = [IO.Path]::GetFullPath($InnoSetupCompilerPath)
 $installerPath = Join-Path $PSScriptRoot "Output\TigerSqlCmdSetup_$($version -replace '\.', '_').exe"
 if (Test-Path -LiteralPath $installerPath) {
     Remove-Item -LiteralPath $installerPath -Force

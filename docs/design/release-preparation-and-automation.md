@@ -165,6 +165,16 @@ contract remains:
 - repeat installation as an upgrade/reinstall under the same identity; and
 - complete command, registry, PATH, and file cleanup on uninstall.
 
+The workflow does not use the Inno Setup version that happens to be on `windows-latest`.
+It downloads the official 64-bit Inno Setup 7.1.0 installer from the upstream immutable
+GitHub release, verifies its pinned SHA-256 and Authenticode publisher, installs it
+silently, and verifies the exact registered version and `ISCC.exe` path. Direct download
+is used instead of Chocolatey because the `innosetup` package does not express the required
+major-version contract, and instead of WinGet because WinGet itself may need provisioning
+on a hosted runner. The resolved absolute compiler path is passed explicitly to
+`BuildInstaller.ps1`; local builds retain registry discovery for an already-installed
+Inno Setup 7.
+
 The hosted Windows runner is expected to be elevated and disposable, making full
 install/reinstall/uninstall validation practical. A failure to provision Inno Setup, a
 runner policy that removes elevation, or a runner-specific reboot/registry restriction is
@@ -219,8 +229,11 @@ appropriate. The release workflow does not authenticate to, fork, or submit to
 Static and local tests cannot completely emulate GitHub Actions. The first real release
 run must pay particular attention to:
 
-- the current `windows-latest` image's ability to install Inno Setup through Chocolatey;
-- WinGet provisioning through `Microsoft.WinGet.Client` when `winget` is absent;
+- download, hash/signature validation, silent installation, and discovery of the pinned
+  Inno Setup 7 compiler;
+- WinGet provisioning through pinned `Microsoft.WinGet.Client` when `winget` is absent;
+- the .NET 10 SDK installed by `actions/setup-dotnet`, and the hosted image's Git and
+  GitHub CLI commands, which are checked before publication begins;
 - elevation and machine PATH/registry behavior on the hosted runner;
 - NuGet.org Trusted Publishing still matching this repository, workflow filename,
   environment, and configured `NUGET_USER`;
