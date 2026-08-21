@@ -58,12 +58,12 @@ function Assert-Throws {
     throw "Expected exception matching '$MessagePattern', but no exception was thrown."
 }
 
-$tag = 'v0.8.7'
-$title = 'TigerQuery 0.8.7'
+$tag = 'v0.8.8'
+$title = 'TigerQuery 0.8.8'
 $commit = '1111111111111111111111111111111111111111'
 $otherCommit = '2222222222222222222222222222222222222222'
 $expectedAsset = [pscustomobject]@{
-    Name = 'TigerSqlCmdSetup_0_8_7.exe'
+    Name = 'TigerSqlCmdSetup_0_8_8.exe'
     Length = 12345L
     Digest = 'sha256:' + ('a' * 64)
 }
