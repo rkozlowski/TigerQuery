@@ -129,9 +129,10 @@ One dispatch performs this ordered flow:
 22. Upload the exact installer, four NuGet packages, four symbol packages, and both
     checksum files. Recheck GitHub's SHA-256 digest for every asset. Never use clobber.
 23. Leave the release in draft state for human review and editing. A human publishes it.
-24. After publication, download and hash the live installer, regenerate or verify the
-    manifests against its immutable URL, rerun `winget validate`, test through WinGet,
-    and submit to `winget-pkgs` separately.
+24. After publication, run `eng/winget/Test-TigerSqlCmdWinGet.ps1`: it downloads and hashes
+    the live installer, checks the manifests against its immutable URL, validates and
+    exercises the package through WinGet in the TigerWinLab guest, and reports `PASS` or
+    `FAIL`. Submit to `winget-pkgs` separately, and only after `PASS`.
 
 The two checksum files describe the nine publishable payloads. They are integrity
 metadata rather than recursively self-hashing payloads; the JSON file's own transfer hash
@@ -221,12 +222,20 @@ Before the draft is public, the workflow can prove manifest structure, package i
 installer type and scope, dependency metadata, filename, SHA-256, and the deterministic
 future GitHub URL. It cannot prove that an unauthenticated client can download that URL.
 
-After human publication, a maintainer must download the installer from the live URL,
-compare it with `release-artifacts.json` and `SHA256SUMS.txt`, regenerate or verify the
-manifests with `Prepare-TigerSqlCmdWinGet.ps1`, rerun `winget validate`, and exercise the
-WinGet install/upgrade/command/uninstall path. Only then is a separate manual WinGet PR
-appropriate. The release workflow does not authenticate to, fork, or submit to
-`winget-pkgs`.
+After human publication, `eng/winget/Test-TigerSqlCmdWinGet.ps1` closes that gap in one
+command: it downloads the installer from the live URL, compares it with the manifests,
+`release-artifacts.json`, and `SHA256SUMS.txt`, and then hands that downloaded payload to
+TigerWinLab, which validates and exercises the WinGet install/command/uninstall path in a
+clean Windows guest. Validating the published bytes rather than a local rebuild is the
+point: it is the only way the artifact tested is the artifact users will get.
+
+The environment is deliberately not this repository's concern. TigerQuery owns package
+policy - what the manifests must say and what TigerSqlCmd must look like once installed -
+and TigerWinLab owns the Windows guest. That separation is why this repository builds no
+validation sandbox of its own. See `docs/maintainers/winget-tiger-sqlcmd.md`.
+
+Only after a `PASS` is a separate manual WinGet PR appropriate. Neither the release
+workflow nor the validation command authenticates to, forks, or submits to `winget-pkgs`.
 
 ## First-live-run assumptions and risks
 

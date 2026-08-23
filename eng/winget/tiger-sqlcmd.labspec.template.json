@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "name": "tiger-sqlcmd-winget",
+  "package": {
+    "identifier": "ItTiger.TigerSqlCmd",
+    "version": "0.0.0",
+    "productCode": "ItTiger.TigerSqlCmd_is1"
+  },
+  "manifestDirectory": "manifests",
+  "installer": {
+    "path": "installer.exe",
+    "type": "inno",
+    "scope": "machine",
+    "architecture": "x64",
+    "expectedUrl": "https://github.com/rkozlowski/TigerQuery/releases/download/v0.0.0/TigerSqlCmdSetup_0_0_0.exe",
+    "successExitCodes": [0]
+  },
+  "hashMismatchProbe": {
+    "enabled": true,
+    "expectedOutputPattern": "(?i)hash"
+  },
+  "expected": {
+    "installRoot": "%ProgramFiles%\\ItTiger\\TigerSqlCmd",
+    "files": [
+      "VERSION.txt",
+      "unins000.exe",
+      "cli\\tiger-sqlcmd.exe",
+      "cli\\tiger-sqlcmd.dll",
+      "cli\\ItTiger.TigerQuery.Core.dll"
+    ],
+    "minimumFileCount": 60,
+    "versionFile": "cli\\tiger-sqlcmd.exe",
+    "versionTextFile": "VERSION.txt",
+    "machinePathEntries": ["%ProgramFiles%\\ItTiger\\TigerSqlCmd\\cli"],
+    "commands": ["tiger-sqlcmd"],
+    "dependencies": [
+      {
+        "packageIdentifier": "Microsoft.DotNet.Runtime.10",
+        "presentWhenPathExists": "%ProgramFiles%\\dotnet\\dotnet.exe",
+        "installer": {
+          "url": "https://aka.ms/dotnet/10.0/dotnet-runtime-win-x64.exe",
+          "arguments": ["/install", "/quiet", "/norestart"]
+        }
+      }
+    ],
+    "smoke": [
+      {
+        "name": "version",
+        "command": "tiger-sqlcmd",
+        "arguments": ["--version"],
+        "expectedExitCode": 0,
+        "expectedOutputPattern": "TigerSqlCmd version {version}"
+      },
+      {
+        "name": "help",
+        "command": "tiger-sqlcmd",
+        "arguments": ["--help"],
+        "expectedExitCode": 0,
+        "expectedOutputPattern": "tiger-sqlcmd"
+      },
+      {
+        "name": "connection-list",
+        "command": "tiger-sqlcmd",
+        "arguments": ["connection", "list", "--non-interactive"],
+        "expectedExitCode": 0
+      }
+    ]
+  }
+}

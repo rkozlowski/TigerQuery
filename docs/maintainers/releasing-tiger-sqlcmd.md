@@ -24,11 +24,11 @@ only release version source.
 7. Publish the draft manually.
 8. Download the installer, packages, and checksum files from the public release. Verify
    every payload against `release-artifacts.json` and `SHA256SUMS.txt`.
-9. Regenerate or verify WinGet manifests against the now-live immutable installer URL,
-   rerun `winget validate`, and exercise clean install, upgrade, command, and uninstall
-   through WinGet.
-10. Submit the WinGet manifests separately to `winget-pkgs` and monitor its validation and
-    review. The TigerQuery workflow never submits that PR.
+9. Prepare and validate the WinGet package against the now-live installer URL. See
+   [Preparing the TigerSqlCmd WinGet package](winget-tiger-sqlcmd.md); the whole step is
+   two commands and ends in a `PASS` or a `FAIL`.
+10. Only after that reports `PASS`, submit the manifests separately to `winget-pkgs` and
+    monitor its validation and review. The TigerQuery workflow never submits that PR.
 
 The workflow artifact named `TigerSqlCmd-WinGet-<version>-<commit>` contains the
 pre-publication manifests. They use the expected final URL and exact installer hash, but
