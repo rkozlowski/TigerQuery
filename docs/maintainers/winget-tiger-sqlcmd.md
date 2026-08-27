@@ -53,9 +53,15 @@ covers all three. Every check is named in the table and in `result.json`.
 **`manifest/*` — the manifests say what this release implies.** Package identity, the same
 version in all three documents, `ManifestType`/`ManifestVersion` agreement, the default
 locale, installer type `inno`, machine scope, x64, the immutable asset URL, a well-formed
-SHA-256, the `AppsAndFeaturesEntries` product code and display version, the `tiger-sqlcmd`
+SHA-256, the `AppsAndFeaturesEntries` product code and display-version policy, the `tiger-sqlcmd`
 command, the `Microsoft.DotNet.Runtime.10` dependency this framework-dependent package
 needs, the release-notes URL, and UTF-8 without a byte-order mark.
+
+Follow WinGet's `DisplayVersion` rule when preparing `AppsAndFeaturesEntries`: omit it
+when the installed Apps & Features version is identical to `PackageVersion`. Pass
+`-InstalledDisplayVersion <version>` to `Prepare-TigerSqlCmdWinGet.ps1` only when the
+installed version genuinely differs; the generator then emits the field and preserves
+that differing value.
 
 **`release/*` — the published asset is the one the manifests describe.** The asset is
 downloaded from the immutable URL exactly as an unauthenticated client would, hashed, and

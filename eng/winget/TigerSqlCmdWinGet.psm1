@@ -418,9 +418,9 @@ function Test-TigerSqlCmdWinGetManifestSet {
         -FailureMessage "InstallerSha256 '$($installer.installerSha256)' is not a 64-character upper-case SHA-256 digest."))
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/apps-and-features' `
-        -Condition ($installer.productCode -ceq $release.productCode -and $installer.displayVersion -ceq $release.version) `
-        -Message "AppsAndFeaturesEntries names product code $($release.productCode) at version $($release.version)." `
-        -FailureMessage "AppsAndFeaturesEntries names product code '$($installer.productCode)' at version '$($installer.displayVersion)'; expected '$($release.productCode)' at '$($release.version)'."))
+        -Condition ($installer.productCode -ceq $release.productCode -and $installer.displayVersion -cne $release.version) `
+        -Message "AppsAndFeaturesEntries names product code $($release.productCode) without repeating PackageVersion as DisplayVersion." `
+        -FailureMessage "AppsAndFeaturesEntries names product code '$($installer.productCode)' and DisplayVersion '$($installer.displayVersion)'; expected product code '$($release.productCode)' and no DisplayVersion equal to PackageVersion '$($release.version)'."))
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/command' `
         -Condition ($installer.commands -ccontains $release.command) `

@@ -121,7 +121,6 @@ Commands:
 AppsAndFeaturesEntries:
 - DisplayName: TigerSqlCmd 1.2.3
   Publisher: IT Tiger
-  DisplayVersion: 1.2.3
   ProductCode: ItTiger.TigerSqlCmd_is1
   InstallerType: inno
 Installers:
@@ -178,6 +177,17 @@ $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("TigerSqlCmdWinGet-test
 $null = New-Item -ItemType Directory -Path $testRoot -Force
 
 try {
+    $repositoryRoot = Split-Path -Parent (Split-Path -Parent $wingetDirectory)
+    [xml] $currentVersionXml = Get-Content -LiteralPath (Join-Path $repositoryRoot 'Version.props')
+    $currentVersion = [string] $currentVersionXml.Project.PropertyGroup.Version
+    $currentFilenameVersion = $currentVersion -replace '\.', '_'
+    $fakeInstallerDirectory = Join-Path $testRoot 'generator-installer'
+    $null = New-Item -ItemType Directory -Path $fakeInstallerDirectory -Force
+    $fakeInstallerPath = Join-Path $fakeInstallerDirectory "TigerSqlCmdSetup_${currentFilenameVersion}.exe"
+    [System.IO.File]::WriteAllBytes($fakeInstallerPath, [byte[]](0..31))
+    $prepareScript = Join-Path $wingetDirectory 'Prepare-TigerSqlCmdWinGet.ps1'
+    $installerUrl = "https://github.com/rkozlowski/TigerQuery/releases/download/v$currentVersion/TigerSqlCmdSetup_${currentFilenameVersion}.exe"
+
     Invoke-Test 'a stable three-part version is accepted and anything else is rejected' {
         Assert-True ((Assert-TigerSqlCmdWinGetVersion -Version '0.8.8') -ceq '0.8.8') 'The version should be echoed back.'
         foreach ($bad in @('0.8', '0.8.8.1', '0.8.8-rc.1', 'v0.8.8', '0.8.8 ')) {
@@ -185,6 +195,32 @@ try {
                 $null = Assert-TigerSqlCmdWinGetVersion -Version $bad
             }
         }
+    }
+
+    Invoke-Test 'the generator omits DisplayVersion when it equals PackageVersion' {
+        $outputRoot = Join-Path $testRoot 'generated-same-version'
+        & $prepareScript `
+            -InstallerPath $fakeInstallerPath `
+            -OutputRoot $outputRoot `
+            -ExpectedVersion $currentVersion `
+            -InstallerUrl $installerUrl
+        $path = Join-Path $outputRoot "manifests\i\ItTiger\TigerSqlCmd\$currentVersion\ItTiger.TigerSqlCmd.installer.yaml"
+        $manifest = Get-Content -LiteralPath $path -Raw
+        Assert-True ($manifest -cnotmatch '(?m)^\s+DisplayVersion:') 'The generator must omit a DisplayVersion that repeats PackageVersion.'
+    }
+
+    Invoke-Test 'the generator emits DisplayVersion when it differs from PackageVersion' {
+        $outputRoot = Join-Path $testRoot 'generated-different-version'
+        $differentVersion = "$currentVersion.0"
+        & $prepareScript `
+            -InstallerPath $fakeInstallerPath `
+            -OutputRoot $outputRoot `
+            -ExpectedVersion $currentVersion `
+            -InstallerUrl $installerUrl `
+            -InstalledDisplayVersion $differentVersion
+        $path = Join-Path $outputRoot "manifests\i\ItTiger\TigerSqlCmd\$currentVersion\ItTiger.TigerSqlCmd.installer.yaml"
+        $manifest = Get-Content -LiteralPath $path -Raw
+        Assert-True ($manifest -cmatch "(?m)^  DisplayVersion: $([regex]::Escape($differentVersion))\r?$") 'The generator must preserve a DisplayVersion that differs from PackageVersion.'
     }
 
     Invoke-Test 'release facts derive the tag, file name, asset URL, and submission path' {
@@ -240,6 +276,30 @@ try {
         $notPassed = @($checks | Where-Object { $_.status -cne 'PASS' })
         Assert-True ($notPassed.Count -eq 0) "These checks did not pass: $(($notPassed | ForEach-Object { "$($_.name): $($_.message)" }) -join '; ')"
         Assert-True ($checks.Count -ge 15) "Only $($checks.Count) manifest checks ran."
+    }
+
+    Invoke-Test 'a redundant Apps and Features display version fails validation' {
+        $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'redundant-display-version')
+        $path = Join-Path $directory 'ItTiger.TigerSqlCmd.installer.yaml'
+        (Get-Content -LiteralPath $path -Raw).Replace(
+            '  Publisher: IT Tiger',
+            "  Publisher: IT Tiger`r`n  DisplayVersion: 1.2.3") |
+            Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
+
+        $checks = New-FixtureChecks -Directory $directory
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/apps-and-features').status -ceq 'FAIL') 'DisplayVersion must be omitted when it repeats PackageVersion.'
+    }
+
+    Invoke-Test 'a differing Apps and Features display version is preserved by validation' {
+        $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'differing-display-version')
+        $path = Join-Path $directory 'ItTiger.TigerSqlCmd.installer.yaml'
+        (Get-Content -LiteralPath $path -Raw).Replace(
+            '  Publisher: IT Tiger',
+            "  Publisher: IT Tiger`r`n  DisplayVersion: 1.2.3.0") |
+            Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
+
+        $checks = New-FixtureChecks -Directory $directory
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/apps-and-features').status -ceq 'PASS') 'A DisplayVersion that genuinely differs from PackageVersion must remain valid.'
     }
 
     Invoke-Test 'a manifest that names a different release URL fails exactly that check' {
@@ -448,7 +508,6 @@ try {
     }
 
     Invoke-Test 'the prepared manifests in this working tree pass, when they are present' {
-        $repositoryRoot = Split-Path -Parent (Split-Path -Parent $wingetDirectory)
         $versionFile = Join-Path $repositoryRoot 'Version.props'
         [xml] $versionXml = Get-Content -LiteralPath $versionFile
         $version = [string] $versionXml.Project.PropertyGroup.Version

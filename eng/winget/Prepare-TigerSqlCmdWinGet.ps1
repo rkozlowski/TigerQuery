@@ -5,6 +5,7 @@ param(
     [string]$ExpectedVersion,
     [string]$InstallerUrl,
     [string]$ExpectedInstallerSha256,
+    [string]$InstalledDisplayVersion,
     [switch]$Validate
 )
 
@@ -73,6 +74,19 @@ if (
     throw "Installer SHA-256 '$installerSha256' does not match '$ExpectedInstallerSha256'."
 }
 
+if ([string]::IsNullOrWhiteSpace($InstalledDisplayVersion)) {
+    $InstalledDisplayVersion = $version
+}
+if ($InstalledDisplayVersion -match '[\r\n]') {
+    throw 'InstalledDisplayVersion must be a single-line value.'
+}
+$displayVersionEntry = if ($InstalledDisplayVersion -cne $version) {
+    "  DisplayVersion: $InstalledDisplayVersion`r`n"
+}
+else {
+    ''
+}
+
 $installerManifest = @"
 # yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 PackageIdentifier: $packageIdentifier
@@ -100,8 +114,7 @@ Commands:
 AppsAndFeaturesEntries:
 - DisplayName: TigerSqlCmd $version
   Publisher: IT Tiger
-  DisplayVersion: $version
-  ProductCode: ItTiger.TigerSqlCmd_is1
+$displayVersionEntry  ProductCode: ItTiger.TigerSqlCmd_is1
   InstallerType: inno
 Installers:
 - Architecture: x64
