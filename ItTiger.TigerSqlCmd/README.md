@@ -8,6 +8,18 @@ output routing, stable exit codes, and external-tool integration.
 
 ## Installation
 
+### Windows with WinGet
+
+```console
+winget install ItTiger.TigerSqlCmd
+```
+
+WinGet installs TigerSqlCmd machine-wide and resolves its .NET 10 runtime dependency.
+The package is published in the Windows Package Manager community repository as
+`ItTiger.TigerSqlCmd`.
+
+### .NET tool
+
 ```bash
 dotnet tool install --global ItTiger.TigerSqlCmd
 ```
