@@ -28,7 +28,13 @@ and exit codes without embedding a library. TigerQuery provides its SQLCMD-compa
 parser and execution engine; TigerSqlCmd adds connection management, interaction policy,
 output routing, logging, E2E lifecycle commands, and external-process integration.
 
-Install it with the .NET 10 SDK:
+On Windows, install it directly from the WinGet community repository:
+
+```console
+winget install ItTiger.TigerSqlCmd
+```
+
+Or install it as a global .NET tool with the .NET 10 SDK:
 
 ```bash
 dotnet tool install --global ItTiger.TigerSqlCmd
@@ -280,7 +286,16 @@ dotnet add package ItTiger.TigerQuery.CliCore
 
 ### tiger-sqlcmd CLI
 
-Install the `tiger-sqlcmd` .NET tool globally:
+On Windows, the simplest machine-wide installation is WinGet:
+
+```console
+winget install ItTiger.TigerSqlCmd
+```
+
+WinGet resolves the `Microsoft.DotNet.Runtime.10` package dependency and installs
+TigerSqlCmd from the published versioned installer.
+
+Alternatively, install the `tiger-sqlcmd` .NET tool globally:
 
 ```bash
 dotnet tool install --global ItTiger.TigerSqlCmd
@@ -307,8 +322,8 @@ dotnet tool update --global ItTiger.TigerSqlCmd
 dotnet tool uninstall --global ItTiger.TigerSqlCmd
 ```
 
-For a local manifest, replace `--global` with `--local`. A machine-wide Windows
-installer is also distributed through
+For a local manifest, replace `--global` with `--local`. The standalone machine-wide
+Windows installer is also distributed through
 [GitHub releases](https://github.com/rkozlowski/TigerQuery/releases). It requires
 administrator elevation, installs under Program Files, and adds TigerSqlCmd to the system
 PATH. See [TigerSqlCmd concepts and usage](docs/api-docfx/tiger-sqlcmd.md) for all
