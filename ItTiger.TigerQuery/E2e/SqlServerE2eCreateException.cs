@@ -11,9 +11,10 @@ public sealed class SqlServerE2eCreateException : Exception
         Exception persistenceFailure,
         Exception? rollbackFailure = null)
         : base(
-            rollbackSucceeded
+            (rollbackSucceeded
                 ? $"Connection '{connectionName}' could not be persisted; database '{databaseName}' was rolled back successfully."
-                : $"Connection '{connectionName}' could not be persisted and rollback of database '{databaseName}' also failed. Manual cleanup is required.",
+                : $"Connection '{connectionName}' could not be persisted and rollback of database '{databaseName}' also failed. Manual cleanup is required.")
+            + SqlServerE2eFailureText.Causes(persistenceFailure, rollbackFailure),
             rollbackFailure is null
                 ? persistenceFailure
                 : new AggregateException(persistenceFailure, rollbackFailure))

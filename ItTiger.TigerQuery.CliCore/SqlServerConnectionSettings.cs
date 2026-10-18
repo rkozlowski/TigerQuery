@@ -262,11 +262,10 @@ internal abstract class SqlServerConnectionInputSettings : TigerCliSettings
             || Opt.Count > 0;
     }
 
+    // Checked on the trimmed key because that is the key the mapper persists: " Password"
+    // would otherwise pass here and be stored in plain text as "Password".
     private static bool IsSensitiveOption(string key) =>
-        key.Equals("Password", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("Pwd", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("Access Token", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("AccessToken", StringComparison.OrdinalIgnoreCase);
+        SqlServerConnectionProfile.IsSensitiveConnectionStringOption(key.Trim());
 }
 
 /// <summary>Connection settings with the regular positional profile name.</summary>

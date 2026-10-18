@@ -690,6 +690,16 @@ Use `--verbosity`, `--log-file`, and `--log-level` for operational diagnostics, 
 secrets are never printed. `--no-color` is useful when a
 job captures output, and `--help-env` lists recognized environment variables.
 
+Know what each diagnostic channel contains before a job publishes it. `Verbose` output
+echoes the query text and the values of `-v` variables, so do not pass secrets as
+variables. A log file records the run's progress, SQL Server messages including `PRINT`
+and `RAISERROR` text, and failures with their SQL error number, but never variable values,
+query text, or connection strings; only a SQL Server error message can quote part of a
+query, as SQL Server words it. When a connection cannot be opened, the error names
+the saved connection and keeps SQL Server's message with its error number, state, and
+class, which is what distinguishes a rejected login, an unreachable server, a timeout, an
+inaccessible database, and an untrusted certificate.
+
 Process exit codes and diagnostics are the automation contract. `run` returns `0` only
 when every batch it started succeeded; see
 [Batch failure and the `run` exit code](#batch-failure-and-the-run-exit-code). Run

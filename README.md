@@ -330,6 +330,15 @@ administrator elevation, installs under Program Files, and adds TigerSqlCmd to t
 PATH. See [TigerSqlCmd concepts and usage](docs/api-docfx/tiger-sqlcmd.md) for all
 installation options and the command reference.
 
+Uninstalling — through WinGet, Apps & Features, or `dotnet tool uninstall` — removes the
+program and, for the installer, its PATH entry. It leaves your data in place: the shared
+connection store (`%APPDATA%\ItTiger.net\sqlserver-connections.json` on Windows,
+`~/.config/ItTiger.net/sqlserver-connections.json` elsewhere), which other Tiger tools may
+also use, and any SQL scripts, result files, and log files you created. Upgrades and
+reinstalls keep saved connections and their protected passwords. Delete the store file
+yourself when you no longer want those connections; no uninstaller touches SQL Server
+databases.
+
 ---
 
 ## 🛡️ Copyright & Project Sponsor

@@ -135,13 +135,18 @@ PublisherSupportUrl: https://github.com/rkozlowski/TigerQuery/issues
 PackageName: TigerSqlCmd
 PackageUrl: https://www.ittiger.net/projects/tigerquery/
 License: MIT
-LicenseUrl: https://github.com/rkozlowski/TigerQuery/blob/main/LICENSE
+LicenseUrl: https://github.com/rkozlowski/TigerQuery/blob/v$version/LICENSE
 Copyright: Copyright (c) 2024-2026 IT Tiger
 ShortDescription: SQL Server script and query runner built on the TigerQuery engine.
 Description: |-
   TigerSqlCmd is a SQL Server command-line client built on TigerQuery. It runs inline
   queries and SQL files, supports sqlcmd-compatible scripting and protected SqlCmdEx
   variables, and manages reusable connection profiles for interactive and unattended use.
+  Connection profiles are saved in a per-user file; saved SQL passwords are encrypted for
+  the current Windows user with DPAPI. The exec command starts another program and passes
+  it the connection string of a saved connection.
+  The machine-wide installer requires administrator rights and adds its command folder to
+  the system PATH.
 Moniker: tiger-sqlcmd
 Tags:
 - cli

@@ -72,10 +72,11 @@ internal static class SqlServerExternalValueResolver
             var reader = options?.FileReader ?? File.ReadAllText;
             text = reader(reference.Path!);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             throw new SqlServerExternalValueException(
-                $"The external {fieldName} value from {reference.Describe()} could not be read.");
+                $"The external {fieldName} value from {reference.Describe()} could not be read: "
+                + DescribeReadFailure(ex));
         }
 
         if (reference.Format == SqlServerExternalFileFormat.Text)
@@ -104,12 +105,30 @@ internal static class SqlServerExternalValueResolver
 
             return property.GetString()!;
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
+            // The position locates the defect without echoing the file, which may hold a
+            // secret next to the broken token.
+            var position = ex.LineNumber is long line
+                ? $" (line {line + 1}, byte {(ex.BytePositionInLine ?? 0) + 1})"
+                : string.Empty;
             throw new SqlServerExternalValueException(
-                $"The external {fieldName} value from {reference.Describe()} contains malformed JSON.");
+                $"The external {fieldName} value from {reference.Describe()} contains malformed JSON{position}.");
         }
     }
+
+    // The cause is reduced to a category on purpose. The default reader's exceptions name
+    // only the path, which the reference already shows, but an injected reader may put
+    // anything into its message, including the value it was reading.
+    private static string DescribeReadFailure(Exception exception) => exception switch
+    {
+        FileNotFoundException => "the file does not exist.",
+        DirectoryNotFoundException => "the directory does not exist.",
+        UnauthorizedAccessException => "access to the file was denied.",
+        PathTooLongException or NotSupportedException or ArgumentException => "the path is not valid.",
+        IOException => "an I/O error occurred, for example because another process holds the file.",
+        _ => "the file reader failed."
+    };
 
     private static string RequireNonemptyWhenNeeded(
         string value,

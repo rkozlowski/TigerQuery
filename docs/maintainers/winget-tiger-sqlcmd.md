@@ -55,7 +55,15 @@ version in all three documents, `ManifestType`/`ManifestVersion` agreement, the 
 locale, installer type `inno`, machine scope, x64, the immutable asset URL, a well-formed
 SHA-256, the `AppsAndFeaturesEntries` product code and display-version policy, the `tiger-sqlcmd`
 command, the `Microsoft.DotNet.Runtime.10` dependency this framework-dependent package
-needs, the release-notes URL, and UTF-8 without a byte-order mark.
+needs, the release-notes URL, the `LicenseUrl` of the license file at the release tag
+rather than on a branch that moves on, and UTF-8 without a byte-order mark.
+
+The generated description states what a cautious user would want to know before
+installing: connection profiles are saved per user, saved SQL passwords are DPAPI-protected,
+`exec` hands a connection string to another program, and the installer needs administrator
+rights and changes the system PATH. Keep it in step with the product when any of that
+changes. The manifests carry no `PrivacyUrl` yet; because TigerSqlCmd stores user-linked
+data and credentials, WinGet moderation can be expected to ask for one.
 
 Follow WinGet's `DisplayVersion` rule when preparing `AppsAndFeaturesEntries`: omit it
 when the installed Apps & Features version is identical to `PackageVersion`. Pass

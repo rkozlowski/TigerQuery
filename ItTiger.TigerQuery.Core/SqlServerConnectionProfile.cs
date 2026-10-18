@@ -539,6 +539,8 @@ public sealed class SqlServerConnectionProfile
     }
 
     /// <summary>Determines whether a connection-string option value must be redacted.</summary>
+    /// <param name="key">The option name, compared case-insensitively and without trimming.</param>
+    /// <returns><see langword="true"/> for a password or access-token option.</returns>
     public static bool IsSensitiveConnectionStringOption(string key) =>
         key.Equals("Password", StringComparison.OrdinalIgnoreCase)
         || key.Equals("Pwd", StringComparison.OrdinalIgnoreCase)

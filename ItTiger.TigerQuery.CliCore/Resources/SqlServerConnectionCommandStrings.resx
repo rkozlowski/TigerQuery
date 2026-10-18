@@ -156,6 +156,7 @@
   <data name="A full connection string cannot be combined with individual connection fields." xml:space="preserve"><value>A full connection string cannot be combined with individual connection fields.</value></data>
   <data name="External username and password references require SQL password authentication." xml:space="preserve"><value>External username and password references require SQL password authentication.</value></data>
   <data name="Sensitive connection-string options cannot be supplied through --opt; use an external reference." xml:space="preserve"><value>Sensitive connection-string options cannot be supplied through --opt; use an external reference.</value></data>
+  <data name="The connection was not saved: this connection store cannot keep a password on this system. Saved passwords are protected with Windows DPAPI, which other platforms do not provide. Use --password-reference to read the password from an environment variable or a file." xml:space="preserve"><value>The connection was not saved: this connection store cannot keep a password on this system. Saved passwords are protected with Windows DPAPI, which other platforms do not provide. Use --password-reference to read the password from an environment variable or a file.</value></data>
 
   <!-- ── Connection-store path resolution (source-text keys) ────────── -->
   <data name="The {0} option" xml:space="preserve"><value>The {0} option</value></data>

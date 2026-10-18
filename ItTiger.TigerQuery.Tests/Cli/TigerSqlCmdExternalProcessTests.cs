@@ -5,8 +5,8 @@ namespace ItTiger.TigerQuery.Tests.Cli;
 
 public sealed class TigerSqlCmdExternalProcessTests : IDisposable
 {
-    private const string ExternalConnectionString = "TQ_PHASE8_BAD_CONNECTION";
-    private const string Secret = "phase8-process-secret-must-not-appear";
+    private const string ExternalConnectionString = "TQ_BAD_CONNECTION_STRING";
+    private const string Secret = "process-secret-must-not-appear";
 
     private readonly string directory = Path.Combine(
         Path.GetTempPath(),

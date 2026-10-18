@@ -80,7 +80,7 @@ public sealed class TigerSqlCmdCommand(TigerQueryCliOptions connections)
         };
 
         var engine = new TigerQueryEngine(options);
-        return await TigerSqlCmdEngineRunner.RunAsync(logger, token =>
+        return await TigerSqlCmdEngineRunner.RunAsync(logger, settings.Connection, token =>
             !string.IsNullOrWhiteSpace(settings.FilePath)
                 ? engine.RunFromFileAsync(settings.FilePath, cancellationToken: token)
                 : engine.RunFromStringAsync(settings.Query ?? "", token));

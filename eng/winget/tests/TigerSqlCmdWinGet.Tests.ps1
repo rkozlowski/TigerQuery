@@ -139,6 +139,7 @@ PackageLocale: en-US
 Publisher: IT Tiger
 PackageName: TigerSqlCmd
 License: MIT
+LicenseUrl: https://github.com/rkozlowski/TigerQuery/blob/v1.2.3/LICENSE
 ShortDescription: SQL Server script and query runner built on the TigerQuery engine.
 Tags:
 - cli
@@ -313,6 +314,31 @@ try {
         $checks = New-FixtureChecks -Directory $directory
         Assert-True ((Get-Check -Checks $checks -Name 'manifest/installer-url').status -ceq 'FAIL') 'A foreign installer URL must fail.'
         Assert-True ((Get-Check -Checks $checks -Name 'manifest/version').status -ceq 'PASS') 'Only the URL check should have noticed.'
+    }
+
+    Invoke-Test 'a LicenseUrl on a moving branch fails the license check' {
+        $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'branch-license')
+        $path = Join-Path $directory 'ItTiger.TigerSqlCmd.locale.en-US.yaml'
+        (Get-Content -LiteralPath $path -Raw).Replace('/blob/v1.2.3/LICENSE', '/blob/main/LICENSE') |
+            Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
+
+        $checks = New-FixtureChecks -Directory $directory
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/license-url').status -ceq 'FAIL') 'A branch-bound LicenseUrl must fail.'
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/release-notes-url').status -ceq 'PASS') 'Only the license check should have noticed.'
+    }
+
+    Invoke-Test 'the generator binds LicenseUrl to the release tag and discloses machine-wide changes' {
+        $outputRoot = Join-Path $testRoot 'generated-locale'
+        & $prepareScript `
+            -InstallerPath $fakeInstallerPath `
+            -OutputRoot $outputRoot `
+            -ExpectedVersion $currentVersion `
+            -InstallerUrl $installerUrl
+        $path = Join-Path $outputRoot "manifests\i\ItTiger\TigerSqlCmd\$currentVersion\ItTiger.TigerSqlCmd.locale.en-US.yaml"
+        $manifest = Get-Content -LiteralPath $path -Raw
+        Assert-True ($manifest -cmatch "(?m)^LicenseUrl: https://github\.com/rkozlowski/TigerQuery/blob/v$([regex]::Escape($currentVersion))/LICENSE\r?$") 'LicenseUrl must name the license at the release tag.'
+        Assert-True ($manifest -cmatch 'administrator rights' -and $manifest -cmatch 'system PATH') 'The description must disclose elevation and the machine PATH change.'
+        Assert-True ($manifest -cmatch 'DPAPI') 'The description must say how saved passwords are protected.'
     }
 
     Invoke-Test 'a version that disagrees across the set fails the version check' {
@@ -526,21 +552,22 @@ try {
         Assert-True ($summary -clike '*manifests/i/ItTiger/TigerSqlCmd/1.2.3*') 'The summary file must name the submission path.'
     }
 
-    Invoke-Test 'the prepared manifests in this working tree pass, when they are present' {
-        $versionFile = Join-Path $repositoryRoot 'Version.props'
-        [xml] $versionXml = Get-Content -LiteralPath $versionFile
-        $version = [string] $versionXml.Project.PropertyGroup.Version
-        $manifests = Join-Path $repositoryRoot "artifacts\winget\manifests\i\ItTiger\TigerSqlCmd\$version"
+    # Hermetic on purpose: manifests left under the ignored artifacts directory may come
+    # from an earlier generator, and the manifests actually submitted are validated by
+    # Test-TigerSqlCmdWinGet.ps1 before submission.
+    Invoke-Test 'the manifests the generator writes pass every manifest check' {
+        $outputRoot = Join-Path $testRoot 'generated-round-trip'
+        & $prepareScript `
+            -InstallerPath $fakeInstallerPath `
+            -OutputRoot $outputRoot `
+            -ExpectedVersion $currentVersion `
+            -InstallerUrl $installerUrl
+        $manifests = Join-Path $outputRoot "manifests\i\ItTiger\TigerSqlCmd\$currentVersion"
 
-        if (-not (Test-Path -LiteralPath $manifests -PathType Container)) {
-            Write-Host "  (skipped: no prepared manifests for $version; run eng\winget\Prepare-TigerSqlCmdWinGet.ps1 first)"
-            return
-        }
-
-        $set = Read-TigerSqlCmdWinGetManifestSet -ManifestDirectory $manifests -Version $version
+        $set = Read-TigerSqlCmdWinGetManifestSet -ManifestDirectory $manifests -Version $currentVersion
         $checks = @(Test-TigerSqlCmdWinGetManifestSet -ManifestSet $set)
         $notPassed = @($checks | Where-Object { $_.status -cne 'PASS' })
-        Assert-True ($notPassed.Count -eq 0) "These checks did not pass for $version`: $(($notPassed | ForEach-Object { "$($_.name): $($_.message)" }) -join '; ')"
+        Assert-True ($notPassed.Count -eq 0) "These checks did not pass for $currentVersion`: $(($notPassed | ForEach-Object { "$($_.name): $($_.message)" }) -join '; ')"
     }
 }
 finally {

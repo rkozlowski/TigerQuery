@@ -59,6 +59,32 @@ public sealed class SqlServerE2eSessionLifecycleTests
             ["CREATE DATABASE [_TQ_E2E_db_rollback];", "DROP DATABASE [_TQ_E2E_db_rollback];"],
             executor.Executions);
         Assert.Null(temp.Store.Find("E2E-connection-rollback"));
+        // A command-line host prints only this message, so the cause has to be in it.
+        Assert.EndsWith("was rolled back successfully. Cause: store unavailable", failure.Message);
+    }
+
+    [Fact]
+    public void FailureMessagesCarryTheCauseAndTheRollbackFailure()
+    {
+        var create = new SqlServerE2eCreateException(
+            "db",
+            "connection",
+            rollbackSucceeded: false,
+            new TimeoutException("store locked"),
+            new InvalidOperationException("DROP DATABASE permission denied (Number 262)"));
+        var provision = new SqlServerE2eProvisionException(
+            "db",
+            "connection",
+            rollbackSucceeded: true,
+            new InvalidOperationException("filegroup could not be added (Number 5133)"));
+
+        Assert.EndsWith(
+            "Manual cleanup is required. Cause: store locked "
+                + "Rollback failure: DROP DATABASE permission denied (Number 262)",
+            create.Message);
+        Assert.EndsWith(
+            "were rolled back successfully. Cause: filegroup could not be added (Number 5133)",
+            provision.Message);
     }
 
     [Fact]

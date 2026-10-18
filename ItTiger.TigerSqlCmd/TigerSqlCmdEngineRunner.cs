@@ -14,8 +14,15 @@ namespace ItTiger.TigerSqlCmd;
 /// </summary>
 internal static class TigerSqlCmdEngineRunner
 {
+    /// <param name="logger">The run's optional log-file logger.</param>
+    /// <param name="connectionName">
+    /// The saved connection name, never the resolved connection string, used to say which
+    /// connection could not be opened.
+    /// </param>
+    /// <param name="run">Starts the engine under the supplied cancellation token.</param>
     public static async Task<TigerSqlCmdExitCode> RunAsync(
         ILogger? logger,
+        string connectionName,
         Func<CancellationToken, Task<ExecutionResult>> run)
     {
         using var cancellation = new ConsoleCancellationScope();
@@ -43,10 +50,26 @@ internal static class TigerSqlCmdEngineRunner
         catch (SqlException ex)
         {
             // A SqlException escaping the engine means the connection could not be
-            // opened; batch-level SQL failures never propagate this far.
-            logger?.LogError(ex, "Failed to open the SQL Server connection.");
-            TigerConsole.MarkupErrorLine($"[Error]{CliMarkupParser.Escape(ex.Message)}[/]");
+            // opened; batch-level SQL failures never propagate this far. The provider's
+            // message and error number are what tell a rejected login, an unreachable
+            // server, a timeout, an inaccessible database, and an untrusted certificate
+            // apart, so both are kept; neither carries the connection string.
+            logger?.LogError(
+                ex,
+                "Could not open the SQL Server connection for saved connection {Connection}: "
+                    + "SQL error {Number}, state {State}, class {Class}.",
+                connectionName,
+                ex.Number,
+                ex.State,
+                ex.Class);
+            TigerConsole.MarkupErrorLine(
+                $"[Error]{CliMarkupParser.Escape(DescribeConnectionFailure(connectionName, ex))}[/]");
             return TigerSqlCmdExitCode.ConnectionFailed;
         }
     }
+
+    internal static string DescribeConnectionFailure(string connectionName, SqlException exception) =>
+        $"Could not connect to SQL Server using saved connection '{connectionName}': "
+        + $"{exception.Message} (SQL error {exception.Number}, state {exception.State}, "
+        + $"class {exception.Class})";
 }

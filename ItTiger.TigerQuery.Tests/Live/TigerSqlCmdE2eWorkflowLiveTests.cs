@@ -9,10 +9,10 @@ namespace ItTiger.TigerQuery.Tests.Live;
 [Collection(LiveTestCollection.Name)]
 public sealed class TigerSqlCmdE2eWorkflowLiveTests : IDisposable
 {
-    private const string BootstrapName = "phase8-external-bootstrap";
-    private const string ServerVariable = "TQ_PHASE8_SERVER";
-    private const string UsernameVariable = "TQ_PHASE8_USERNAME";
-    private const string PasswordVariable = "TQ_PHASE8_PASSWORD";
+    private const string BootstrapName = "external-reference-bootstrap";
+    private const string ServerVariable = "TQ_WORKFLOW_SERVER";
+    private const string UsernameVariable = "TQ_WORKFLOW_USERNAME";
+    private const string PasswordVariable = "TQ_WORKFLOW_PASSWORD";
 
     private readonly string directory = Path.Combine(
         Path.GetTempPath(),
@@ -62,7 +62,7 @@ public sealed class TigerSqlCmdE2eWorkflowLiveTests : IDisposable
         try
         {
             databaseName = await lifecycle.CreateDatabaseAsync(TestContext.Current.CancellationToken);
-            var profileName = "phase8-generated-" + Guid.NewGuid().ToString("N");
+            var profileName = "workflow-generated-" + Guid.NewGuid().ToString("N");
             var generated = lifecycle.AddDatabaseProfile(profileName);
             Assert.Equal(databaseName, generated.Database);
             Assert.True(generated.ServerValue.IsReference);
@@ -80,17 +80,17 @@ public sealed class TigerSqlCmdE2eWorkflowLiveTests : IDisposable
                 "run", "--non-interactive",
                 "--connection", profileName,
                 "--query",
-                "CREATE TABLE dbo.Phase8Probe (Id int NOT NULL, Marker nvarchar(50) NOT NULL); "
-                    + "INSERT INTO dbo.Phase8Probe VALUES (1, N'created-through-process');",
+                "CREATE TABLE dbo.WorkflowProbe (Id int NOT NULL, Marker nvarchar(50) NOT NULL); "
+                    + "INSERT INTO dbo.WorkflowProbe VALUES (1, N'created-through-process');",
                 "--verbosity", "Silent");
             AssertProcessSuccess(setup, SensitiveValues(values));
 
-            var outputPath = Path.Combine(directory, "phase8.csv");
+            var outputPath = Path.Combine(directory, "workflow.csv");
             var query = await RunProcessAsync(
                 processEnvironment,
                 "run", "--non-interactive",
                 "--connection", profileName,
-                "--query", "SELECT Marker FROM dbo.Phase8Probe ORDER BY Id;",
+                "--query", "SELECT Marker FROM dbo.WorkflowProbe ORDER BY Id;",
                 "--output", outputPath,
                 "--verbosity", "Silent");
             AssertProcessSuccess(query, SensitiveValues(values));
@@ -112,7 +112,7 @@ public sealed class TigerSqlCmdE2eWorkflowLiveTests : IDisposable
                 processEnvironment,
                 "run", "--non-interactive",
                 "--connection", profileName,
-                "--query", "DROP TABLE dbo.Phase8Probe;",
+                "--query", "DROP TABLE dbo.WorkflowProbe;",
                 "--verbosity", "Silent");
             AssertProcessSuccess(teardown, SensitiveValues(values));
 

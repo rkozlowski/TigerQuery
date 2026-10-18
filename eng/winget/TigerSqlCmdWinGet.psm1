@@ -133,6 +133,9 @@ function Get-TigerSqlCmdWinGetReleaseFact {
         installerFileName = $installerFileName
         installerUrl = '{0}/releases/download/{1}/{2}' -f $script:ReleaseRepositoryUrl, $tag, $installerFileName
         releaseNotesUrl = '{0}/releases/tag/{1}' -f $script:ReleaseRepositoryUrl, $tag
+        # The license that applied to this release, at its tag, never a branch that
+        # moves on after the release.
+        licenseUrl = '{0}/blob/{1}/LICENSE' -f $script:ReleaseRepositoryUrl, $tag
         manifestFileNames = @(
             "$script:PackageIdentifier.installer.yaml"
             "$script:PackageIdentifier.locale.en-US.yaml"
@@ -323,6 +326,7 @@ function Read-TigerSqlCmdWinGetManifestSet {
             packageName = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'PackageName'
             publisher = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'Publisher'
             license = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'License'
+            licenseUrl = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'LicenseUrl'
             releaseNotesUrl = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'ReleaseNotesUrl'
         }
         version = [pscustomobject][ordered]@{
@@ -436,6 +440,11 @@ function Test-TigerSqlCmdWinGetManifestSet {
         -Condition ($locale.releaseNotesUrl -ceq $release.releaseNotesUrl) `
         -Message "ReleaseNotesUrl points at the $($release.tag) release." `
         -FailureMessage "ReleaseNotesUrl is '$($locale.releaseNotesUrl)'; expected '$($release.releaseNotesUrl)'."))
+
+    $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/license-url' `
+        -Condition ($locale.licenseUrl -ceq $release.licenseUrl) `
+        -Message "LicenseUrl points at the license file at the $($release.tag) tag." `
+        -FailureMessage "LicenseUrl is '$($locale.licenseUrl)'; expected the tag-bound '$($release.licenseUrl)'."))
 
     $bomFiles = @($ManifestSet.documents | Where-Object { $_.hasBom } | ForEach-Object name)
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/encoding' `

@@ -15,6 +15,28 @@ namespace ItTiger.TigerQuery.CliCore;
 /// </summary>
 internal static class SqlServerConnectionWriter
 {
+    public const string PasswordNotPersisted =
+        "The connection was not saved: this connection store cannot keep a password on this "
+        + "system. Saved passwords are protected with Windows DPAPI, which other platforms do "
+        + "not provide. Use --password-reference to read the password from an environment "
+        + "variable or a file.";
+
+    /// <summary>
+    /// Refuses a typed password that the run's store would discard on save, so a connection
+    /// that cannot log in is never reported as saved.
+    /// </summary>
+    /// <returns><see langword="true"/> when the error was reported and nothing may be saved.</returns>
+    public static bool TryReportUnpersistedPassword(
+        TigerCliSettings settings,
+        SqlServerConnectionProfile profile,
+        SqlServerConnectionStore store)
+    {
+        if (string.IsNullOrEmpty(profile.PlainPassword) || store.PersistsPasswords())
+            return false;
+
+        return TryReportErrors(settings, [PasswordNotPersisted]);
+    }
+
     public static IReadOnlyList<string> Validate(
         SqlServerConnectionProfile profile,
         SqlServerConnectionValidationPolicy policy) =>
