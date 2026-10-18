@@ -82,10 +82,10 @@ public sealed class SqlServerE2eDatabaseLifecycleLiveTests
             Assert.Equal(databaseName, generated.Database);
 
             await lifecycle.RunSetupSqlAsync(
-                "CREATE TABLE dbo.Phase7Probe (Id int NOT NULL);",
+                "CREATE TABLE dbo.LifecycleProbe (Id int NOT NULL);",
                 TestContext.Current.CancellationToken);
             await lifecycle.RunTeardownSqlAsync(
-                "DROP TABLE dbo.Phase7Probe;",
+                "DROP TABLE dbo.LifecycleProbe;",
                 TestContext.Current.CancellationToken);
         }
         finally

@@ -3,7 +3,7 @@ using ItTiger.TigerSqlCmd;
 
 namespace ItTiger.TigerQuery.Tests.Cli;
 
-/// <summary>Phase 5 command-level coverage for safe E2E profile creation.</summary>
+/// <summary>Command-level coverage for safe E2E profile creation.</summary>
 [Collection(TigerCliAppCollection.Name)]
 public sealed class SqlServerE2eConnectionCommandTests : IDisposable
 {

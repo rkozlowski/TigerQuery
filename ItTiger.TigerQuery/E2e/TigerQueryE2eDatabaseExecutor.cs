@@ -82,8 +82,11 @@ internal sealed class TigerQueryE2eDatabaseExecutor : ISqlServerE2eDatabaseExecu
         var result = await engine.RunFromStringAsync(script, cancellationToken);
         if (result.ResultCode != ExecutionResultCode.Success || result.FailedBatches != 0)
         {
+            // Callers print only this message, so the server's own reason — its text, number,
+            // severity, and state — is carried in it rather than left on the inner exception.
+            var cause = result.Exception is null ? "." : $": {result.Exception.Message}";
             throw new InvalidOperationException(
-                $"SQL lifecycle execution failed with result '{result.ResultCode}'.",
+                $"SQL lifecycle execution failed with result '{result.ResultCode}'{cause}",
                 result.Exception);
         }
     }

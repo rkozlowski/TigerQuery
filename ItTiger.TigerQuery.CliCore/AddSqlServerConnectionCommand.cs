@@ -65,8 +65,11 @@ internal static class SqlServerConnectionCreator
         }
 
         var errors = SqlServerConnectionWriter.Validate(profile, context.ValidationPolicy);
-        if (SqlServerConnectionWriter.TryReportErrors(settings, errors))
+        if (SqlServerConnectionWriter.TryReportErrors(settings, errors)
+            || SqlServerConnectionWriter.TryReportUnpersistedPassword(settings, profile, context.Store))
+        {
             return Task.FromResult(TigerCliExitKind.ValidationError);
+        }
 
         context.Store.Add(profile);
         TigerConsole.MarkupLine(settings.E(

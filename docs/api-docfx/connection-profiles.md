@@ -297,9 +297,14 @@ SQL-password profiles do not persist plain-text passwords by default:
   plain password before saving.
 - The no-op protector is intended only for tests or externally secured stores.
 
-Encrypted DPAPI data does not roam to other machines or users. Supply an
+Encrypted DPAPI data can be decrypted only by the Windows account that saved it,
+and on another computer only through that account's roaming profile. Supply an
 [IConnectionPasswordProtector](xref:ItTiger.TigerQuery.Core.IConnectionPasswordProtector)
 when an application needs an explicit strategy.
+
+A SQL-password profile whose password is unavailable after loading — never saved, or
+protected and not decryptable here — fails resolution with that reason instead of
+attempting a login without a password. The protected value is never part of the message.
 
 Protection applies to the profile passed to `Add`, `AddOrUpdate`, or `Save`;
 unprotection happens on `Load`. Profiles a mutation merely carries along keep

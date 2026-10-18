@@ -13,8 +13,9 @@ param(
     [Parameter(Mandatory)]
     [string] $ManifestPath,
 
+    # The checked-in release notes for this version, .github/release-notes/<version>.md.
     [Parameter(Mandatory)]
-    [string] $ReleaseNotesHeaderPath,
+    [string] $NotesFile,
 
     [string] $Repository = 'rkozlowski/TigerQuery',
     [switch] $PlanOnly,
@@ -32,16 +33,15 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
 $CommitSha = $CommitSha.ToLowerInvariant()
 $ArtifactDirectory = [IO.Path]::GetFullPath($ArtifactDirectory)
 $ManifestPath = [IO.Path]::GetFullPath($ManifestPath)
-$ReleaseNotesHeaderPath = [IO.Path]::GetFullPath($ReleaseNotesHeaderPath)
-if (-not (Test-Path -LiteralPath $ReleaseNotesHeaderPath -PathType Leaf)) {
-    throw "Release notes header not found: $ReleaseNotesHeaderPath"
-}
+$NotesFile = [IO.Path]::GetFullPath($NotesFile)
+& (Join-Path $PSScriptRoot 'Assert-ReleaseNotes.ps1') -Version $Version -NotesFile $NotesFile
 
 & (Join-Path $PSScriptRoot 'Assert-ReleaseArtifactManifest.ps1') `
     -ArtifactDirectory $ArtifactDirectory `
     -ManifestPath $ManifestPath `
     -ExpectedVersion $Version `
-    -ExpectedCommit $CommitSha
+    -ExpectedCommit $CommitSha `
+    -SourceRepository (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 $assetNames = @($manifest.artifacts | ForEach-Object name) + @(
@@ -62,8 +62,13 @@ $assets = @(
 
 $tag = "v$Version"
 $title = "TigerQuery $Version"
+$recordSha256 = (Get-FileHash -LiteralPath $ManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$runUrl = if ($env:GITHUB_ACTIONS -ceq 'true' -and -not [string]::IsNullOrWhiteSpace($env:GITHUB_RUN_ID)) {
+    "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+}
+$tagMessage = New-ReleaseTagMessage -Title $title -RecordSha256 $recordSha256 -RunUrl $runUrl
 if ($PlanOnly) {
-    Write-Host "PLAN: create or verify annotated tag $tag at $CommitSha."
+    Write-Host "PLAN: create or verify annotated tag $tag at $CommitSha naming release record SHA-256 $recordSha256."
     Write-Host "PLAN: create or verify draft GitHub Release '$title'."
     foreach ($asset in $assets) {
         Write-Host "PLAN: upload or verify $($asset.Name) ($($asset.Digest))."
@@ -127,7 +132,7 @@ if ($LASTEXITCODE -ne 0) { throw "Could not inspect remote tag $tag." }
 if ([string]::IsNullOrWhiteSpace($remoteTag)) {
     git config user.name 'github-actions[bot]'
     git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-    & git tag -a $tag $CommitSha -m $title
+    & git tag -a $tag $CommitSha -m $tagMessage
     if ($LASTEXITCODE -ne 0) { throw "Could not create annotated tag $tag." }
     & git push origin "refs/tags/$tag"
     if ($LASTEXITCODE -ne 0) { throw "Could not push annotated tag $tag." }
@@ -143,19 +148,20 @@ else {
         -ExpectedCommitSha $CommitSha `
         -ActualCommitSha $tagCommit `
         -ObjectType $tagType
-    Write-Host "Existing annotated tag $tag already points to $CommitSha."
+    $existingMessage = (& git tag -l --format='%(contents)' $tag | Out-String)
+    if ($LASTEXITCODE -ne 0) { throw "Could not read the message of tag $tag." }
+    Assert-ReleaseTagNamesRecord -Tag $tag -Message $existingMessage -RecordSha256 $recordSha256
+    Write-Host "Existing annotated tag $tag already points to $CommitSha and names release record SHA-256 $recordSha256."
 }
 
 $release = Resolve-CompatibleGitHubRelease -Releases @(Get-GitHubReleases) -Tag $tag -Title $title
 if ($null -eq $release) {
-    $header = (Get-Content -LiteralPath $ReleaseNotesHeaderPath -Raw).Trim()
     & gh release create $tag `
         --repo $Repository `
         --verify-tag `
         --draft `
         --title $title `
-        --generate-notes `
-        --notes $header
+        --notes-file $NotesFile
     if ($LASTEXITCODE -ne 0) { throw "Could not create draft GitHub Release for $tag." }
     Write-Host "Created draft GitHub Release $tag."
     $release = Resolve-CompatibleGitHubRelease -Releases @(Get-GitHubReleases) -Tag $tag -Title $title

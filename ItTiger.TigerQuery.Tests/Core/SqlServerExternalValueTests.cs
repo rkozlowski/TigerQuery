@@ -3,7 +3,7 @@ using ItTiger.TigerQuery.Core;
 
 namespace ItTiger.TigerQuery.Tests.Core;
 
-/// <summary>Phase 6 coverage for persisted external connection values.</summary>
+/// <summary>Coverage for persisted external connection values.</summary>
 public sealed class SqlServerExternalValueTests : IDisposable
 {
     private readonly string storePath = Path.Combine(
@@ -296,9 +296,57 @@ public sealed class SqlServerExternalValueTests : IDisposable
             }));
 
         Assert.Contains("missing-server.txt", exception.Message);
-        Assert.Contains("could not be read", exception.Message);
+        Assert.Contains("could not be read: the file does not exist.", exception.Message);
         Assert.DoesNotContain(Secret, exception.Message);
         Assert.Null(exception.InnerException);
+    }
+
+    public static TheoryData<Exception, string> ReadFailures => new()
+    {
+        { new DirectoryNotFoundException("reader-detail-secret"), "the directory does not exist." },
+        { new UnauthorizedAccessException("reader-detail-secret"), "access to the file was denied." },
+        { new IOException("reader-detail-secret"), "an I/O error occurred" },
+        { new InvalidOperationException("reader-detail-secret"), "the file reader failed." }
+    };
+
+    [Theory]
+    [MemberData(nameof(ReadFailures))]
+    public void FileReadFailuresKeepTheirCategoryButNeverTheReaderMessage(
+        Exception failure,
+        string expectedReason)
+    {
+        var profile = FieldProfile(TextFileReference("server.txt"));
+
+        var exception = Assert.Throws<SqlServerExternalValueException>(() =>
+            profile.BuildConnectionStringBuilder(new SqlServerExternalValueResolutionOptions
+            {
+                FileReader = _ => throw failure
+            }));
+
+        Assert.Contains("server.txt", exception.Message);
+        Assert.Contains("could not be read: " + expectedReason, exception.Message);
+        Assert.DoesNotContain("reader-detail-secret", exception.Message);
+        Assert.Null(exception.InnerException);
+    }
+
+    [Fact]
+    public void MalformedJsonReportsWhereItBrokeWithoutQuotingTheFile()
+    {
+        const string Secret = "json-file-secret-value";
+        var profile = FieldProfile(SqlServerConnectionValue.Literal("server"));
+        profile.Authentication = AuthenticationType.SqlPassword;
+        profile.Username = "user";
+        profile.PasswordValue = JsonFileReference("credentials.json", "password");
+
+        var exception = Assert.Throws<SqlServerExternalValueException>(() =>
+            profile.BuildConnectionStringBuilder(new SqlServerExternalValueResolutionOptions
+            {
+                FileReader = _ => "{\n  \"password\": \"" + Secret + "\" broken\n}"
+            }));
+
+        Assert.Contains("malformed JSON (line 2, byte", exception.Message);
+        Assert.DoesNotContain(Secret, exception.Message);
+        Assert.DoesNotContain("broken", exception.Message);
     }
 
     [Fact]

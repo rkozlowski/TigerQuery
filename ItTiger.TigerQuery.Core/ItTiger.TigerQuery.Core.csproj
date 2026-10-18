@@ -31,9 +31,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ItTiger.Core" Version="0.9.4" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
+    <PackageReference Include="ItTiger.Core" Version="0.9.5" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.1" />
+    <!-- Security floor: Microsoft.Data.SqlClient still resolves System.Security.Cryptography.Pkcs
+         9.0.18, which is affected by CVE-2026-84008 and CVE-2026-70162. Remove this reference once
+         SqlClient itself depends on a patched version. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
   </ItemGroup>
 
 </Project>

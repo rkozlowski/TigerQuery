@@ -123,7 +123,9 @@ sensitive free-form option values; they never read external sources.
 
 ### Copying stores between machines
 
-The default password protector is DPAPI-based on Windows and scoped to the current user and machine. A store file copied to a build agent or container cannot be decrypted there, and the failure looks like a connection error rather than a configuration one. Point `TIGERQUERY_CONNECTION_STORE_FILE` at a store created *on that machine*, or supply `TigerQueryCliOptions.PasswordProtectorFactory` with a protector that suits the environment.
+The default password protector is DPAPI-based on Windows and scoped to the current user and machine. A store file copied to a build agent or container cannot be decrypted there; resolution then fails with that reason before any login is attempted. Point `TIGERQUERY_CONNECTION_STORE_FILE` at a store created *on that machine*, use password references, or supply `TigerQueryCliOptions.PasswordProtectorFactory` with a protector that suits the environment.
+
+`add` and `edit` refuse a typed password that the run's store cannot keep — on platforms without DPAPI, or with a host protector that does not persist passwords — and save nothing, rather than reporting a connection as saved that could not log in. Use `--password-reference` there.
 
 Your application keeps full ownership of everything around the group: overall app composition, themes, cultures, additional commands, and the application-wide exit-code policy (`UseExitCodes(...)`). The connection commands return portable TigerCli outcomes: `Success`, `ValidationError`, `NotFound`, and `AlreadyExists`. Map those kinds to your application's concrete exit-code enum with `ExitKind(...)`.
 

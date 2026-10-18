@@ -144,7 +144,7 @@ internal sealed record SqlServerE2eTestResolution(
     SqlServerConnectionStore? Store,
     SqlServerE2eConnectionResolution Resolution);
 
-/// <summary>One database owned by one Phase 7 lifecycle instance.</summary>
+/// <summary>One database owned by one database lifecycle instance.</summary>
 internal sealed class SqlServerE2eTestDatabase : IAsyncDisposable
 {
     public SqlServerE2eTestDatabase(

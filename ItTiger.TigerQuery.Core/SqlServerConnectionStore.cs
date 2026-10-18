@@ -96,6 +96,32 @@ public sealed class SqlServerConnectionStore
         set => storeFile.WriteFaultHook = value;
     }
 
+    /// <summary>
+    /// Reports whether this store's password protector keeps an in-memory password across
+    /// a save, so a caller can refuse to report a prompted password as saved when it would
+    /// be discarded.
+    /// </summary>
+    /// <remarks>
+    /// The protector is asked to protect a throwaway profile, and the password counts as
+    /// kept only when an at-rest representation results. A protector that clears the
+    /// password (<see cref="NonPersistingConnectionPasswordProtector"/>) or leaves it only
+    /// in the never-serialized <see cref="SqlServerConnectionProfile.PlainPassword"/>
+    /// (<see cref="NoOpConnectionPasswordProtector"/>) does not keep it. A protector that
+    /// fails throws exactly as the real save would.
+    /// </remarks>
+    internal bool PersistsPasswords()
+    {
+        var probe = new SqlServerConnectionProfile
+        {
+            Name = "password-persistence-probe",
+            Authentication = AuthenticationType.SqlPassword,
+            PlainPassword = "password-persistence-probe"
+        };
+
+        passwordProtector.ProtectForSave(probe);
+        return !string.IsNullOrEmpty(probe.EncryptedPassword);
+    }
+
     /// <summary>Loads and unprotects all profiles in store order.</summary>
     /// <returns>
     /// A newly materialized list, or an empty list when the file does not exist

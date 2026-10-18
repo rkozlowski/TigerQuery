@@ -3,7 +3,7 @@ using ItTiger.TigerSqlCmd;
 
 namespace ItTiger.TigerQuery.Tests.Cli;
 
-/// <summary>Phase 6 command-level coverage for configuring external values safely.</summary>
+/// <summary>Command-level coverage for configuring external values safely.</summary>
 [Collection(TigerCliAppCollection.Name)]
 public sealed class SqlServerExternalValueCommandTests : IDisposable
 {
@@ -261,6 +261,10 @@ public sealed class SqlServerExternalValueCommandTests : IDisposable
     [InlineData("Password")]
     [InlineData("Pwd")]
     [InlineData("Access Token")]
+    // The mapper trims keys before persisting them, so padding must not slip a secret past.
+    [InlineData(" Password")]
+    [InlineData("pwd ")]
+    [InlineData(" access token ")]
     public async Task SensitiveEscapeHatchValuesAreRejectedWithoutEchoingThem(string key)
     {
         const string Secret = "command-line-secret";

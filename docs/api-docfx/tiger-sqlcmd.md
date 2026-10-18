@@ -85,29 +85,40 @@ after the command path and any required positional arguments—for example,
 
 ### Windows installer
 
-Download `TigerSqlCmdSetup_<version_with_underscores>.exe` from the matching
-[GitHub Release](https://github.com/rkozlowski/TigerQuery/releases). Setup requires
-administrator elevation, installs machine-wide under
-`C:\Program Files\ItTiger\TigerSqlCmd`, places the CLI in its `cli` subdirectory, and
-adds that directory to the system PATH. Open a new terminal after installation:
+Download `TigerSqlCmd-<version>-Setup.exe` from the matching
+[GitHub Release](https://github.com/rkozlowski/TigerQuery/releases), or install it with
+`winget install ItTiger.TigerSqlCmd`. Setup requires administrator elevation, installs
+machine-wide under `C:\Program Files\TigerSqlCmd`, and adds that directory to the system
+PATH. Open a new terminal after installation:
 
 ```console
 tiger-sqlcmd --version
 tiger-sqlcmd --help
 ```
 
-The installer requires the x64 .NET 10 runtime. Interactive setup can download it
-directly from Microsoft with approval. For unattended setup, install the runtime first or
-explicitly add `/INSTALLDOTNET`:
+The installer needs the x64 .NET 10 runtime. When the runtime is missing, setup downloads
+Microsoft's runtime installer and runs it only if its SHA-256 matches the hash the WinGet
+catalog publishes; with the runtime present, it makes no network request. For unattended
+setup, run it from an elevated session:
 
 ```powershell
-$installer = Get-Item .\TigerSqlCmdSetup_*.exe
+$installer = Get-Item .\TigerSqlCmd-*-Setup.exe
 $setup = Start-Process -FilePath $installer.FullName -Wait -PassThru -ArgumentList @(
-  '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'
+  'install', '--quiet'
 )
-if ($setup.ExitCode -ne 0) { throw "Setup failed: $($setup.ExitCode)" }
+if ($setup.ExitCode -notin 0, 3010) { throw "Setup failed: $($setup.ExitCode)" }
 ```
 
+`--json` prints a machine-readable result, `--log <file>` chooses where the log goes,
+`--option path off` leaves the system PATH unchanged, and `--no-dependency-install` fails
+instead of installing a missing runtime. Exit code `3010` means Windows must restart to
+finish. Remove TigerSqlCmd from **Settings > Apps**, with `winget uninstall
+ItTiger.TigerSqlCmd`, or unattended with `TigerSqlCmd-<version>-Setup.exe uninstall --quiet`.
+
+Installing over TigerSqlCmd 0.8.8 or earlier upgrades it: setup first removes the earlier
+installation under `C:\Program Files\ItTiger\TigerSqlCmd` with that installation's own
+uninstaller, then installs the new version. Saved connections and their protected passwords
+are kept.
 ### Global .NET tool
 
 The .NET tool requires a **.NET 10 SDK** at installation time:
@@ -142,6 +153,40 @@ dotnet tool run tiger-sqlcmd --help
 
 Commit `.config/dotnet-tools.json` when the repository should share that pin. Installing
 or restoring a local tool also requires a .NET 10 SDK.
+
+## Shell completion
+
+`tiger-sqlcmd --completion <shell>` prints a tab-completion script for Bash 4+, Zsh,
+Fish, or PowerShell (`pwsh`, or its synonym `powershell`, for both PowerShell 7 and
+Windows PowerShell 5.1). Activating it is your choice: no installation method edits a
+shell profile or installs a completion file.
+
+| Shell | Current session | Persistent |
+| --- | --- | --- |
+| Bash | `source <(tiger-sqlcmd --completion bash)` | Add that line to `~/.bashrc`. |
+| Zsh | `source <(tiger-sqlcmd --completion zsh)` after `compinit` | Add that line to `~/.zshrc` after `compinit`. |
+| Fish | `tiger-sqlcmd --completion fish \| source` | Save the output as `~/.config/fish/completions/tiger-sqlcmd.fish`. |
+| PowerShell | `tiger-sqlcmd --completion pwsh \| Out-String \| Invoke-Expression` | Add the guarded line below to `$PROFILE.CurrentUserAllHosts`, once in each PowerShell edition you use. |
+
+```powershell
+if (Get-Command tiger-sqlcmd -ErrorAction Ignore) { tiger-sqlcmd --completion pwsh | Out-String | Invoke-Expression }
+```
+
+A line that generates the script at shell start stays current across upgrades; a saved
+script must be regenerated after upgrading TigerSqlCmd. Completion registers the command
+name `tiger-sqlcmd`, so it works where that name is on `PATH` — the Windows installer,
+WinGet, and a global .NET tool all put it there — and not through
+`dotnet tool run tiger-sqlcmd`.
+
+Completion offers command names and groups, option names, the values of enumerated
+options such as `run --mode`, and the framework's `--theme`, `--color`, and `--culture`
+values. It is static: it reads command metadata only, never opens the connection store,
+and therefore does not offer saved connection names for `--connection`. After `exec`'s
+`--` separator it hands over to the shell's own file completion.
+
+The completion behavior, its limitations in each shell, and installer integration are
+defined by TigerCli; see its
+[shell completion guide](https://github.com/rkozlowski/TigerCli/blob/v0.9.5/docs/guides/shell-completion.md).
 
 ## Command structure
 
@@ -655,6 +700,16 @@ Use `--verbosity`, `--log-file`, and `--log-level` for operational diagnostics, 
 [Batch timeouts](#batch-timeouts---command-timeout). Saved connection strings and resolved
 secrets are never printed. `--no-color` is useful when a
 job captures output, and `--help-env` lists recognized environment variables.
+
+Know what each diagnostic channel contains before a job publishes it. `Verbose` output
+echoes the query text and the values of `-v` variables, so do not pass secrets as
+variables. A log file records the run's progress, SQL Server messages including `PRINT`
+and `RAISERROR` text, and failures with their SQL error number, but never variable values,
+query text, or connection strings; only a SQL Server error message can quote part of a
+query, as SQL Server words it. When a connection cannot be opened, the error names
+the saved connection and keeps SQL Server's message with its error number, state, and
+class, which is what distinguishes a rejected login, an unreachable server, a timeout, an
+inaccessible database, and an untrusted certificate.
 
 Process exit codes and diagnostics are the automation contract. `run` returns `0` only
 when every batch it started succeeded; see

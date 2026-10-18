@@ -20,9 +20,10 @@ public sealed class SqlServerE2eProvisionException : Exception
         Exception provisioningFailure,
         Exception? rollbackFailure = null)
         : base(
-            rollbackSucceeded
+            (rollbackSucceeded
                 ? $"Database '{databaseName}' could not be provisioned; it and connection '{connectionName}' were rolled back successfully."
-                : $"Database '{databaseName}' could not be provisioned and rollback of it and connection '{connectionName}' also failed. Manual cleanup is required.",
+                : $"Database '{databaseName}' could not be provisioned and rollback of it and connection '{connectionName}' also failed. Manual cleanup is required.")
+            + SqlServerE2eFailureText.Causes(provisioningFailure, rollbackFailure),
             rollbackFailure is null
                 ? provisioningFailure
                 : new AggregateException(provisioningFailure, rollbackFailure))

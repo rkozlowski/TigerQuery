@@ -35,7 +35,7 @@ public sealed class TigerSqlCmdQueryCommand(TigerQueryCliOptions connections)
         };
 
         var engine = new TigerQueryEngine(options);
-        return await TigerSqlCmdEngineRunner.RunAsync(logger: null, token =>
+        return await TigerSqlCmdEngineRunner.RunAsync(logger: null, settings.Connection, token =>
             engine.RunFromStringAsync(settings.Query, token));
     }
 }

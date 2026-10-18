@@ -156,6 +156,7 @@
   <data name="A full connection string cannot be combined with individual connection fields." xml:space="preserve"><value>Pełnych parametrów połączenia nie można łączyć z pojedynczymi polami połączenia.</value></data>
   <data name="External username and password references require SQL password authentication." xml:space="preserve"><value>Zewnętrzne odwołania do nazwy użytkownika i hasła wymagają uwierzytelniania hasłem SQL.</value></data>
   <data name="Sensitive connection-string options cannot be supplied through --opt; use an external reference." xml:space="preserve"><value>Wrażliwych opcji parametrów połączenia nie można podawać przez --opt; użyj odwołania zewnętrznego.</value></data>
+  <data name="The connection was not saved: this connection store cannot keep a password on this system. Saved passwords are protected with Windows DPAPI, which other platforms do not provide. Use --password-reference to read the password from an environment variable or a file." xml:space="preserve"><value>Połączenie nie zostało zapisane: ten magazyn połączeń nie może przechowywać hasła w tym systemie. Zapisane hasła są chronione przez Windows DPAPI, którego nie zapewniają inne platformy. Użyj --password-reference, aby odczytywać hasło ze zmiennej środowiskowej lub z pliku.</value></data>
 
   <!-- ── Connection-store path resolution (source-text keys) ────────── -->
   <data name="The {0} option" xml:space="preserve"><value>Opcja {0}</value></data>

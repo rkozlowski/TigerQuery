@@ -1,11 +1,15 @@
 # Preparing the TigerSqlCmd WinGet package
 
-This maintainer-only guide is intentionally excluded from DocFX. It covers step 9 of
+This maintainer-only guide is intentionally excluded from DocFX. It covers step 6 of
 [Releasing TigerQuery and TigerSqlCmd](releasing-tiger-sqlcmd.md): turning a published
 GitHub release into a `winget-pkgs` pull request that has actually been proven to work.
 
-Everything here runs after the GitHub release is **published**. Manifests must name the
-live immutable asset URL, and that URL does not resolve while the release is a draft.
+The manifests are TigerSetup's: `tiger-setup winget prepare` and `finalize` write them from
+`ItTiger.TigerSqlCmd.Installer\TigerSetup.toml` and the installer's exact bytes, and the
+release action records them in the release as `TigerSqlCmd-<version>-WinGet.zip`. They name
+the live immutable asset URL, which does not resolve while the release is a draft, so the
+gate below runs twice: before publication on the candidate or draft installer, served to
+WinGet over loopback, and after publication against the live URL.
 
 ## The two commands
 
@@ -19,9 +23,11 @@ TigerWinLab's requirement, not this repository's: Hyper-V management needs it.
 
 `Prepare-TigerSqlCmdWinGet.ps1` writes the three manifests to
 `artifacts\winget\manifests\i\ItTiger\TigerSqlCmd\<version>\` from `Version.props`, the
-built installer, and the deterministic release URL. You can skip it and reuse the
-`TigerSqlCmd-WinGet-<version>-<commit>` workflow artifact instead; the manifests are
-byte-identical either way.
+installer, and the deterministic release URL, with the TigerSetup release
+`ItTiger.TigerSqlCmd.Installer\tigersetup.json` pins, and refuses them unless every manifest
+check passes. After publication, use the release's `TigerSqlCmd-<version>-WinGet.zip` instead
+(pass its extracted directory as `-ManifestDirectory`): that set hashes the released
+installer, and a local rebuild never does.
 
 `Test-TigerSqlCmdWinGet.ps1` is the gate. It exits `0` on `PASS` and `1` on `FAIL`, prints
 a check table, and leaves both readings of the run in
@@ -41,9 +47,10 @@ Useful switches:
 | Switch | Effect |
 | --- | --- |
 | `-Json` | Emits the result record instead of the table. |
+| `-CandidateInstallerPath` | Before publication: install this local installer, which must hash to the manifests' `InstallerSha256`, instead of downloading the published asset. |
 | `-SkipLab` | Manifest and published-asset checks only. Fast, and never a submission-ready `PASS`. |
 | `-TimeoutMinutes` | Bounds the guest scenario. Default 45. |
-| `-TigerWinLabRoot` | Where TigerWinLab lives, if it is not `$env:TIGERWINLAB_ROOT` or a sibling checkout. |
+| `-TigerWinLabRoot` | A TigerWinLab working copy to use for this run instead of the registered one. |
 
 ## What it proves
 
@@ -52,16 +59,26 @@ covers all three. Every check is named in the table and in `result.json`.
 
 **`manifest/*` — the manifests say what this release implies.** Package identity, the same
 version in all three documents, `ManifestType`/`ManifestVersion` agreement, the default
-locale, installer type `inno`, machine scope, x64, the immutable asset URL, a well-formed
-SHA-256, the `AppsAndFeaturesEntries` product code and display-version policy, the `tiger-sqlcmd`
-command, the `Microsoft.DotNet.Runtime.10` dependency this framework-dependent package
-needs, the release-notes URL, and UTF-8 without a byte-order mark.
+locale, installer type `exe`, machine scope with `ElevationRequirement: elevatesSelf`, x64,
+the immutable asset URL, a well-formed SHA-256, the product code `ItTiger.TigerSqlCmd` and
+the display-version policy, the `tiger-sqlcmd` command, the `Microsoft.DotNet.Runtime.10`
+dependency this framework-dependent package needs, the release-notes URL, the `LicenseUrl`
+of the license file at the release tag rather than on a branch that moves on, the
+`PrivacyUrl` of the `PRIVACY.md` frozen with this release, and UTF-8 without a byte-order
+mark.
 
-Follow WinGet's `DisplayVersion` rule when preparing `AppsAndFeaturesEntries`: omit it
-when the installed Apps & Features version is identical to `PackageVersion`. Pass
-`-InstalledDisplayVersion <version>` to `Prepare-TigerSqlCmdWinGet.ps1` only when the
-installed version genuinely differs; the generator then emits the field and preserves
-that differing value.
+The description, declared under `[winget]` in `TigerSetup.toml`, states what a cautious user
+would want to know before installing: connection profiles are saved per user, saved SQL
+passwords are DPAPI-protected, `exec` hands a connection string to another program, and the
+installer needs administrator rights, changes the system PATH, and installs the .NET runtime
+when it is missing. Keep it in step with the product when any of that changes.
+
+TigerSetup writes `AppsAndFeaturesEntries` only where the registration differs from the
+package, so a `DisplayVersion` that repeats `PackageVersion` never appears.
+
+The 0.8.8 manifest in `winget-pkgs`, with its Inno Setup product code
+`ItTiger.TigerSqlCmd_is1`, stays there: it is how WinGet correlates an installed 0.8.8 with
+the package, and `winget upgrade` then runs the 0.8.9 installer, which migrates it.
 
 **`release/*` — the published asset is the one the manifests describe.** The asset is
 downloaded from the immutable URL exactly as an unauthenticated client would, hashed, and
@@ -71,8 +88,8 @@ cross-checks against `artifacts\winget-input\v<version>\`; if that directory is 
 they warn rather than fail, because the published asset and the manifest are the pair that
 actually matters.
 
-**`lab/*` — WinGet can really install it.** The downloaded release asset — not a local
-rebuild — is handed to TigerWinLab, which restores its Windows 11 guest to a clean
+**`lab/*` — WinGet can really install it.** The downloaded release asset — or, before
+publication, the candidate named by `-CandidateInstallerPath` — is handed to TigerWinLab, which restores its Windows 11 guest to a clean
 checkpoint and runs the WinGet scenario there: `winget validate` on the manifest set, the
 declared dependency, a local-manifest install with hash verification enforced, installed
 files, version, machine `PATH`, registration, the command's own smoke checks, `winget`
@@ -105,9 +122,10 @@ validation and review.
 
 ## Prerequisites and failures
 
-TigerWinLab must be checked out and provisioned. It is found through `-TigerWinLabRoot`,
-then `$env:TIGERWINLAB_ROOT`, then a `TigerWinLab` checkout beside this repository. See
-that repository's `README.md`; `.\New-TigerWinLab.ps1` builds the guest and
+TigerWinLab must be registered and provisioned. It is resolved from its `[labs.TigerWinLab]`
+registration in the TigerAiCore machine configuration named by `TigerAiCoreConfig`, through
+TigerAiCore's `tools/Resolve-TigerAiCoreResource.ps1`; `-TigerWinLabRoot` overrides that for
+one run. Without either, the lab checks cannot run. See TigerWinLab's `README.md`; `.\New-TigerWinLab.ps1` builds the guest and
 `.\Test-TigerWinLab.ps1` reports whether it is ready.
 
 Failures worth recognising:

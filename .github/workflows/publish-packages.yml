@@ -8,7 +8,7 @@ on:
         description: Release version already recorded in Version.props
         required: true
         type: string
-        default: '0.8.8'
+        default: '0.8.9'
 
 permissions:
   contents: read
@@ -72,6 +72,12 @@ jobs:
             }
             throw "Tag $tag already exists at the requested commit. This fresh-release workflow will not overwrite or silently resume publication; follow the documented recovery procedure."
           }
+
+      - name: Require the checked-in release notes
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: ./eng/release-automation/Assert-ReleaseNotes.ps1 -Version $env:RELEASE_VERSION
 
       - name: Reject an already-published NuGet version
         shell: pwsh
@@ -243,47 +249,58 @@ jobs:
           dotnet tool uninstall ItTiger.TigerSqlCmd --tool-path $toolPath
           if ($LASTEXITCODE -ne 0) { throw "Tool uninstall failed with exit code $LASTEXITCODE." }
 
-      - name: Provision pinned Inno Setup
+      # The builder is the one TigerSetup release ItTiger.TigerSqlCmd.Installer/tigersetup.json
+      # pins, refused unless its hash matches.
+      - name: Provision the pinned TigerSetup builder
+        id: tigersetup
         shell: pwsh
-        env:
-          INNO_SETUP_VERSION: '7.1.0'
-          INNO_SETUP_INSTALLER_URI: 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe'
-          INNO_SETUP_INSTALLER_SHA256: '0362A383ED217D4C4239B5933866DD96D3EB2102737DA92F80F6057A4B40DF2F'
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $compilerPath = ./eng/release-automation/Install-InnoSetup.ps1 `
-            -Version $env:INNO_SETUP_VERSION `
-            -InstallerUri $env:INNO_SETUP_INSTALLER_URI `
-            -InstallerSha256 $env:INNO_SETUP_INSTALLER_SHA256
-          if ([string]::IsNullOrWhiteSpace($compilerPath) -or
-              -not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) {
-            throw "Inno Setup $env:INNO_SETUP_VERSION provisioning did not resolve an existing ISCC.exe path: '$compilerPath'."
-          }
-          "INNO_SETUP_COMPILER=$compilerPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        run: >-
+          ./eng/release-automation/Install-TigerSetup.ps1
+          -Directory "$env:RUNNER_TEMP\tigersetup"
+          -GitHubOutput $env:GITHUB_OUTPUT
 
       - name: Build TigerSqlCmd installer from validated outputs
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
+          TIGER_SETUP: ${{ steps.tigersetup.outputs.path }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:INNO_SETUP_COMPILER) -or
-              -not (Test-Path -LiteralPath $env:INNO_SETUP_COMPILER -PathType Leaf)) {
-            throw "The provisioned Inno Setup compiler is unavailable at '$env:INNO_SETUP_COMPILER'."
-          }
           ./ItTiger.TigerSqlCmd.Installer/BuildInstaller.ps1 `
             -ExpectedVersion $env:RELEASE_VERSION `
             -OutputDirectory artifacts/release `
-            -InnoSetupCompilerPath $env:INNO_SETUP_COMPILER `
+            -TigerSetupPath $env:TIGER_SETUP `
             -NoBuild
+          exit $LASTEXITCODE
 
-      - name: Validate TigerSqlCmd installer metadata and behavior
+      # Static: the installer verifies and declares the product's contract. Installing it is
+      # proven on these exact bytes in TigerWinLab during release validation.
+      - name: Verify the TigerSqlCmd installer and its declared contract
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          $installer = "artifacts/release/TigerSqlCmdSetup_$($env:RELEASE_VERSION -replace '\.', '_').exe"
-          ./eng/release-automation/Assert-TigerSqlCmdInstaller.ps1 -InstallerPath $installer -ExpectedVersion $env:RELEASE_VERSION -ValidateBehavior
+          TIGER_SETUP: ${{ steps.tigersetup.outputs.path }}
+        run: >-
+          ./eng/release-automation/Assert-TigerSqlCmdInstaller.ps1
+          -InstallerPath "artifacts/release/TigerSqlCmd-$env:RELEASE_VERSION-Setup.exe"
+          -ExpectedVersion $env:RELEASE_VERSION
+          -TigerSetupPath $env:TIGER_SETUP
 
+      # TigerSetup writes the manifests from this exact installer, so the runner needs no WinGet
+      # client; winget validate runs in preparation and in TigerWinLab.
+      - name: Generate the WinGet manifests from this exact installer
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          TIGER_SETUP: ${{ steps.tigersetup.outputs.path }}
+        run: >-
+          ./eng/winget/Prepare-TigerSqlCmdWinGet.ps1
+          -InstallerPath "artifacts/release/TigerSqlCmd-$env:RELEASE_VERSION-Setup.exe"
+          -OutputRoot artifacts/winget
+          -ExpectedVersion $env:RELEASE_VERSION
+          -TigerSetupPath $env:TIGER_SETUP
+
+      # Adds the WinGet manifest archive and the release-bound terms, LICENSE and PRIVACY.md,
+      # then records the closed set.
       - name: Record exact release payload hashes
         shell: pwsh
         env:
@@ -292,65 +309,8 @@ jobs:
           ./eng/release-automation/New-ReleaseArtifactManifest.ps1 `
             -ArtifactDirectory artifacts/release `
             -Version $env:RELEASE_VERSION `
-            -CommitSha $env:GITHUB_SHA
-
-      - name: Install WinGet for manifest validation
-        shell: pwsh
-        env:
-          WINGET_CLIENT_MODULE_VERSION: '1.29.280'
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          function Resolve-WorkingWinGet {
-            $candidate = Get-Command winget.exe -CommandType Application -ErrorAction SilentlyContinue
-            if ($null -eq $candidate -or -not (Test-Path -LiteralPath $candidate.Source -PathType Leaf)) {
-              return $null
-            }
-            & $candidate.Source --info | Out-Host
-            if ($LASTEXITCODE -ne 0) {
-              Write-Warning "The discovered winget.exe at '$($candidate.Source)' exited with code $LASTEXITCODE."
-              return $null
-            }
-            return $candidate
-          }
-
-          $winget = Resolve-WorkingWinGet
-          if ($null -eq $winget) {
-            if ($null -eq (Get-Command Install-Module -ErrorAction SilentlyContinue)) {
-              throw 'WinGet is absent or unusable and Install-Module is unavailable, so Microsoft.WinGet.Client cannot repair it.'
-            }
-            Install-Module Microsoft.WinGet.Client `
-              -RequiredVersion $env:WINGET_CLIENT_MODULE_VERSION `
-              -Repository PSGallery `
-              -Scope CurrentUser `
-              -Force
-            Import-Module Microsoft.WinGet.Client -RequiredVersion $env:WINGET_CLIENT_MODULE_VERSION
-            if ($null -eq (Get-Command Repair-WinGetPackageManager -ErrorAction SilentlyContinue)) {
-              throw "Microsoft.WinGet.Client $env:WINGET_CLIENT_MODULE_VERSION did not expose Repair-WinGetPackageManager."
-            }
-            Repair-WinGetPackageManager -AllUsers
-            $winget = Resolve-WorkingWinGet
-          }
-          if ($null -eq $winget) {
-            throw 'WinGet provisioning completed without resolving an executable winget.exe.'
-          }
-          Write-Host "Using WinGet at '$($winget.Source)'."
-
-      - name: Generate and validate WinGet manifests
-        shell: pwsh
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          $installer = "artifacts/release/TigerSqlCmdSetup_$($env:RELEASE_VERSION -replace '\.', '_').exe"
-          $installerHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
-          $installerUrl = "https://github.com/rkozlowski/TigerQuery/releases/download/v$env:RELEASE_VERSION/$([IO.Path]::GetFileName($installer))"
-          ./eng/winget/Prepare-TigerSqlCmdWinGet.ps1 `
-            -InstallerPath $installer `
-            -OutputRoot artifacts/winget `
-            -ExpectedVersion $env:RELEASE_VERSION `
-            -InstallerUrl $installerUrl `
-            -ExpectedInstallerSha256 $installerHash `
-            -Validate
+            -CommitSha $env:GITHUB_SHA `
+            -WinGetManifestDirectory "artifacts/winget/manifests/i/ItTiger/TigerSqlCmd/$env:RELEASE_VERSION"
 
       - name: Verify final release artifact set
         shell: pwsh
@@ -361,7 +321,8 @@ jobs:
             -ArtifactDirectory artifacts/release `
             -ManifestPath artifacts/release/release-artifacts.json `
             -ExpectedVersion $env:RELEASE_VERSION `
-            -ExpectedCommit $env:GITHUB_SHA
+            -ExpectedCommit $env:GITHUB_SHA `
+            -SourceRepository .
 
       - name: Verify release construction did not mutate committed inputs
         shell: pwsh
@@ -379,8 +340,6 @@ jobs:
         run: |
           $hash = (Get-FileHash -LiteralPath artifacts/release/release-artifacts.json -Algorithm SHA256).Hash.ToLowerInvariant()
           "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          $installerPath = "artifacts/release/TigerSqlCmdSetup_$($env:RELEASE_VERSION -replace '\.', '_').exe"
-          "installer_path=$installerPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Release manifest transfer SHA-256: $hash"
 
       - name: Upload exact validated release artifacts
@@ -396,7 +355,10 @@ jobs:
             artifacts/release/ItTiger.TigerQuery.CliCore.${{ inputs.version }}.snupkg
             artifacts/release/ItTiger.TigerSqlCmd.${{ inputs.version }}.nupkg
             artifacts/release/ItTiger.TigerSqlCmd.${{ inputs.version }}.snupkg
-            ${{ steps.manifest-hash.outputs.installer_path }}
+            artifacts/release/TigerSqlCmd-${{ inputs.version }}-Setup.exe
+            artifacts/release/TigerSqlCmd-${{ inputs.version }}-WinGet.zip
+            artifacts/release/LICENSE
+            artifacts/release/PRIVACY.md
             artifacts/release/release-artifacts.json
             artifacts/release/SHA256SUMS.txt
           if-no-files-found: error
@@ -555,5 +517,5 @@ jobs:
             -CommitSha $env:GITHUB_SHA `
             -ArtifactDirectory artifacts/release `
             -ManifestPath artifacts/release/release-artifacts.json `
-            -ReleaseNotesHeaderPath docs/maintainers/release-notes-header.md `
+            -NotesFile ".github/release-notes/$env:RELEASE_VERSION.md" `
             -Repository $env:GITHUB_REPOSITORY

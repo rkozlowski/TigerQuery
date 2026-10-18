@@ -82,6 +82,14 @@ try {
         throw "$PackagePath does not contain the configured root TigerQuery256.png icon."
     }
 
+    if ($null -eq $archive.GetEntry('THIRD-PARTY-NOTICES.md')) {
+        throw "$PackagePath does not contain the root THIRD-PARTY-NOTICES.md for the third-party assemblies it bundles."
+    }
+
+    if ($null -eq $archive.GetEntry('LICENSE')) {
+        throw "$PackagePath does not contain the root LICENSE, the licence the installer installs as LICENSE.txt."
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($ExpectedRepositoryCommit)) {
         $repository = $metadata.SelectSingleNode("*[local-name()='repository']")
         if (

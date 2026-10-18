@@ -5,7 +5,7 @@ using ItTiger.TigerSqlCmd;
 namespace ItTiger.TigerQuery.Tests.Cli;
 
 /// <summary>
-/// Phase 3 application-contract tests for tiger-sqlcmd's thin mapping onto the
+/// Application-contract tests for tiger-sqlcmd's thin mapping onto the
 /// TigerQuery-owned output-routing implementation.
 /// </summary>
 [Collection(TigerCliAppCollection.Name)]
@@ -175,6 +175,7 @@ public sealed class TigerSqlCmdOutputRoutingTests : IDisposable
     {
         var exitCode = await TigerSqlCmdEngineRunner.RunAsync(
             logger: null,
+            "demo",
             _ => Task.FromException<ExecutionResult>(
                 new OutputRoutingException("Output route failed.", "results.csv")));
 

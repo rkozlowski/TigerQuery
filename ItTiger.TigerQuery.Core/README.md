@@ -341,11 +341,13 @@ and then atomically moved over the destination:
 
 SQL-password profiles never store plain-text passwords by default:
 
-- **Windows**: `DpapiConnectionPasswordProtector` encrypts the password at rest with **DPAPI (current user)**. DPAPI is Windows-only; encrypted values do not roam to other machines or users.
-- **Other operating systems**: there is no DPAPI. `ConnectionPasswordProtector.CreateDefault()` falls back to `NonPersistingConnectionPasswordProtector`, which simply never saves the password — profiles still work, but the password must be supplied per session.
-- `NoOpConnectionPasswordProtector` performs no protection at all and is intended for tests or externally secured stores.
+- **Windows**: `DpapiConnectionPasswordProtector` encrypts the password at rest with **DPAPI (current user)**. DPAPI is Windows-only, and an encrypted value can be decrypted only by the Windows account that saved it — on another computer only through that account's roaming profile. A DPAPI failure while saving throws with DPAPI's own reason; it never falls back to weaker storage.
+- **Other operating systems**: there is no DPAPI. `ConnectionPasswordProtector.CreateDefault()` falls back to `NonPersistingConnectionPasswordProtector`, which never saves the password. A SQL-password profile then works only with a password reference, or in a host that sets `PlainPassword` in memory and builds the connection string itself.
+- `NoOpConnectionPasswordProtector` performs no protection and persists nothing for `PlainPassword`, which is never serialized; it is intended for tests or externally secured stores.
 
 The store constructor accepts an explicit `IConnectionPasswordProtector` when you need to choose the strategy yourself.
+
+`SqlServerConnectionResolver` does not attempt a login without a password a profile depends on. When a SQL-password profile has no password reference and no password after loading, resolution fails with the reason: no saved password, or a protected password that could not be decrypted here (for DPAPI, typically a store created by another Windows account or copied from another computer). The protected value is never included in the message.
 
 Protection is applied to the profile you supply to `Add`, `AddOrUpdate`, or `Save`, and
 unprotection happens on `Load`. Profiles that a mutation merely carries along — and the

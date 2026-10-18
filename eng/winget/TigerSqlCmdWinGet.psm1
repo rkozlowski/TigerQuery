@@ -11,7 +11,7 @@ Set-StrictMode -Version Latest
 #>
 
 $script:PackageIdentifier = 'ItTiger.TigerSqlCmd'
-$script:ProductCode = 'ItTiger.TigerSqlCmd_is1'
+$script:ProductCode = 'ItTiger.TigerSqlCmd'
 $script:Command = 'tiger-sqlcmd'
 $script:RuntimeDependency = 'Microsoft.DotNet.Runtime.10'
 $script:ReleaseRepositoryUrl = 'https://github.com/rkozlowski/TigerQuery'
@@ -120,7 +120,7 @@ function Get-TigerSqlCmdWinGetReleaseFact {
     )
 
     $null = Assert-TigerSqlCmdWinGetVersion -Version $Version
-    $installerFileName = 'TigerSqlCmdSetup_{0}.exe' -f ($Version -replace '\.', '_')
+    $installerFileName = 'TigerSqlCmd-{0}-Setup.exe' -f $Version
     $tag = "v$Version"
 
     [pscustomobject][ordered]@{
@@ -133,6 +133,11 @@ function Get-TigerSqlCmdWinGetReleaseFact {
         installerFileName = $installerFileName
         installerUrl = '{0}/releases/download/{1}/{2}' -f $script:ReleaseRepositoryUrl, $tag, $installerFileName
         releaseNotesUrl = '{0}/releases/tag/{1}' -f $script:ReleaseRepositoryUrl, $tag
+        # The license that applied to this release, at its tag, never a branch that
+        # moves on after the release.
+        licenseUrl = '{0}/blob/{1}/LICENSE' -f $script:ReleaseRepositoryUrl, $tag
+        # The privacy statement frozen with this release: its PRIVACY.md asset.
+        privacyUrl = '{0}/releases/download/{1}/PRIVACY.md' -f $script:ReleaseRepositoryUrl, $tag
         manifestFileNames = @(
             "$script:PackageIdentifier.installer.yaml"
             "$script:PackageIdentifier.locale.en-US.yaml"
@@ -323,6 +328,8 @@ function Read-TigerSqlCmdWinGetManifestSet {
             packageName = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'PackageName'
             publisher = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'Publisher'
             license = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'License'
+            licenseUrl = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'LicenseUrl'
+            privacyUrl = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'PrivacyUrl'
             releaseNotesUrl = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'ReleaseNotesUrl'
         }
         version = [pscustomobject][ordered]@{
@@ -393,9 +400,14 @@ function Test-TigerSqlCmdWinGetManifestSet {
         -FailureMessage "DefaultLocale '$($version.defaultLocale)' does not match PackageLocale '$($locale.packageLocale)'."))
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/installer-type' `
-        -Condition ($installer.installerType -ceq 'inno') `
-        -Message 'The installer is declared inno, matching the Inno Setup installer this repository builds.' `
-        -FailureMessage "InstallerType is '$($installer.installerType)'; expected inno."))
+        -Condition ($installer.installerType -ceq 'exe') `
+        -Message 'The installer is declared exe, matching the TigerSetup installer this repository builds.' `
+        -FailureMessage "InstallerType is '$($installer.installerType)'; expected exe."))
+
+    $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/elevation' `
+        -Condition ($installer.elevationRequirement -ceq 'elevatesSelf') `
+        -Message 'The machine-scope installer is declared to raise its own elevation prompt.' `
+        -FailureMessage "ElevationRequirement is '$($installer.elevationRequirement)'; expected elevatesSelf."))
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/scope' `
         -Condition ($installer.scope -ceq 'machine') `
@@ -419,8 +431,8 @@ function Test-TigerSqlCmdWinGetManifestSet {
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/apps-and-features' `
         -Condition ($installer.productCode -ceq $release.productCode -and $installer.displayVersion -cne $release.version) `
-        -Message "AppsAndFeaturesEntries names product code $($release.productCode) without repeating PackageVersion as DisplayVersion." `
-        -FailureMessage "AppsAndFeaturesEntries names product code '$($installer.productCode)' and DisplayVersion '$($installer.displayVersion)'; expected product code '$($release.productCode)' and no DisplayVersion equal to PackageVersion '$($release.version)'."))
+        -Message "The installer entry names product code $($release.productCode) without repeating PackageVersion as DisplayVersion." `
+        -FailureMessage "The manifest names product code '$($installer.productCode)' and DisplayVersion '$($installer.displayVersion)'; expected product code '$($release.productCode)' and no DisplayVersion equal to PackageVersion '$($release.version)'."))
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/command' `
         -Condition ($installer.commands -ccontains $release.command) `
@@ -436,6 +448,16 @@ function Test-TigerSqlCmdWinGetManifestSet {
         -Condition ($locale.releaseNotesUrl -ceq $release.releaseNotesUrl) `
         -Message "ReleaseNotesUrl points at the $($release.tag) release." `
         -FailureMessage "ReleaseNotesUrl is '$($locale.releaseNotesUrl)'; expected '$($release.releaseNotesUrl)'."))
+
+    $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/license-url' `
+        -Condition ($locale.licenseUrl -ceq $release.licenseUrl) `
+        -Message "LicenseUrl points at the license file at the $($release.tag) tag." `
+        -FailureMessage "LicenseUrl is '$($locale.licenseUrl)'; expected the tag-bound '$($release.licenseUrl)'."))
+
+    $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/privacy-url' `
+        -Condition ($locale.privacyUrl -ceq $release.privacyUrl) `
+        -Message "PrivacyUrl points at the privacy statement frozen with the $($release.tag) release." `
+        -FailureMessage "PrivacyUrl is '$($locale.privacyUrl)'; expected the release-bound '$($release.privacyUrl)'."))
 
     $bomFiles = @($ManifestSet.documents | Where-Object { $_.hasBom } | ForEach-Object name)
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/encoding' `
@@ -622,50 +644,85 @@ function Test-TigerSqlCmdWinGetReleaseAsset {
     }
 }
 
+function Get-TigerAiCoreRoot {
+    <#
+        .SYNOPSIS
+        The TigerAiCore repository named by the machine configuration.
+
+        .DESCRIPTION
+        The configuration file named by TigerAiCoreConfig declares `core` in its
+        managed block. That value is the only supported way to reach TigerAiCore's
+        resource resolver. Nothing is discovered.
+    #>
+    [CmdletBinding()]
+    param()
+
+    $configPath = $env:TigerAiCoreConfig
+    if ([string]::IsNullOrWhiteSpace($configPath) -or -not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+        throw 'TigerAiCoreConfig is not set, or does not name a readable file, so the registered TigerWinLab is unavailable. Pass -TigerWinLabRoot to name a TigerWinLab working copy for this run.'
+    }
+    foreach ($line in Get-Content -LiteralPath $configPath) {
+        if ($line.Trim() -match '^core\s*=\s*"(?<path>[^"]+)"\s*(?:#.*)?$') {
+            # A TOML basic string escapes its backslashes; the path does not.
+            return $Matches['path'].Replace('\\', '\')
+        }
+    }
+    throw "The TigerAiCore configuration $configPath declares no 'core' path, so its resource resolver cannot be reached."
+}
+
 function Resolve-TigerWinLabRoot {
     <#
         .SYNOPSIS
         Locates the TigerWinLab working copy that provides the guest.
 
         .DESCRIPTION
-        TigerWinLab is a separate repository, so it is found rather than
-        vendored: an explicit path first, then TIGERWINLAB_ROOT, then the
-        sibling checkout. Only a directory that actually exposes the WinGet
-        scenario entry point is accepted, so a wrong path fails here instead of
-        halfway through a run.
+        TigerWinLab is a separate repository, so it is resolved rather than
+        vendored: an explicit path is an override for one run; otherwise the
+        TigerWinLab registration is read through TigerAiCore's
+        `tools/Resolve-TigerAiCoreResource.ps1`, from the machine configuration
+        named by TigerAiCoreConfig. There is no sibling-directory guess and no
+        repository-specific environment variable. Only a directory that actually
+        exposes the WinGet scenario entry point is accepted, so a wrong path
+        fails here instead of halfway through a run.
     #>
     [CmdletBinding()]
     param(
         [string] $Path
     )
 
-    $candidates = [System.Collections.Generic.List[object]]::new()
     if (-not [string]::IsNullOrWhiteSpace($Path)) {
-        $candidates.Add(@{ source = 'the -TigerWinLabRoot argument'; path = $Path })
+        $source = 'the -TigerWinLabRoot argument'
+        $root = $Path
     }
-    if (-not [string]::IsNullOrWhiteSpace($env:TIGERWINLAB_ROOT)) {
-        $candidates.Add(@{ source = 'TIGERWINLAB_ROOT'; path = $env:TIGERWINLAB_ROOT })
-    }
-    $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $candidates.Add(@{ source = 'the sibling checkout'; path = (Join-Path (Split-Path -Parent $repositoryRoot) 'TigerWinLab') })
-
-    foreach ($candidate in $candidates) {
-        $root = [string] $candidate.path
-        if ([string]::IsNullOrWhiteSpace($root)) { continue }
-        $root = [System.IO.Path]::GetFullPath($root)
-        $entryPoint = Join-Path $root 'Invoke-TigerWinLabWinGetScenario.ps1'
-        if (Test-Path -LiteralPath $entryPoint -PathType Leaf) {
-            return [pscustomobject][ordered]@{
-                root = $root
-                source = [string] $candidate.source
-                winGetScenario = $entryPoint
-                labValidation = Join-Path $root 'Test-TigerWinLab.ps1'
-            }
+    else {
+        $resolver = Join-Path (Get-TigerAiCoreRoot) 'tools/Resolve-TigerAiCoreResource.ps1'
+        if (-not (Test-Path -LiteralPath $resolver -PathType Leaf)) {
+            throw "The TigerAiCore resource resolver was not found at $resolver."
         }
+        # Resolver exit codes: 0 resolved, 1 not registered here, 2 a broken configuration.
+        $stdout = & (Get-Process -Id $PID).Path -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File $resolver -Lab TigerWinLab -Json 2>&1
+        $exitCode = $LASTEXITCODE
+        $text = ($stdout | Out-String).Trim()
+        if ($exitCode -ne 0) {
+            throw "TigerWinLab could not be resolved through TigerAiCore (exit $exitCode): $text"
+        }
+        $registration = $text | ConvertFrom-Json
+        $source = "the TigerAiCore registration in $($registration.ConfigPath)"
+        $root = [string] $registration.Path
     }
 
-    $attempted = ($candidates | ForEach-Object { "$($_.source) ($($_.path))" }) -join '; '
-    throw "TigerWinLab was not found. Pass -TigerWinLabRoot, set TIGERWINLAB_ROOT, or check TigerWinLab out beside this repository. Tried $attempted."
+    $root = [System.IO.Path]::GetFullPath($root)
+    $entryPoint = Join-Path $root 'Invoke-TigerWinLabWinGetScenario.ps1'
+    if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
+        throw "TigerWinLab was not found at $root (from $source): it has no Invoke-TigerWinLabWinGetScenario.ps1."
+    }
+    return [pscustomobject][ordered]@{
+        root = $root
+        source = $source
+        winGetScenario = $entryPoint
+        labValidation = Join-Path $root 'Test-TigerWinLab.ps1'
+    }
 }
 
 function Get-TigerSqlCmdWinGetRelativePath {

@@ -105,28 +105,27 @@ InstallerLocale: en-US
 Platform:
 - Windows.Desktop
 MinimumOSVersion: 10.0.17763.0
-InstallerType: inno
-Scope: machine
+InstallerType: exe
 InstallModes:
 - interactive
 - silent
 - silentWithProgress
 UpgradeBehavior: install
-ElevationRequirement: elevatesSelf
+Commands:
+- tiger-sqlcmd
 Dependencies:
   PackageDependencies:
   - PackageIdentifier: Microsoft.DotNet.Runtime.10
-Commands:
-- tiger-sqlcmd
-AppsAndFeaturesEntries:
-- DisplayName: TigerSqlCmd 1.2.3
-  Publisher: IT Tiger
-  ProductCode: ItTiger.TigerSqlCmd_is1
-  InstallerType: inno
 Installers:
 - Architecture: x64
-  InstallerUrl: https://github.com/rkozlowski/TigerQuery/releases/download/v1.2.3/TigerSqlCmdSetup_1_2_3.exe
+  Scope: machine
+  ElevationRequirement: elevatesSelf
+  InstallerUrl: https://github.com/rkozlowski/TigerQuery/releases/download/v1.2.3/TigerSqlCmd-1.2.3-Setup.exe
   InstallerSha256: 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+  InstallerSwitches:
+    Silent: install --quiet --scope machine
+    SilentWithProgress: install --quiet --scope machine
+  ProductCode: ItTiger.TigerSqlCmd
 ManifestType: installer
 ManifestVersion: 1.12.0
 '@
@@ -139,6 +138,8 @@ PackageLocale: en-US
 Publisher: IT Tiger
 PackageName: TigerSqlCmd
 License: MIT
+PrivacyUrl: https://github.com/rkozlowski/TigerQuery/releases/download/v1.2.3/PRIVACY.md
+LicenseUrl: https://github.com/rkozlowski/TigerQuery/blob/v1.2.3/LICENSE
 ShortDescription: SQL Server script and query runner built on the TigerQuery engine.
 Tags:
 - cli
@@ -178,15 +179,10 @@ $null = New-Item -ItemType Directory -Path $testRoot -Force
 
 try {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $wingetDirectory)
-    [xml] $currentVersionXml = Get-Content -LiteralPath (Join-Path $repositoryRoot 'Version.props')
-    $currentVersion = [string] $currentVersionXml.Project.PropertyGroup.Version
-    $currentFilenameVersion = $currentVersion -replace '\.', '_'
-    $fakeInstallerDirectory = Join-Path $testRoot 'generator-installer'
-    $null = New-Item -ItemType Directory -Path $fakeInstallerDirectory -Force
-    $fakeInstallerPath = Join-Path $fakeInstallerDirectory "TigerSqlCmdSetup_${currentFilenameVersion}.exe"
-    [System.IO.File]::WriteAllBytes($fakeInstallerPath, [byte[]](0..31))
-    $prepareScript = Join-Path $wingetDirectory 'Prepare-TigerSqlCmdWinGet.ps1'
-    $installerUrl = "https://github.com/rkozlowski/TigerQuery/releases/download/v$currentVersion/TigerSqlCmdSetup_${currentFilenameVersion}.exe"
+    # TigerSetup writes the manifests from the package definition; what they must say about the
+    # release is declared there, and generation itself is exercised over a real installer by
+    # Prepare-TigerSqlCmdWinGet.ps1 during release preparation.
+    $packageDefinition = Get-Content -LiteralPath (Join-Path $repositoryRoot 'ItTiger.TigerSqlCmd.Installer\TigerSetup.toml') -Raw
 
     Invoke-Test 'a stable three-part version is accepted and anything else is rejected' {
         Assert-True ((Assert-TigerSqlCmdWinGetVersion -Version '0.8.8') -ceq '0.8.8') 'The version should be echoed back.'
@@ -197,37 +193,24 @@ try {
         }
     }
 
-    Invoke-Test 'the generator omits DisplayVersion when it equals PackageVersion' {
-        $outputRoot = Join-Path $testRoot 'generated-same-version'
-        & $prepareScript `
-            -InstallerPath $fakeInstallerPath `
-            -OutputRoot $outputRoot `
-            -ExpectedVersion $currentVersion `
-            -InstallerUrl $installerUrl
-        $path = Join-Path $outputRoot "manifests\i\ItTiger\TigerSqlCmd\$currentVersion\ItTiger.TigerSqlCmd.installer.yaml"
-        $manifest = Get-Content -LiteralPath $path -Raw
-        Assert-True ($manifest -cnotmatch '(?m)^\s+DisplayVersion:') 'The generator must omit a DisplayVersion that repeats PackageVersion.'
-    }
-
-    Invoke-Test 'the generator emits DisplayVersion when it differs from PackageVersion' {
-        $outputRoot = Join-Path $testRoot 'generated-different-version'
-        $differentVersion = "$currentVersion.0"
-        & $prepareScript `
-            -InstallerPath $fakeInstallerPath `
-            -OutputRoot $outputRoot `
-            -ExpectedVersion $currentVersion `
-            -InstallerUrl $installerUrl `
-            -InstalledDisplayVersion $differentVersion
-        $path = Join-Path $outputRoot "manifests\i\ItTiger\TigerSqlCmd\$currentVersion\ItTiger.TigerSqlCmd.installer.yaml"
-        $manifest = Get-Content -LiteralPath $path -Raw
-        Assert-True ($manifest -cmatch "(?m)^  DisplayVersion: $([regex]::Escape($differentVersion))\r?$") 'The generator must preserve a DisplayVersion that differs from PackageVersion.'
+    Invoke-Test 'the package definition binds the terms URLs to the release and discloses machine-wide changes' {
+        foreach ($line in @(
+            'license_url = "https://github.com/rkozlowski/TigerQuery/blob/v{version}/LICENSE"'
+            'privacy_url = "https://github.com/rkozlowski/TigerQuery/releases/download/v{version}/PRIVACY.md"'
+            'release_notes_url = "https://github.com/rkozlowski/TigerQuery/releases/tag/v{version}"'
+        )) {
+            Assert-True ($packageDefinition.Contains($line)) "TigerSetup.toml must declare $line."
+        }
+        Assert-True ($packageDefinition -cmatch 'administrator rights' -and $packageDefinition -cmatch 'system PATH') 'The description must disclose elevation and the machine PATH change.'
+        Assert-True ($packageDefinition -cmatch 'DPAPI') 'The description must say how saved passwords are protected.'
     }
 
     Invoke-Test 'release facts derive the tag, file name, asset URL, and submission path' {
         $facts = Get-TigerSqlCmdWinGetReleaseFact -Version '0.8.8'
+        Assert-True ($facts.privacyUrl -ceq 'https://github.com/rkozlowski/TigerQuery/releases/download/v0.8.8/PRIVACY.md') "Privacy URL was '$($facts.privacyUrl)'."
         Assert-True ($facts.tag -ceq 'v0.8.8') "Tag was '$($facts.tag)'."
-        Assert-True ($facts.installerFileName -ceq 'TigerSqlCmdSetup_0_8_8.exe') "File name was '$($facts.installerFileName)'."
-        Assert-True ($facts.installerUrl -ceq 'https://github.com/rkozlowski/TigerQuery/releases/download/v0.8.8/TigerSqlCmdSetup_0_8_8.exe') "URL was '$($facts.installerUrl)'."
+        Assert-True ($facts.installerFileName -ceq 'TigerSqlCmd-0.8.8-Setup.exe') "File name was '$($facts.installerFileName)'."
+        Assert-True ($facts.installerUrl -ceq 'https://github.com/rkozlowski/TigerQuery/releases/download/v0.8.8/TigerSqlCmd-0.8.8-Setup.exe') "URL was '$($facts.installerUrl)'."
         Assert-True ($facts.releaseNotesUrl -ceq 'https://github.com/rkozlowski/TigerQuery/releases/tag/v0.8.8') "Notes URL was '$($facts.releaseNotesUrl)'."
         Assert-True ($facts.submissionPath -ceq 'manifests/i/ItTiger/TigerSqlCmd/0.8.8') "Submission path was '$($facts.submissionPath)'."
         Assert-True ($facts.manifestFileNames.Count -eq 3) 'A submission is exactly three manifests.'
@@ -282,8 +265,8 @@ try {
         $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'redundant-display-version')
         $path = Join-Path $directory 'ItTiger.TigerSqlCmd.installer.yaml'
         (Get-Content -LiteralPath $path -Raw).Replace(
-            '  Publisher: IT Tiger',
-            "  Publisher: IT Tiger`r`n  DisplayVersion: 1.2.3") |
+            '  ProductCode: ItTiger.TigerSqlCmd',
+            "  ProductCode: ItTiger.TigerSqlCmd`r`n  DisplayVersion: 1.2.3") |
             Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
 
         $checks = New-FixtureChecks -Directory $directory
@@ -294,8 +277,8 @@ try {
         $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'differing-display-version')
         $path = Join-Path $directory 'ItTiger.TigerSqlCmd.installer.yaml'
         (Get-Content -LiteralPath $path -Raw).Replace(
-            '  Publisher: IT Tiger',
-            "  Publisher: IT Tiger`r`n  DisplayVersion: 1.2.3.0") |
+            '  ProductCode: ItTiger.TigerSqlCmd',
+            "  ProductCode: ItTiger.TigerSqlCmd`r`n  DisplayVersion: 1.2.3.0") |
             Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
 
         $checks = New-FixtureChecks -Directory $directory
@@ -306,13 +289,51 @@ try {
         $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'wrong-url')
         $path = Join-Path $directory 'ItTiger.TigerSqlCmd.installer.yaml'
         (Get-Content -LiteralPath $path -Raw).Replace(
-            'https://github.com/rkozlowski/TigerQuery/releases/download/v1.2.3/TigerSqlCmdSetup_1_2_3.exe',
-            'https://example.invalid/TigerSqlCmdSetup_1_2_3.exe') |
+            'https://github.com/rkozlowski/TigerQuery/releases/download/v1.2.3/TigerSqlCmd-1.2.3-Setup.exe',
+            'https://example.invalid/TigerSqlCmd-1.2.3-Setup.exe') |
             Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
 
         $checks = New-FixtureChecks -Directory $directory
         Assert-True ((Get-Check -Checks $checks -Name 'manifest/installer-url').status -ceq 'FAIL') 'A foreign installer URL must fail.'
         Assert-True ((Get-Check -Checks $checks -Name 'manifest/version').status -ceq 'PASS') 'Only the URL check should have noticed.'
+    }
+
+    Invoke-Test 'a LicenseUrl on a moving branch fails the license check' {
+        $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'branch-license')
+        $path = Join-Path $directory 'ItTiger.TigerSqlCmd.locale.en-US.yaml'
+        (Get-Content -LiteralPath $path -Raw).Replace('/blob/v1.2.3/LICENSE', '/blob/main/LICENSE') |
+            Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
+
+        $checks = New-FixtureChecks -Directory $directory
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/license-url').status -ceq 'FAIL') 'A branch-bound LicenseUrl must fail.'
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/release-notes-url').status -ceq 'PASS') 'Only the license check should have noticed.'
+    }
+
+    Invoke-Test 'a missing or mutable PrivacyUrl fails the privacy check' {
+        $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'no-privacy')
+        $path = Join-Path $directory 'ItTiger.TigerSqlCmd.locale.en-US.yaml'
+        $kept = @(Get-Content -LiteralPath $path | Where-Object { $_ -cnotmatch '^PrivacyUrl:' })
+        Set-Content -LiteralPath $path -Value $kept -Encoding utf8NoBOM
+        $checks = New-FixtureChecks -Directory $directory
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/privacy-url').status -ceq 'FAIL') 'A manifest without PrivacyUrl must fail.'
+
+        $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'mutable-privacy')
+        $path = Join-Path $directory 'ItTiger.TigerSqlCmd.locale.en-US.yaml'
+        (Get-Content -LiteralPath $path -Raw).Replace('/releases/download/v1.2.3/PRIVACY.md', '/blob/main/PRIVACY.md') |
+            Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
+        $checks = New-FixtureChecks -Directory $directory
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/privacy-url').status -ceq 'FAIL') 'A PrivacyUrl on a moving branch must fail.'
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/license-url').status -ceq 'PASS') 'Only the privacy check should have noticed.'
+    }
+
+    Invoke-Test 'an Inno Setup installer type or a WinGet-elevated entry fails its check' {
+        $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'inno-type')
+        $path = Join-Path $directory 'ItTiger.TigerSqlCmd.installer.yaml'
+        (Get-Content -LiteralPath $path -Raw).Replace('InstallerType: exe', 'InstallerType: inno').Replace('elevatesSelf', 'elevationRequired') |
+            Set-Content -LiteralPath $path -Encoding utf8NoBOM -NoNewline
+        $checks = New-FixtureChecks -Directory $directory
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/installer-type').status -ceq 'FAIL') 'An inno installer type must fail.'
+        Assert-True ((Get-Check -Checks $checks -Name 'manifest/elevation').status -ceq 'FAIL') 'WinGet must not elevate on the installer''s behalf.'
     }
 
     Invoke-Test 'a version that disagrees across the set fails the version check' {
@@ -352,17 +373,17 @@ try {
         $digest = 'a' * 64
         Set-Content -LiteralPath $checksumPath -Encoding utf8NoBOM -Value @(
             ('{0}  ItTiger.TigerSqlCmd.1.2.3.nupkg' -f ('b' * 64))
-            "$digest  TigerSqlCmdSetup_1_2_3.exe"
-            ('{0} *TigerSqlCmdSetup_9_9_9.exe' -f ('c' * 64))
+            "$digest  TigerSqlCmd-1.2.3-Setup.exe"
+            ('{0} *TigerSqlCmd-9.9.9-Setup.exe' -f ('c' * 64))
         )
 
-        $found = Get-TigerSqlCmdWinGetRecordedChecksum -ChecksumPath $checksumPath -FileName 'TigerSqlCmdSetup_1_2_3.exe'
+        $found = Get-TigerSqlCmdWinGetRecordedChecksum -ChecksumPath $checksumPath -FileName 'TigerSqlCmd-1.2.3-Setup.exe'
         Assert-True ($found -ceq $digest.ToUpperInvariant()) "The recorded digest read as '$found'."
 
-        $binaryMarked = Get-TigerSqlCmdWinGetRecordedChecksum -ChecksumPath $checksumPath -FileName 'TigerSqlCmdSetup_9_9_9.exe'
+        $binaryMarked = Get-TigerSqlCmdWinGetRecordedChecksum -ChecksumPath $checksumPath -FileName 'TigerSqlCmd-9.9.9-Setup.exe'
         Assert-True ($binaryMarked -ceq ('c' * 64).ToUpperInvariant()) "A binary-marked entry read as '$binaryMarked'."
 
-        $absent = Get-TigerSqlCmdWinGetRecordedChecksum -ChecksumPath $checksumPath -FileName 'TigerSqlCmdSetup_0_0_0.exe'
+        $absent = Get-TigerSqlCmdWinGetRecordedChecksum -ChecksumPath $checksumPath -FileName 'TigerSqlCmd-0.0.0-Setup.exe'
         Assert-True ($null -eq $absent) "An unrecorded file read as '$absent' instead of nothing."
     }
 
@@ -382,7 +403,7 @@ try {
 
     Invoke-Test 'a generated specification carries the version, the expected URL, and portable paths' {
         $directory = New-FixtureManifestSet -Directory (Join-Path $testRoot 'spec\manifests')
-        $installerPath = Join-Path $testRoot 'spec\published\TigerSqlCmdSetup_1_2_3.exe'
+        $installerPath = Join-Path $testRoot 'spec\published\TigerSqlCmd-1.2.3-Setup.exe'
         $null = New-Item -ItemType Directory -Path (Split-Path -Parent $installerPath) -Force
         Set-Content -LiteralPath $installerPath -Value 'not a real installer' -Encoding utf8NoBOM
 
@@ -395,9 +416,9 @@ try {
         $spec = Get-Content -LiteralPath $specPath -Raw | ConvertFrom-Json
         Assert-True ($spec.package.version -ceq '1.2.3') "The specification version was '$($spec.package.version)'."
         Assert-True ($spec.package.identifier -ceq 'ItTiger.TigerSqlCmd') 'The specification must name the package.'
-        Assert-True ($spec.installer.expectedUrl -ceq 'https://github.com/rkozlowski/TigerQuery/releases/download/v1.2.3/TigerSqlCmdSetup_1_2_3.exe') "The expected URL was '$($spec.installer.expectedUrl)'."
+        Assert-True ($spec.installer.expectedUrl -ceq 'https://github.com/rkozlowski/TigerQuery/releases/download/v1.2.3/TigerSqlCmd-1.2.3-Setup.exe') "The expected URL was '$($spec.installer.expectedUrl)'."
         Assert-True ($spec.manifestDirectory -ceq 'manifests') "The manifest directory was '$($spec.manifestDirectory)'; it must be relative to the specification."
-        Assert-True ($spec.installer.path -ceq 'published\TigerSqlCmdSetup_1_2_3.exe') "The installer path was '$($spec.installer.path)'; it must be relative to the specification."
+        Assert-True ($spec.installer.path -ceq 'published\TigerSqlCmd-1.2.3-Setup.exe') "The installer path was '$($spec.installer.path)'; it must be relative to the specification."
         Assert-True ($spec.hashMismatchProbe.enabled) 'The refusal probe must stay enabled so the lab result is not green by construction.'
 
         # A specification that is not on the specification file's drive has to stay absolute.
@@ -460,20 +481,39 @@ try {
         Assert-True ($resolved.root -ceq ([System.IO.Path]::GetFullPath($labRoot))) "Resolved '$($resolved.root)'."
         Assert-True (Test-Path -LiteralPath $resolved.winGetScenario -PathType Leaf) 'The resolved root must expose the WinGet scenario entry point.'
 
-        $previous = $env:TIGERWINLAB_ROOT
-        $env:TIGERWINLAB_ROOT = Join-Path $testRoot 'no-lab-here'
+        Assert-Throws -MessagePattern '*TigerWinLab was not found*' -Body {
+            $null = Resolve-TigerWinLabRoot -Path (Join-Path $testRoot 'also-absent')
+        }
+    }
+
+    Invoke-Test 'TigerWinLab is otherwise resolved only through the TigerAiCore registration' {
+        $core = Join-Path $testRoot 'fake-core'
+        $labRoot = Join-Path $testRoot 'registered-lab'
+        $null = New-Item -ItemType Directory -Path (Join-Path $core 'tools'), $labRoot -Force
+        Set-Content -LiteralPath (Join-Path $labRoot 'Invoke-TigerWinLabWinGetScenario.ps1') -Value '# stub' -Encoding utf8NoBOM
+        $registration = [ordered]@{ Name = 'TigerWinLab'; Kind = 'Lab'; Type = 'WindowsLab'; Path = $labRoot; PathExists = $true; ConfigPath = 'fixture.toml' }
+        Set-Content -LiteralPath (Join-Path $core 'tools\Resolve-TigerAiCoreResource.ps1') -Encoding utf8NoBOM -Value @(
+            'param([string] $Lab, [switch] $Json)'
+            "if (`$Lab -cne 'TigerWinLab') { exit 1 }"
+            "'$(($registration | ConvertTo-Json -Compress).Replace("'", "''"))'"
+        )
+        $config = Join-Path $testRoot 'fixture.toml'
+        Set-Content -LiteralPath $config -Value ('core = "' + $core.Replace('\', '\\') + '"') -Encoding utf8NoBOM
+
+        $previous = $env:TigerAiCoreConfig
         try {
-            # The sibling checkout is still a candidate, so this only proves a refusal
-            # where TigerWinLab is genuinely absent from every candidate.
-            $sibling = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $wingetDirectory))) 'TigerWinLab'
-            if (-not (Test-Path -LiteralPath (Join-Path $sibling 'Invoke-TigerWinLabWinGetScenario.ps1') -PathType Leaf)) {
-                Assert-Throws -MessagePattern '*TigerWinLab was not found*' -Body {
-                    $null = Resolve-TigerWinLabRoot -Path (Join-Path $testRoot 'also-absent')
-                }
+            $env:TigerAiCoreConfig = $config
+            $resolved = Resolve-TigerWinLabRoot
+            Assert-True ($resolved.root -ceq ([System.IO.Path]::GetFullPath($labRoot))) "Resolved '$($resolved.root)'."
+            Assert-True ($resolved.source -clike '*TigerAiCore registration*') "Source was '$($resolved.source)'."
+
+            $env:TigerAiCoreConfig = $null
+            Assert-Throws -MessagePattern '*TigerAiCoreConfig is not set*' -Body {
+                $null = Resolve-TigerWinLabRoot
             }
         }
         finally {
-            $env:TIGERWINLAB_ROOT = $previous
+            $env:TigerAiCoreConfig = $previous
         }
     }
 
@@ -507,22 +547,6 @@ try {
         Assert-True ($summary -clike '*manifests/i/ItTiger/TigerSqlCmd/1.2.3*') 'The summary file must name the submission path.'
     }
 
-    Invoke-Test 'the prepared manifests in this working tree pass, when they are present' {
-        $versionFile = Join-Path $repositoryRoot 'Version.props'
-        [xml] $versionXml = Get-Content -LiteralPath $versionFile
-        $version = [string] $versionXml.Project.PropertyGroup.Version
-        $manifests = Join-Path $repositoryRoot "artifacts\winget\manifests\i\ItTiger\TigerSqlCmd\$version"
-
-        if (-not (Test-Path -LiteralPath $manifests -PathType Container)) {
-            Write-Host "  (skipped: no prepared manifests for $version; run eng\winget\Prepare-TigerSqlCmdWinGet.ps1 first)"
-            return
-        }
-
-        $set = Read-TigerSqlCmdWinGetManifestSet -ManifestDirectory $manifests -Version $version
-        $checks = @(Test-TigerSqlCmdWinGetManifestSet -ManifestSet $set)
-        $notPassed = @($checks | Where-Object { $_.status -cne 'PASS' })
-        Assert-True ($notPassed.Count -eq 0) "These checks did not pass for $version`: $(($notPassed | ForEach-Object { "$($_.name): $($_.message)" }) -join '; ')"
-    }
 }
 finally {
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue

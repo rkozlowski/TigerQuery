@@ -121,3 +121,55 @@ function Get-MissingCompatibleGitHubReleaseAssets {
 
     return $missingAssets.ToArray()
 }
+
+function New-ReleaseTagMessage {
+    <#
+        .SYNOPSIS
+        The annotated release tag's message: the release title, the SHA-256 of the
+        release record, and the run that built the release set.
+
+        .DESCRIPTION
+        The tag anchors the record: a retrieved release-artifacts.json proves itself
+        only against the hash the tag names. Outside GitHub Actions (maintainer
+        recovery) there is no build run to name, and the message says so.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Title,
+
+        [Parameter(Mandatory)]
+        [ValidatePattern('^[0-9a-f]{64}$')]
+        [string] $RecordSha256,
+
+        [string] $RunUrl
+    )
+
+    $run = if ([string]::IsNullOrWhiteSpace($RunUrl)) {
+        'Run: none (tag created outside GitHub Actions during recovery)'
+    }
+    else {
+        "Run: $RunUrl"
+    }
+    return "$Title`n`nRelease record SHA-256: $RecordSha256`n$run"
+}
+
+function Assert-ReleaseTagNamesRecord {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Tag,
+
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string] $Message,
+
+        [Parameter(Mandatory)]
+        [ValidatePattern('^[0-9a-f]{64}$')]
+        [string] $RecordSha256
+    )
+
+    if ($Message -notmatch "(?m)^Release record SHA-256: $RecordSha256\s*$") {
+        throw "Tag $Tag does not name release record SHA-256 $RecordSha256. It was not created for this release set and will not be reused."
+    }
+}

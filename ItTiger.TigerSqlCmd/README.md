@@ -28,6 +28,18 @@ Use a .NET 10 SDK to install the .NET tool. Older SDKs can misleadingly report t
 `DotnetToolSettings.xml` is missing even though the package contains it; check
 `dotnet --version` and any applicable `global.json` if that happens.
 
+### Shell completion
+
+`tiger-sqlcmd --completion bash|zsh|fish|pwsh` prints a tab-completion script to
+activate in your shell, for example in PowerShell:
+
+```powershell
+tiger-sqlcmd --completion pwsh | Out-String | Invoke-Expression
+```
+
+See [Shell completion](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html#shell-completion)
+for persistent activation in each shell.
+
 ## Quick start
 
 ```bash
@@ -85,3 +97,12 @@ See [Running an external tool: `exec`](https://rkozlowski.github.io/TigerQuery/t
 - [TigerSqlCmd E2E guide](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd-e2e.html)
 - [TigerQuery documentation home](https://rkozlowski.github.io/TigerQuery/)
 - [TigerQuery repository](https://github.com/rkozlowski/TigerQuery)
+
+## License, third-party software, and privacy
+
+TigerSqlCmd is licensed under the MIT License; the package carries it as `LICENSE`. It
+also includes third-party components under their own licences, listed and reproduced in the
+package's `THIRD-PARTY-NOTICES.md`. One of them, `Microsoft.Data.SqlClient.SNI.runtime`, is
+licensed by Microsoft under the Microsoft Software License Terms, not under the MIT License.
+Each [release](https://github.com/rkozlowski/TigerQuery/releases) attaches the privacy
+statement, `PRIVACY.md`, that applies to that version.

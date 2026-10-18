@@ -9,7 +9,7 @@
   -->
 
   <PropertyGroup>
-    <Version>0.8.8</Version>
+    <Version>0.8.9</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     <UtcBuildTimestamp>$([System.DateTime]::UtcNow.ToString('yyyyMMdd.HHmmss'))</UtcBuildTimestamp>
@@ -19,7 +19,8 @@
 
     <Company>IT Tiger</Company>
     <Authors>IT Tiger</Authors>
-    <Copyright>Copyright (c) $([System.DateTime]::UtcNow.Year) IT Tiger</Copyright>
+    <!-- The copyright notice of LICENSE, word for word; IT Tiger is the publisher (Company, Authors). -->
+    <Copyright>Copyright (c) 2025 Ryszard Kozlowski</Copyright>
     <NeutralLanguage>en-US</NeutralLanguage>
 
     <RepositoryUrl>https://github.com/rkozlowski/TigerQuery</RepositoryUrl>

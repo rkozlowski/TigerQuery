@@ -4,15 +4,15 @@
   "package": {
     "identifier": "ItTiger.TigerSqlCmd",
     "version": "0.0.0",
-    "productCode": "ItTiger.TigerSqlCmd_is1"
+    "productCode": "ItTiger.TigerSqlCmd"
   },
   "manifestDirectory": "manifests",
   "installer": {
     "path": "installer.exe",
-    "type": "inno",
+    "type": "exe",
     "scope": "machine",
     "architecture": "x64",
-    "expectedUrl": "https://github.com/rkozlowski/TigerQuery/releases/download/v0.0.0/TigerSqlCmdSetup_0_0_0.exe",
+    "expectedUrl": "https://github.com/rkozlowski/TigerQuery/releases/download/v0.0.0/TigerSqlCmd-0.0.0-Setup.exe",
     "successExitCodes": [0]
   },
   "hashMismatchProbe": {
@@ -20,18 +20,18 @@
     "expectedOutputPattern": "(?i)hash"
   },
   "expected": {
-    "installRoot": "%ProgramFiles%\\ItTiger\\TigerSqlCmd",
+    "installRoot": "%ProgramFiles%\\TigerSqlCmd",
     "files": [
-      "VERSION.txt",
-      "unins000.exe",
-      "cli\\tiger-sqlcmd.exe",
-      "cli\\tiger-sqlcmd.dll",
-      "cli\\ItTiger.TigerQuery.Core.dll"
+      "tiger-sqlcmd.exe",
+      "tiger-sqlcmd.dll",
+      "ItTiger.TigerQuery.Core.dll",
+      "LICENSE.txt",
+      "THIRD-PARTY-NOTICES.md",
+      "PRIVACY.md"
     ],
     "minimumFileCount": 60,
-    "versionFile": "cli\\tiger-sqlcmd.exe",
-    "versionTextFile": "VERSION.txt",
-    "machinePathEntries": ["%ProgramFiles%\\ItTiger\\TigerSqlCmd\\cli"],
+    "versionFile": "tiger-sqlcmd.exe",
+    "machinePathEntries": ["%ProgramFiles%\\TigerSqlCmd"],
     "commands": ["tiger-sqlcmd"],
     "dependencies": [
       {
