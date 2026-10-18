@@ -31,8 +31,10 @@ TigerQuery uses the permanent development branch workflow (see `AGENTS.md`):
    into the release as its `License` and `PrivacyStatement`, and the WinGet manifests point at
    exactly those copies. Check `PRIVACY.md` against what this release actually does; a change
    to storage, network activity, logging, the installer, or dependencies changes it.
-   `THIRD-PARTY-NOTICES.md` lists every third-party package the installer and the tool ship;
-   `BuildInstaller.ps1` refuses a payload with a package the notices do not list.
+   `THIRD-PARTY-NOTICES.md` lists every third-party package the installer and the tool ship,
+   and reproduces each licence and `THIRD-PARTY-NOTICES.TXT` file those packages carry; a
+   package update that changes such a file changes the notices. `BuildInstaller.ps1` refuses a
+   payload with a package the notices do not list, but it does not compare the reproduced texts.
 3. Run the cheap gates first: Debug build and the full unconfigured suite, Release build,
    dependency audit, release tooling tests, and `git diff --check` (`AGENTS.md`,
    *Verification gates*).

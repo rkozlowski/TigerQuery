@@ -16,10 +16,11 @@ TigerSqlCmd is published by IT Tiger (<https://www.ittiger.net/>).
 
 TigerSqlCmd is a command-line client for Microsoft SQL Server. It has no accounts,
 telemetry, analytics, advertising, crash reporting of its own, license checks, or update
-checks. It does not send your connections, credentials, queries, results, or logs to IT
-Tiger or to anyone else. It connects only to the SQL Servers your saved connections name,
-starts other programs only when you tell it to, and its Windows installer downloads the
-Microsoft .NET runtime only when it is missing. Each of these is described below.
+checks, and IT Tiger receives nothing from it. Your sign-in, queries, and variable values go
+only to the SQL Servers your saved connections name, and to services that connection options
+you add name; a saved connection's connection string goes to another program only when you
+start that program with `exec`; and the Windows installer downloads the Microsoft .NET
+runtime only when it is missing. Each of these is described below.
 
 The ItTiger.TigerQuery libraries that TigerSqlCmd is built on are also published on
 NuGet.org for other applications to use. This statement covers TigerSqlCmd; an application
@@ -71,16 +72,19 @@ a command-line argument.
 - **On Windows**, a password you enter is encrypted with Windows Data Protection (DPAPI) for
   your Windows account before it is written to the store. Only your Windows account can
   decrypt it — on another computer, only through a roaming profile of that same account.
-  TigerSqlCmd decrypts it in memory when it connects and never writes it in plain text,
-  displays it, or logs it. If encryption fails, nothing is saved, and if a stored password
+  TigerSqlCmd decrypts it in memory when it connects, and does not write it in plain text,
+  display it, or log it; the one exception is `exec`, which hands it, inside a connection
+  string, to the program you start (see **Programs you start with `exec`**). If encryption
+  fails, nothing is saved, and if a stored password
   cannot be decrypted — for example in a store copied from another account or computer —
   TigerSqlCmd says so instead of trying to sign in without it.
 - **On Linux and macOS** there is no DPAPI, so TigerSqlCmd does not save a typed password:
   it refuses to save such a connection and asks you to use a reference instead.
 - **References.** A connection can instead read its password, login name, server, database,
   or complete connection string from an environment variable or a file you name. TigerSqlCmd
-  reads the value each time it connects and never copies it into the store, a log, or its
-  output; protecting that variable or file is up to you.
+  reads the value each time it connects and does not copy it into the store, a log, or its
+  output, although `exec` hands the connection string built from it to the program you
+  start; protecting that variable or file is up to you.
 
 To remove a saved credential, delete the connection with
 `tiger-sqlcmd connection delete <name>`, or change it with `tiger-sqlcmd connection edit`.
@@ -102,31 +106,44 @@ contain anything your database holds.
 TigerSqlCmd writes a log only when you name a file with `--log-file`. The log records the
 run's progress, SQL Server messages — including the text of `PRINT` and `RAISERROR`
 statements — and failures, with the SQL Server error number and the type and message of the
-error and of the errors that caused it. It never records connection strings, passwords, the values of `-v` variables, or
-the text of your queries, although a SQL Server error message can quote part of a query —
-`Incorrect syntax near ...`, for example — as SQL Server words it. A log is added to on each
-run that names it and is never deleted by TigerSqlCmd.
+error and of the errors that caused it. TigerSqlCmd does not itself write connection
+strings, passwords, the values of `-v` variables, or the text of your queries to the log.
+The messages it records, however, are worded by SQL Server, by the SQL Server client library,
+and by Windows, and they can contain whatever your SQL, your data, or your configuration puts
+in them: a `PRINT` or `RAISERROR` text that includes a variable's value, a value quoted in a
+constraint-violation message, part of a query in `Incorrect syntax near ...`, or the names of
+servers, databases, logins, and files. Keep a log as carefully as the scripts and data it was
+written for. A log is added to on each run that names it and is never deleted by
+TigerSqlCmd.
 
 With `--verbosity Verbose` or `VeryVerbose`, TigerSqlCmd also prints the query text and the
 values of the `-v` variables you pass to your terminal, where whatever captures the output —
 a build system's job log, for example — can keep them. Do not pass secrets as `-v`
 variables.
 
-Error messages name saved connections, servers, and files, but never contain a password or
-a connection string.
+TigerSqlCmd's own error messages name saved connections, servers, and files, and are written
+not to include a password or a connection string. An error can also carry the message of the
+SQL Server, client-library, or Windows error behind it; that text is not TigerSqlCmd's, and
+like a log it can contain values from your SQL, your data, or your configuration.
 
 Apart from the files described here, TigerSqlCmd itself writes no files, registry values,
 or event-log entries.
 
 ### What the Windows installer records
 
-The installer keeps a record of the installation in `%ProgramData%\TigerSetup\ItTiger.TigerSqlCmd`:
-the files, the `PATH` entry, and the shortcut it installed, the installation's settings, a
-copy of its uninstaller, and a log of each installation, upgrade, and repair. The logs name
-the files and settings the installer changed and the Windows paths it used; they contain
-nothing from your connections, queries, or results. A log you ask for with `--log` is written
-where you name it and is yours to keep or delete. Uninstalling removes the record and its
-logs.
+The installer is built with TigerSetup 0.16.0. It keeps a record of the installation in
+`%ProgramData%\TigerSetup\ItTiger.TigerSqlCmd`: the files, the `PATH` entry, and the shortcut
+it installed; the installation's settings; a fingerprint (SHA-256) of the licence text you
+accepted on the installer's licence page, if you accepted one — a `--quiet` installation
+shows no licence page and records no acceptance; the .NET runtime prerequisite it checked
+for, with the download address and SHA-256 of a runtime installer it downloaded; a copy of
+its uninstaller; and a log of each installation, upgrade, and repair. The logs name the
+files and settings the installer changed and the Windows paths it used, which can include
+your Windows account name as part of a profile folder's path, and, when files are in use,
+the names and process IDs of the programs holding them. They contain nothing from your
+connections, queries, or results. A log you ask for with `--log` is written where you name
+it and is yours to keep or delete. A successful uninstall removes the record and its logs;
+a run that fails keeps its log so that the problem can be diagnosed.
 
 ## Network communication
 
@@ -162,19 +179,28 @@ supports it. TigerSqlCmd does not log or display the connection string it hands 
 
 **The Windows installer** makes a network request only if the Microsoft .NET 10 Runtime is
 missing. It then downloads Microsoft's runtime installer from Microsoft — from the address
-recorded when TigerSqlCmd's installer was built, or, when that record is out of date, from
-the address the WinGet community catalog gives, which it reads from Microsoft's catalog
-servers — and runs it only if its SHA-256 matches the published one. Started with
-`--no-dependency-install`, or without a network connection, it stops instead and changes
-nothing. These requests carry what any download carries, such as your computer's IP address,
-and nothing about you or your use of TigerSqlCmd. WinGet installs the runtime itself before
-running the installer.
+recorded when TigerSqlCmd's installer was built while that record is less than two weeks
+old, and otherwise, or when that download fails, from the address the WinGet community
+catalog gives, which it reads over HTTPS from Microsoft's WinGet servers
+(`cdn.winget.microsoft.com`) — and runs it only if its SHA-256 matches the published one.
+Started with `--no-dependency-install`, or without a network connection, it stops instead
+and changes nothing. The catalog request names the runtime's WinGet package identifier;
+every request carries the user agent `TigerSetup`, goes through Windows' proxy settings,
+and, like any download, reveals your computer's IP address to the server it goes to. Nothing
+else about you, your computer, or your use of TigerSqlCmd is added. WinGet installs the
+runtime itself before running the installer.
 
-**Downloading TigerSqlCmd.** GitHub, NuGet.org, WinGet, and the .NET SDK (for
-`dotnet tool install`) handle your download as they handle any other, under their own
-operators' privacy terms. IT Tiger receives no information from them about you.
+**Downloading TigerSqlCmd.** GitHub, NuGet.org, and WinGet handle your download as they
+handle any other, under their own operators' privacy terms, and `dotnet tool install` runs
+under the .NET SDK's own settings, including its telemetry setting. IT Tiger receives no
+information from them about you.
 
-Nothing else: TigerSqlCmd makes no other network connection.
+TigerSqlCmd has no other network code of its own. The connections described above are the
+only ones it asks for; to make them, Windows and the SQL Server client library can contact
+other systems on its behalf, under Windows' and the network's own configuration — for
+example to resolve a server's name, to ask the SQL Server Browser service for a named
+instance's port, to reach a domain controller for Windows integrated authentication, or to
+check a server certificate.
 
 ## Uninstalling and upgrading
 
@@ -215,4 +241,6 @@ its own uninstaller; that removes only what the earlier installer installed.
 ## Questions
 
 Report questions or concerns about this statement at
-<https://github.com/rkozlowski/TigerQuery/issues>.
+<https://github.com/rkozlowski/TigerQuery/issues>. Issues are public: do not include server
+names, connection details, credentials, query text, or other personal or confidential
+information in them.

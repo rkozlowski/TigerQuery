@@ -86,6 +86,10 @@ try {
         throw "$PackagePath does not contain the root THIRD-PARTY-NOTICES.md for the third-party assemblies it bundles."
     }
 
+    if ($null -eq $archive.GetEntry('LICENSE')) {
+        throw "$PackagePath does not contain the root LICENSE, the licence the installer installs as LICENSE.txt."
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($ExpectedRepositoryCommit)) {
         $repository = $metadata.SelectSingleNode("*[local-name()='repository']")
         if (

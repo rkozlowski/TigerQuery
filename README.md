@@ -355,6 +355,7 @@ licences, in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
   <img src="docs/assets/ItTiger-head.png" alt="IT Tiger Logo" width="120"/>
 </p>
 
-TigerQuery is an open-source project by **IT Tiger**  
+TigerQuery is an open-source project by **IT Tiger**, licensed under the MIT License
+([`LICENSE`](LICENSE)). Copyright (c) 2025 Ryszard Kozlowski.<br>
 🔗 Project page: https://www.ittiger.net/projects/tigerquery/  
 🔗 https://www.ittiger.net/

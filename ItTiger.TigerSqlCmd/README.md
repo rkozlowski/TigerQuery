@@ -97,3 +97,12 @@ See [Running an external tool: `exec`](https://rkozlowski.github.io/TigerQuery/t
 - [TigerSqlCmd E2E guide](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd-e2e.html)
 - [TigerQuery documentation home](https://rkozlowski.github.io/TigerQuery/)
 - [TigerQuery repository](https://github.com/rkozlowski/TigerQuery)
+
+## License, third-party software, and privacy
+
+TigerSqlCmd is licensed under the MIT License; the package carries it as `LICENSE`. It
+also includes third-party components under their own licences, listed and reproduced in the
+package's `THIRD-PARTY-NOTICES.md`. One of them, `Microsoft.Data.SqlClient.SNI.runtime`, is
+licensed by Microsoft under the Microsoft Software License Terms, not under the MIT License.
+Each [release](https://github.com/rkozlowski/TigerQuery/releases) attaches the privacy
+statement, `PRIVACY.md`, that applies to that version.
