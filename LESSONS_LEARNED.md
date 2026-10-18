@@ -57,3 +57,23 @@ restore never prints it. Updating `Microsoft.Data.SqlClient` alone did not help 
 **Do:** after any `PackageReference` change, run `dotnet restore` and
 `dotnet list TigerQuery.sln package --vulnerable --include-transitive`, and inspect the packed
 outputs, not only the project graph.
+
+## The frozen terms are CRLF files, and a clean working copy can still hold LF
+
+**Area:** release validation and recovery (`Assert-ReleaseArtifactManifest.ps1 -SourceRepository`,
+`Publish-GitHubDraftRelease.ps1`)
+
+**Status:** Active
+
+**Symptom:** recovering the 0.8.9 draft, the manifest assertion refused the retained
+`PRIVACY.md` as "not the release commit's PRIVACY.md", although the commit, the record, and the
+tag all matched.
+
+**Cause:** the workflow freezes `LICENSE` and `PRIVACY.md` from the Windows runner's checkout,
+where `core.autocrlf=true` writes CRLF. The local working copy of `PRIVACY.md` had been written
+with LF by an editor; Git compares normalized content, so `git status` was clean while the
+bytes differed. The released files are the commit's blobs with CRLF line endings.
+
+**Do:** compare the frozen terms with a fresh checkout or a `git archive` export under
+`core.autocrlf=true`, and check `git ls-files --eol LICENSE PRIVACY.md` shows `w/crlf` before
+running the recovery helper from a working copy. Never "fix" the release assets to match LF.

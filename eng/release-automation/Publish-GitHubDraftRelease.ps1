@@ -139,7 +139,7 @@ if ([string]::IsNullOrWhiteSpace($remoteTag)) {
     Write-Host "Created annotated tag $tag at $CommitSha."
 }
 else {
-    & git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+    & git fetch --force origin "refs/tags/${tag}:refs/tags/$tag"
     if ($LASTEXITCODE -ne 0) { throw "Could not fetch existing tag $tag." }
     $tagCommit = (& git rev-list -n 1 $tag | Out-String).Trim()
     $tagType = (& git cat-file -t $tag | Out-String).Trim()
@@ -164,9 +164,11 @@ if ($null -eq $release) {
         --notes-file $NotesFile
     if ($LASTEXITCODE -ne 0) { throw "Could not create draft GitHub Release for $tag." }
     Write-Host "Created draft GitHub Release $tag."
-    $release = Resolve-CompatibleGitHubRelease -Releases @(Get-GitHubReleases) -Tag $tag -Title $title
+    # The releases list is eventually consistent: a just-created draft can be missing from it
+    # for a moment, and gh release upload resolves a draft through the same list.
+    $release = Wait-CompatibleGitHubRelease -GetReleases { Get-GitHubReleases } -Tag $tag -Title $title
     if ($null -eq $release) {
-        throw "GitHub reported successful creation of draft release $tag, but it was not returned by the draft-capable releases API."
+        throw "GitHub reported successful creation of draft release $tag, but the draft-capable releases API still did not return it. Rerun this helper to resume with the existing draft."
     }
 }
 else {

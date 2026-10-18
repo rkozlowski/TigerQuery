@@ -94,7 +94,9 @@ Prove the draft, not a local rebuild:
 2. Run `eng\release-automation\Assert-ReleaseArtifactManifest.ps1` over that directory with
    the release commit as `-ExpectedCommit` and a checkout of it as `-SourceRepository`: the set
    is closed, every payload has the recorded name, kind, length, and SHA-256, and `LICENSE` and
-   `PRIVACY.md` are the release commit's files.
+   `PRIVACY.md` are the release commit's files. Those are the Windows runner's checkout, with
+   CRLF line endings: use a fresh checkout or a `git archive` export under
+   `core.autocrlf=true`, not a working copy that kept LF line endings Git does not report.
 3. Fetch the tag and confirm that it is annotated (`git cat-file -t v<version>` is `tag`),
    points at the release commit, and names the SHA-256 of the downloaded
    `release-artifacts.json` (`git tag -l --format='%(contents)' v<version>`).
@@ -144,7 +146,8 @@ versions and never uses duplicate-skipping.
   `eng/release-automation/Publish-GitHubDraftRelease.ps1`. Run `-PlanOnly` first. Execution accepts
   only the same annotated tag/commit naming the same release record, the same compatible
   draft, and identical existing asset digests; it uploads only missing assets. It finds
-  drafts through the authenticated releases list, retains the numeric release ID, and
+  drafts through the authenticated releases list, waiting briefly for a draft it has just
+  created to appear there, retains the numeric release ID, and
   rechecks that exact draft by ID. If the helper fix necessarily postdates the validated
   release commit, run it from the fixed checkout with `-AllowDifferentHeadForRecovery`; the
   retained manifest and tag must still match the original release commit exactly.

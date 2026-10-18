@@ -84,6 +84,43 @@ Invoke-Test 'matching draft exists and retains numeric ID' {
     Assert-True -Condition ([long] $release.id -eq 123456L) -Message 'Expected the matching draft release ID.'
 }
 
+Invoke-Test 'a just-created draft missing from the list is awaited' {
+    $script:listings = 0
+    $sleeps = [Collections.Generic.List[int]]::new()
+    $draft = [pscustomobject]@{ id = 654321L; tag_name = $tag; name = $title; draft = $true; prerelease = $false }
+    $release = Wait-CompatibleGitHubRelease -Tag $tag -Title $title -Sleep { param($s) $sleeps.Add($s) } -GetReleases {
+        $script:listings++
+        if ($script:listings -ge 3) { $draft }
+    }
+    Assert-True ([long] $release.id -eq 654321L) 'Expected the draft once the list returned it.'
+    Assert-True (($sleeps -join ',') -ceq '1,2') "Expected waits 1,2; found '$($sleeps -join ',')'."
+}
+
+Invoke-Test 'a draft that never appears is reported as absent after bounded retries' {
+    $sleeps = [Collections.Generic.List[int]]::new()
+    $release = Wait-CompatibleGitHubRelease -Tag $tag -Title $title -GetReleases { @() } `
+        -RetryDelaySeconds @(1, 2) -Sleep { param($s) $sleeps.Add($s) }
+    Assert-True ($null -eq $release) 'Expected no release.'
+    Assert-True ($sleeps.Count -eq 2) "Expected two waits; found $($sleeps.Count)."
+}
+
+Invoke-Test 'release scripts do not read a drive-qualified variable by accident' {
+    # "refs/tags/$tag:refs/tags/$tag" reads the variable 'refs' on drive 'tag', which is empty.
+    $automation = Split-Path -Parent $PSScriptRoot
+    foreach ($script in Get-ChildItem -LiteralPath $automation -Filter '*.ps1' -File) {
+        $ast = [Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref] $null, [ref] $null)
+        $qualified = @($ast.FindAll({
+            param($node)
+            $node -is [Management.Automation.Language.VariableExpressionAst] -and
+                $node.VariablePath.IsDriveQualified -and
+                $node.VariablePath.DriveName -notin 'env', 'variable', 'function', 'alias'
+        }, $true))
+        if ($qualified.Count -ne 0) {
+            throw "$($script.Name) reads drive-qualified variables: $(($qualified | ForEach-Object { $_.Extent.Text }) -join ', ')."
+        }
+    }
+}
+
 Invoke-Test 'draft asset inspection identifies a missing asset' {
     $missing = @(Get-MissingCompatibleGitHubReleaseAssets `
         -ExistingAssets @() -ExpectedAssets @($expectedAsset) -Tag $tag)

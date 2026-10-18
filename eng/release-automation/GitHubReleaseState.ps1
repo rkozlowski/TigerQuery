@@ -79,6 +79,44 @@ function Resolve-CompatibleGitHubRelease {
     return $matches[0]
 }
 
+function Wait-CompatibleGitHubRelease {
+    <#
+        .SYNOPSIS
+        Resolves the compatible release for a tag, retrying while the releases list does not
+        return it yet.
+
+        .DESCRIPTION
+        GitHub's releases list is eventually consistent, so a draft created a moment ago can
+        be missing from it. Returns $null when the release is still absent after every retry.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [scriptblock] $GetReleases,
+
+        [Parameter(Mandatory)]
+        [string] $Tag,
+
+        [Parameter(Mandatory)]
+        [string] $Title,
+
+        [int[]] $RetryDelaySeconds = @(1, 2, 4, 8, 15, 30),
+
+        [scriptblock] $Sleep = { param($Seconds) Start-Sleep -Seconds $Seconds }
+    )
+
+    foreach ($delay in @(0) + $RetryDelaySeconds) {
+        if ($delay -gt 0) {
+            & $Sleep $delay
+        }
+        $release = Resolve-CompatibleGitHubRelease -Releases @(& $GetReleases) -Tag $Tag -Title $Title
+        if ($null -ne $release) {
+            return $release
+        }
+    }
+    return $null
+}
+
 function Get-MissingCompatibleGitHubReleaseAssets {
     [CmdletBinding()]
     param(

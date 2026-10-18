@@ -228,8 +228,10 @@ the intended tag, draft, and asset operations without calling GitHub. Its execut
 is deliberately resumable for exact matching state, even though the main workflow's
 strict NuGet preflight prevents a blind whole-workflow rerun after publication begins.
 Draft lookup uses the authenticated list-releases API, which includes drafts for callers
-with repository push access. The helper requires one exact tag match, retains its numeric
-release ID, and uses `/releases/{release_id}` for metadata and asset inspection before and
+with repository push access. That list is eventually consistent, so after creating a draft
+the helper retries the lookup with a bounded backoff of about a minute before it fails;
+`gh release upload` resolves a draft through the same list. The helper requires one exact tag
+match, retains its numeric release ID, and uses `/releases/{release_id}` for metadata and asset inspection before and
 after upload. It never uses the published-release-only tag endpoint to inspect a draft.
 
 ## WinGet's two stages
