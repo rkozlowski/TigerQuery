@@ -147,4 +147,25 @@ Invoke-Test 'tag at the wrong commit is rejected' {
     }
 }
 
+Invoke-Test 'tag message names the release record and the building run' {
+    $record = 'b' * 64
+    $message = New-ReleaseTagMessage -Title $title -RecordSha256 $record -RunUrl 'https://github.com/o/r/actions/runs/42'
+    Assert-True ($message.StartsWith("$title`n`n")) "Message was '$message'."
+    Assert-True ($message.Contains('Run: https://github.com/o/r/actions/runs/42')) "Message was '$message'."
+    Assert-ReleaseTagNamesRecord -Tag $tag -Message $message -RecordSha256 $record
+
+    $recovery = New-ReleaseTagMessage -Title $title -RecordSha256 $record
+    Assert-True ($recovery.Contains('Run: none')) "Recovery message was '$recovery'."
+}
+
+Invoke-Test 'tag naming another release record is rejected' {
+    $message = New-ReleaseTagMessage -Title $title -RecordSha256 ('b' * 64)
+    Assert-Throws -MessagePattern '*does not name release record*' -Body {
+        Assert-ReleaseTagNamesRecord -Tag $tag -Message $message -RecordSha256 ('c' * 64)
+    }
+    Assert-Throws -MessagePattern '*does not name release record*' -Body {
+        Assert-ReleaseTagNamesRecord -Tag $tag -Message $title -RecordSha256 ('c' * 64)
+    }
+}
+
 Write-Host "All $passed release-state tests passed."

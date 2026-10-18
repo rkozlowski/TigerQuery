@@ -28,6 +28,18 @@ Use a .NET 10 SDK to install the .NET tool. Older SDKs can misleadingly report t
 `DotnetToolSettings.xml` is missing even though the package contains it; check
 `dotnet --version` and any applicable `global.json` if that happens.
 
+### Shell completion
+
+`tiger-sqlcmd --completion bash|zsh|fish|pwsh` prints a tab-completion script to
+activate in your shell, for example in PowerShell:
+
+```powershell
+tiger-sqlcmd --completion pwsh | Out-String | Invoke-Expression
+```
+
+See [Shell completion](https://rkozlowski.github.io/TigerQuery/tiger-sqlcmd.html#shell-completion)
+for persistent activation in each shell.
+
 ## Quick start
 
 ```bash

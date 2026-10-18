@@ -46,7 +46,8 @@ instead of blocking for input. Session-scoped E2E commands create disposable dat
 with explicit ownership and safe cleanup, while non-owning clones can target existing
 databases without making them droppable. The `exec` command resolves a saved connection
 and hands it to an external tool through a supported environment-variable or argument
-handoff.
+handoff. `tiger-sqlcmd --completion <shell>` prints tab completion for Bash, Zsh, Fish,
+and PowerShell.
 
 Start with the [TigerSqlCmd general guide](docs/api-docfx/tiger-sqlcmd.md) and the
 [TigerSqlCmd E2E guide](docs/api-docfx/tiger-sqlcmd-e2e.md).

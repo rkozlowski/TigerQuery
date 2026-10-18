@@ -1,6 +1,6 @@
 # Preparing the TigerSqlCmd WinGet package
 
-This maintainer-only guide is intentionally excluded from DocFX. It covers step 9 of
+This maintainer-only guide is intentionally excluded from DocFX. It covers step 6 of
 [Releasing TigerQuery and TigerSqlCmd](releasing-tiger-sqlcmd.md): turning a published
 GitHub release into a `winget-pkgs` pull request that has actually been proven to work.
 
@@ -43,7 +43,7 @@ Useful switches:
 | `-Json` | Emits the result record instead of the table. |
 | `-SkipLab` | Manifest and published-asset checks only. Fast, and never a submission-ready `PASS`. |
 | `-TimeoutMinutes` | Bounds the guest scenario. Default 45. |
-| `-TigerWinLabRoot` | Where TigerWinLab lives, if it is not `$env:TIGERWINLAB_ROOT` or a sibling checkout. |
+| `-TigerWinLabRoot` | A TigerWinLab working copy to use for this run instead of the registered one. |
 
 ## What it proves
 
@@ -105,9 +105,10 @@ validation and review.
 
 ## Prerequisites and failures
 
-TigerWinLab must be checked out and provisioned. It is found through `-TigerWinLabRoot`,
-then `$env:TIGERWINLAB_ROOT`, then a `TigerWinLab` checkout beside this repository. See
-that repository's `README.md`; `.\New-TigerWinLab.ps1` builds the guest and
+TigerWinLab must be registered and provisioned. It is resolved from its `[labs.TigerWinLab]`
+registration in the TigerAiCore machine configuration named by `TigerAiCoreConfig`, through
+TigerAiCore's `tools/Resolve-TigerAiCoreResource.ps1`; `-TigerWinLabRoot` overrides that for
+one run. Without either, the lab checks cannot run. See TigerWinLab's `README.md`; `.\New-TigerWinLab.ps1` builds the guest and
 `.\Test-TigerWinLab.ps1` reports whether it is ready.
 
 Failures worth recognising:

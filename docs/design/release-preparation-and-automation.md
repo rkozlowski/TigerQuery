@@ -3,9 +3,10 @@
 ## Purpose and status
 
 This document defines the repository contract for preparing and publishing a TigerQuery
-release. It follows the release philosophy established by TigerCli, while accounting for
-TigerQuery's larger artifact set and TigerSqlCmd distribution channels. The implemented
-workflow is `.github/workflows/publish-packages.yml`; the operational checklist is
+release. It implements the TigerAiCore release model (`docs/release-model.md` in
+TigerAiCore) for TigerQuery's artifact set and TigerSqlCmd distribution channels. The
+implemented workflow is `.github/workflows/publish-packages.yml`; the operational checklist,
+including where acceptance runs relative to the release commit, is
 `docs/maintainers/releasing-tiger-sqlcmd.md`.
 
 The release workflow prepares and publishes a version that is already committed. It does
@@ -123,7 +124,8 @@ One dispatch performs this ordered flow:
     each explicit package push, revalidate the complete artifact set. Push in dependency
     order without duplicate-skipping.
 20. After every package and symbol push succeeds, create annotated tag `v<version>` at
-    exactly the validated commit and push it without force.
+    exactly the validated commit, with a message naming the SHA-256 of
+    `release-artifacts.json` and the workflow run, and push it without force.
 21. Create a consistently titled draft GitHub Release using the verified tag, a short
     curated header, and GitHub-generated notes.
 22. Upload the exact installer, four NuGet packages, four symbol packages, and both
@@ -201,7 +203,7 @@ state, but it never makes a destructive guess.
 | A package version appears between preflight and publication | The second availability check fails before any push. Choose a new version or investigate the conflicting publication. |
 | One or more NuGet pushes succeeded and a later push failed | Stop. A normal rerun fails the already-published-version check. Download the retained same-run artifact, verify the manifest hash and published package state, then publish only genuinely missing exact files under explicit maintainer control. Do not rebuild, skip duplicates, tag, or release until all required NuGet identities and symbols are accounted for. |
 | NuGet succeeds but tag or draft creation fails | A normal rerun intentionally fails NuGet preflight. Recover from the retained exact artifact and validated commit. Run the draft-release helper under maintainer control; it can create a missing annotated tag or accept the same annotated tag at the same commit. |
-| Tag exists but no release exists | A tag at another commit or a lightweight tag is a hard conflict. The same annotated tag at the validated commit is safe for the helper to resume; it creates the missing draft. Never move or replace the tag. |
+| Tag exists but no release exists | A tag at another commit, a lightweight tag, or a tag naming another release record is a hard conflict. The same annotated tag at the validated commit, naming the retained record's SHA-256, is safe for the helper to resume; it creates the missing draft. Never move or replace the tag. |
 | Compatible draft exists and an upload failed | The helper verifies every existing asset's name, size, and GitHub SHA-256, skips identical assets, and uploads only missing assets. |
 | Existing release asset has the wrong hash or incomplete state | Fail without `--clobber`. A maintainer must inspect the draft and retained artifact, remove the bad draft asset deliberately, and rerun the helper. Published release assets are never edited. |
 | Workflow is rerun from a different commit with the same version | Version availability, tag target, package repository-commit metadata, and manifest commit checks fail. No tag or artifact is replaced. |
@@ -237,23 +239,8 @@ validation sandbox of its own. See `docs/maintainers/winget-tiger-sqlcmd.md`.
 Only after a `PASS` is a separate manual WinGet PR appropriate. Neither the release
 workflow nor the validation command authenticates to, forks, or submits to `winget-pkgs`.
 
-## First-live-run assumptions and risks
+## Boundaries that never move
 
-Static and local tests cannot completely emulate GitHub Actions. The first real release
-run must pay particular attention to:
-
-- download, hash/signature validation, silent installation, and discovery of the pinned
-  Inno Setup 7 compiler;
-- WinGet provisioning through pinned `Microsoft.WinGet.Client` when `winget` is absent;
-- the .NET 10 SDK installed by `actions/setup-dotnet`, and the hosted image's Git and
-  GitHub CLI commands, which are checked before publication begins;
-- elevation and machine PATH/registry behavior on the hosted runner;
-- NuGet.org Trusted Publishing still matching this repository, workflow filename,
-  environment, and configured `NUGET_USER`;
-- GitHub's release-asset REST response exposing SHA-256 digests after upload; and
-- generated release-note behavior and the draft's suitability for human editing.
-
-These are explicit failure boundaries. None justifies falling back to locally built
-artifacts, weakening hashes, skipping package conflicts, overwriting a tag or asset, or
-automating WinGet submission.
-
+A failure at any stage is a failure boundary to diagnose. None justifies falling back to
+locally built artifacts, weakening hashes, skipping package conflicts, overwriting a tag or
+asset, or automating WinGet submission.

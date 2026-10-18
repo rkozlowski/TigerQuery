@@ -460,20 +460,39 @@ try {
         Assert-True ($resolved.root -ceq ([System.IO.Path]::GetFullPath($labRoot))) "Resolved '$($resolved.root)'."
         Assert-True (Test-Path -LiteralPath $resolved.winGetScenario -PathType Leaf) 'The resolved root must expose the WinGet scenario entry point.'
 
-        $previous = $env:TIGERWINLAB_ROOT
-        $env:TIGERWINLAB_ROOT = Join-Path $testRoot 'no-lab-here'
+        Assert-Throws -MessagePattern '*TigerWinLab was not found*' -Body {
+            $null = Resolve-TigerWinLabRoot -Path (Join-Path $testRoot 'also-absent')
+        }
+    }
+
+    Invoke-Test 'TigerWinLab is otherwise resolved only through the TigerAiCore registration' {
+        $core = Join-Path $testRoot 'fake-core'
+        $labRoot = Join-Path $testRoot 'registered-lab'
+        $null = New-Item -ItemType Directory -Path (Join-Path $core 'tools'), $labRoot -Force
+        Set-Content -LiteralPath (Join-Path $labRoot 'Invoke-TigerWinLabWinGetScenario.ps1') -Value '# stub' -Encoding utf8NoBOM
+        $registration = [ordered]@{ Name = 'TigerWinLab'; Kind = 'Lab'; Type = 'WindowsLab'; Path = $labRoot; PathExists = $true; ConfigPath = 'fixture.toml' }
+        Set-Content -LiteralPath (Join-Path $core 'tools\Resolve-TigerAiCoreResource.ps1') -Encoding utf8NoBOM -Value @(
+            'param([string] $Lab, [switch] $Json)'
+            "if (`$Lab -cne 'TigerWinLab') { exit 1 }"
+            "'$(($registration | ConvertTo-Json -Compress).Replace("'", "''"))'"
+        )
+        $config = Join-Path $testRoot 'fixture.toml'
+        Set-Content -LiteralPath $config -Value ('core = "' + $core.Replace('\', '\\') + '"') -Encoding utf8NoBOM
+
+        $previous = $env:TigerAiCoreConfig
         try {
-            # The sibling checkout is still a candidate, so this only proves a refusal
-            # where TigerWinLab is genuinely absent from every candidate.
-            $sibling = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $wingetDirectory))) 'TigerWinLab'
-            if (-not (Test-Path -LiteralPath (Join-Path $sibling 'Invoke-TigerWinLabWinGetScenario.ps1') -PathType Leaf)) {
-                Assert-Throws -MessagePattern '*TigerWinLab was not found*' -Body {
-                    $null = Resolve-TigerWinLabRoot -Path (Join-Path $testRoot 'also-absent')
-                }
+            $env:TigerAiCoreConfig = $config
+            $resolved = Resolve-TigerWinLabRoot
+            Assert-True ($resolved.root -ceq ([System.IO.Path]::GetFullPath($labRoot))) "Resolved '$($resolved.root)'."
+            Assert-True ($resolved.source -clike '*TigerAiCore registration*') "Source was '$($resolved.source)'."
+
+            $env:TigerAiCoreConfig = $null
+            Assert-Throws -MessagePattern '*TigerAiCoreConfig is not set*' -Body {
+                $null = Resolve-TigerWinLabRoot
             }
         }
         finally {
-            $env:TIGERWINLAB_ROOT = $previous
+            $env:TigerAiCoreConfig = $previous
         }
     }
 

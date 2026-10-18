@@ -26,8 +26,9 @@
     The published release version to validate, for example 0.8.8.
 
     .PARAMETER TigerWinLabRoot
-    The TigerWinLab working copy to use. Defaults to TIGERWINLAB_ROOT, then to a
-    TigerWinLab checkout beside this repository.
+    A TigerWinLab working copy to use for this run. By default TigerWinLab is resolved
+    from its registration in the TigerAiCore machine configuration named by
+    TigerAiCoreConfig.
 
     .PARAMETER SkipLab
     Runs the manifest and published-asset checks only. Useful for a quick re-check of a

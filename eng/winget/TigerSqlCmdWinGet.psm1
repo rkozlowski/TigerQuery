@@ -622,50 +622,85 @@ function Test-TigerSqlCmdWinGetReleaseAsset {
     }
 }
 
+function Get-TigerAiCoreRoot {
+    <#
+        .SYNOPSIS
+        The TigerAiCore repository named by the machine configuration.
+
+        .DESCRIPTION
+        The configuration file named by TigerAiCoreConfig declares `core` in its
+        managed block. That value is the only supported way to reach TigerAiCore's
+        resource resolver. Nothing is discovered.
+    #>
+    [CmdletBinding()]
+    param()
+
+    $configPath = $env:TigerAiCoreConfig
+    if ([string]::IsNullOrWhiteSpace($configPath) -or -not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+        throw 'TigerAiCoreConfig is not set, or does not name a readable file, so the registered TigerWinLab is unavailable. Pass -TigerWinLabRoot to name a TigerWinLab working copy for this run.'
+    }
+    foreach ($line in Get-Content -LiteralPath $configPath) {
+        if ($line.Trim() -match '^core\s*=\s*"(?<path>[^"]+)"\s*(?:#.*)?$') {
+            # A TOML basic string escapes its backslashes; the path does not.
+            return $Matches['path'].Replace('\\', '\')
+        }
+    }
+    throw "The TigerAiCore configuration $configPath declares no 'core' path, so its resource resolver cannot be reached."
+}
+
 function Resolve-TigerWinLabRoot {
     <#
         .SYNOPSIS
         Locates the TigerWinLab working copy that provides the guest.
 
         .DESCRIPTION
-        TigerWinLab is a separate repository, so it is found rather than
-        vendored: an explicit path first, then TIGERWINLAB_ROOT, then the
-        sibling checkout. Only a directory that actually exposes the WinGet
-        scenario entry point is accepted, so a wrong path fails here instead of
-        halfway through a run.
+        TigerWinLab is a separate repository, so it is resolved rather than
+        vendored: an explicit path is an override for one run; otherwise the
+        TigerWinLab registration is read through TigerAiCore's
+        `tools/Resolve-TigerAiCoreResource.ps1`, from the machine configuration
+        named by TigerAiCoreConfig. There is no sibling-directory guess and no
+        repository-specific environment variable. Only a directory that actually
+        exposes the WinGet scenario entry point is accepted, so a wrong path
+        fails here instead of halfway through a run.
     #>
     [CmdletBinding()]
     param(
         [string] $Path
     )
 
-    $candidates = [System.Collections.Generic.List[object]]::new()
     if (-not [string]::IsNullOrWhiteSpace($Path)) {
-        $candidates.Add(@{ source = 'the -TigerWinLabRoot argument'; path = $Path })
+        $source = 'the -TigerWinLabRoot argument'
+        $root = $Path
     }
-    if (-not [string]::IsNullOrWhiteSpace($env:TIGERWINLAB_ROOT)) {
-        $candidates.Add(@{ source = 'TIGERWINLAB_ROOT'; path = $env:TIGERWINLAB_ROOT })
-    }
-    $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $candidates.Add(@{ source = 'the sibling checkout'; path = (Join-Path (Split-Path -Parent $repositoryRoot) 'TigerWinLab') })
-
-    foreach ($candidate in $candidates) {
-        $root = [string] $candidate.path
-        if ([string]::IsNullOrWhiteSpace($root)) { continue }
-        $root = [System.IO.Path]::GetFullPath($root)
-        $entryPoint = Join-Path $root 'Invoke-TigerWinLabWinGetScenario.ps1'
-        if (Test-Path -LiteralPath $entryPoint -PathType Leaf) {
-            return [pscustomobject][ordered]@{
-                root = $root
-                source = [string] $candidate.source
-                winGetScenario = $entryPoint
-                labValidation = Join-Path $root 'Test-TigerWinLab.ps1'
-            }
+    else {
+        $resolver = Join-Path (Get-TigerAiCoreRoot) 'tools/Resolve-TigerAiCoreResource.ps1'
+        if (-not (Test-Path -LiteralPath $resolver -PathType Leaf)) {
+            throw "The TigerAiCore resource resolver was not found at $resolver."
         }
+        # Resolver exit codes: 0 resolved, 1 not registered here, 2 a broken configuration.
+        $stdout = & (Get-Process -Id $PID).Path -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File $resolver -Lab TigerWinLab -Json 2>&1
+        $exitCode = $LASTEXITCODE
+        $text = ($stdout | Out-String).Trim()
+        if ($exitCode -ne 0) {
+            throw "TigerWinLab could not be resolved through TigerAiCore (exit $exitCode): $text"
+        }
+        $registration = $text | ConvertFrom-Json
+        $source = "the TigerAiCore registration in $($registration.ConfigPath)"
+        $root = [string] $registration.Path
     }
 
-    $attempted = ($candidates | ForEach-Object { "$($_.source) ($($_.path))" }) -join '; '
-    throw "TigerWinLab was not found. Pass -TigerWinLabRoot, set TIGERWINLAB_ROOT, or check TigerWinLab out beside this repository. Tried $attempted."
+    $root = [System.IO.Path]::GetFullPath($root)
+    $entryPoint = Join-Path $root 'Invoke-TigerWinLabWinGetScenario.ps1'
+    if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
+        throw "TigerWinLab was not found at $root (from $source): it has no Invoke-TigerWinLabWinGetScenario.ps1."
+    }
+    return [pscustomobject][ordered]@{
+        root = $root
+        source = $source
+        winGetScenario = $entryPoint
+        labValidation = Join-Path $root 'Test-TigerWinLab.ps1'
+    }
 }
 
 function Get-TigerSqlCmdWinGetRelativePath {

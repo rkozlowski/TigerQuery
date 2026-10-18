@@ -143,6 +143,40 @@ dotnet tool run tiger-sqlcmd --help
 Commit `.config/dotnet-tools.json` when the repository should share that pin. Installing
 or restoring a local tool also requires a .NET 10 SDK.
 
+## Shell completion
+
+`tiger-sqlcmd --completion <shell>` prints a tab-completion script for Bash 4+, Zsh,
+Fish, or PowerShell (`pwsh`, or its synonym `powershell`, for both PowerShell 7 and
+Windows PowerShell 5.1). Activating it is your choice: no installation method edits a
+shell profile or installs a completion file.
+
+| Shell | Current session | Persistent |
+| --- | --- | --- |
+| Bash | `source <(tiger-sqlcmd --completion bash)` | Add that line to `~/.bashrc`. |
+| Zsh | `source <(tiger-sqlcmd --completion zsh)` after `compinit` | Add that line to `~/.zshrc` after `compinit`. |
+| Fish | `tiger-sqlcmd --completion fish \| source` | Save the output as `~/.config/fish/completions/tiger-sqlcmd.fish`. |
+| PowerShell | `tiger-sqlcmd --completion pwsh \| Out-String \| Invoke-Expression` | Add the guarded line below to `$PROFILE.CurrentUserAllHosts`, once in each PowerShell edition you use. |
+
+```powershell
+if (Get-Command tiger-sqlcmd -ErrorAction Ignore) { tiger-sqlcmd --completion pwsh | Out-String | Invoke-Expression }
+```
+
+A line that generates the script at shell start stays current across upgrades; a saved
+script must be regenerated after upgrading TigerSqlCmd. Completion registers the command
+name `tiger-sqlcmd`, so it works where that name is on `PATH` — the Windows installer,
+WinGet, and a global .NET tool all put it there — and not through
+`dotnet tool run tiger-sqlcmd`.
+
+Completion offers command names and groups, option names, the values of enumerated
+options such as `run --mode`, and the framework's `--theme`, `--color`, and `--culture`
+values. It is static: it reads command metadata only, never opens the connection store,
+and therefore does not offer saved connection names for `--connection`. After `exec`'s
+`--` separator it hands over to the shell's own file completion.
+
+The completion behavior, its limitations in each shell, and installer integration are
+defined by TigerCli; see its
+[shell completion guide](https://github.com/rkozlowski/TigerCli/blob/v0.9.5/docs/guides/shell-completion.md).
+
 ## Command structure
 
 Run `tiger-sqlcmd --help` at the root or append `--help` to a command path. The shipped

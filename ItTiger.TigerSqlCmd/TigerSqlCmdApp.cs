@@ -129,6 +129,10 @@ internal static class TigerSqlCmdApp
             // --version-full), copyright, and the documentation/repository help-footer
             // links all come from project metadata (csproj + Version.props).
             .UseAssemblyMetadata(typeof(TigerSqlCmdApp).Assembly)
+            // Static, metadata-only completion: --completion <shell> prints the activation
+            // script, and Tab requests never run handlers, factories, or providers, so they
+            // never open the connection store.
+            .UseShellCompletion()
             // en-US is the default; --culture pl-PL localizes framework text, app/CliCore
             // metadata, and command output. App strings are chained in front of the reusable
             // connection-command strings so one manager serves both (UseAppResources takes one).

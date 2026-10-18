@@ -62,8 +62,13 @@ $assets = @(
 
 $tag = "v$Version"
 $title = "TigerQuery $Version"
+$recordSha256 = (Get-FileHash -LiteralPath $ManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$runUrl = if ($env:GITHUB_ACTIONS -ceq 'true' -and -not [string]::IsNullOrWhiteSpace($env:GITHUB_RUN_ID)) {
+    "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+}
+$tagMessage = New-ReleaseTagMessage -Title $title -RecordSha256 $recordSha256 -RunUrl $runUrl
 if ($PlanOnly) {
-    Write-Host "PLAN: create or verify annotated tag $tag at $CommitSha."
+    Write-Host "PLAN: create or verify annotated tag $tag at $CommitSha naming release record SHA-256 $recordSha256."
     Write-Host "PLAN: create or verify draft GitHub Release '$title'."
     foreach ($asset in $assets) {
         Write-Host "PLAN: upload or verify $($asset.Name) ($($asset.Digest))."
@@ -127,7 +132,7 @@ if ($LASTEXITCODE -ne 0) { throw "Could not inspect remote tag $tag." }
 if ([string]::IsNullOrWhiteSpace($remoteTag)) {
     git config user.name 'github-actions[bot]'
     git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-    & git tag -a $tag $CommitSha -m $title
+    & git tag -a $tag $CommitSha -m $tagMessage
     if ($LASTEXITCODE -ne 0) { throw "Could not create annotated tag $tag." }
     & git push origin "refs/tags/$tag"
     if ($LASTEXITCODE -ne 0) { throw "Could not push annotated tag $tag." }
@@ -143,7 +148,10 @@ else {
         -ExpectedCommitSha $CommitSha `
         -ActualCommitSha $tagCommit `
         -ObjectType $tagType
-    Write-Host "Existing annotated tag $tag already points to $CommitSha."
+    $existingMessage = (& git tag -l --format='%(contents)' $tag | Out-String)
+    if ($LASTEXITCODE -ne 0) { throw "Could not read the message of tag $tag." }
+    Assert-ReleaseTagNamesRecord -Tag $tag -Message $existingMessage -RecordSha256 $recordSha256
+    Write-Host "Existing annotated tag $tag already points to $CommitSha and names release record SHA-256 $recordSha256."
 }
 
 $release = Resolve-CompatibleGitHubRelease -Releases @(Get-GitHubReleases) -Tag $tag -Title $title
