@@ -11,7 +11,7 @@ Set-StrictMode -Version Latest
 #>
 
 $script:PackageIdentifier = 'ItTiger.TigerSqlCmd'
-$script:ProductCode = 'ItTiger.TigerSqlCmd_is1'
+$script:ProductCode = 'ItTiger.TigerSqlCmd'
 $script:Command = 'tiger-sqlcmd'
 $script:RuntimeDependency = 'Microsoft.DotNet.Runtime.10'
 $script:ReleaseRepositoryUrl = 'https://github.com/rkozlowski/TigerQuery'
@@ -120,7 +120,7 @@ function Get-TigerSqlCmdWinGetReleaseFact {
     )
 
     $null = Assert-TigerSqlCmdWinGetVersion -Version $Version
-    $installerFileName = 'TigerSqlCmdSetup_{0}.exe' -f ($Version -replace '\.', '_')
+    $installerFileName = 'TigerSqlCmd-{0}-Setup.exe' -f $Version
     $tag = "v$Version"
 
     [pscustomobject][ordered]@{
@@ -136,6 +136,8 @@ function Get-TigerSqlCmdWinGetReleaseFact {
         # The license that applied to this release, at its tag, never a branch that
         # moves on after the release.
         licenseUrl = '{0}/blob/{1}/LICENSE' -f $script:ReleaseRepositoryUrl, $tag
+        # The privacy statement frozen with this release: its PRIVACY.md asset.
+        privacyUrl = '{0}/releases/download/{1}/PRIVACY.md' -f $script:ReleaseRepositoryUrl, $tag
         manifestFileNames = @(
             "$script:PackageIdentifier.installer.yaml"
             "$script:PackageIdentifier.locale.en-US.yaml"
@@ -327,6 +329,7 @@ function Read-TigerSqlCmdWinGetManifestSet {
             publisher = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'Publisher'
             license = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'License'
             licenseUrl = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'LicenseUrl'
+            privacyUrl = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'PrivacyUrl'
             releaseNotesUrl = Get-TigerSqlCmdWinGetManifestField -Lines $localeLines -Name 'ReleaseNotesUrl'
         }
         version = [pscustomobject][ordered]@{
@@ -397,9 +400,14 @@ function Test-TigerSqlCmdWinGetManifestSet {
         -FailureMessage "DefaultLocale '$($version.defaultLocale)' does not match PackageLocale '$($locale.packageLocale)'."))
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/installer-type' `
-        -Condition ($installer.installerType -ceq 'inno') `
-        -Message 'The installer is declared inno, matching the Inno Setup installer this repository builds.' `
-        -FailureMessage "InstallerType is '$($installer.installerType)'; expected inno."))
+        -Condition ($installer.installerType -ceq 'exe') `
+        -Message 'The installer is declared exe, matching the TigerSetup installer this repository builds.' `
+        -FailureMessage "InstallerType is '$($installer.installerType)'; expected exe."))
+
+    $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/elevation' `
+        -Condition ($installer.elevationRequirement -ceq 'elevatesSelf') `
+        -Message 'The machine-scope installer is declared to raise its own elevation prompt.' `
+        -FailureMessage "ElevationRequirement is '$($installer.elevationRequirement)'; expected elevatesSelf."))
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/scope' `
         -Condition ($installer.scope -ceq 'machine') `
@@ -423,8 +431,8 @@ function Test-TigerSqlCmdWinGetManifestSet {
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/apps-and-features' `
         -Condition ($installer.productCode -ceq $release.productCode -and $installer.displayVersion -cne $release.version) `
-        -Message "AppsAndFeaturesEntries names product code $($release.productCode) without repeating PackageVersion as DisplayVersion." `
-        -FailureMessage "AppsAndFeaturesEntries names product code '$($installer.productCode)' and DisplayVersion '$($installer.displayVersion)'; expected product code '$($release.productCode)' and no DisplayVersion equal to PackageVersion '$($release.version)'."))
+        -Message "The installer entry names product code $($release.productCode) without repeating PackageVersion as DisplayVersion." `
+        -FailureMessage "The manifest names product code '$($installer.productCode)' and DisplayVersion '$($installer.displayVersion)'; expected product code '$($release.productCode)' and no DisplayVersion equal to PackageVersion '$($release.version)'."))
 
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/command' `
         -Condition ($installer.commands -ccontains $release.command) `
@@ -445,6 +453,11 @@ function Test-TigerSqlCmdWinGetManifestSet {
         -Condition ($locale.licenseUrl -ceq $release.licenseUrl) `
         -Message "LicenseUrl points at the license file at the $($release.tag) tag." `
         -FailureMessage "LicenseUrl is '$($locale.licenseUrl)'; expected the tag-bound '$($release.licenseUrl)'."))
+
+    $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/privacy-url' `
+        -Condition ($locale.privacyUrl -ceq $release.privacyUrl) `
+        -Message "PrivacyUrl points at the privacy statement frozen with the $($release.tag) release." `
+        -FailureMessage "PrivacyUrl is '$($locale.privacyUrl)'; expected the release-bound '$($release.privacyUrl)'."))
 
     $bomFiles = @($ManifestSet.documents | Where-Object { $_.hasBom } | ForEach-Object name)
     $checks.Add((New-TigerSqlCmdWinGetAssertion -Name 'manifest/encoding' `

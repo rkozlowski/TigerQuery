@@ -1,10 +1,10 @@
 ---
-TigerAiCore.version: 1.32.0
+TigerAiCore.version: 1.33.2
 ---
 
 # AI Agent Instructions
 
-<!-- TigerAiCore:begin version="1.32.0" sha256="ebae44dd09b521b75fc31f1cc06b82e413f25573db0cf0e9b39c00832f0910b8" -->
+<!-- TigerAiCore:begin version="1.33.2" sha256="34cd5bad89c69e03689a653e17981e3a5154f33a8f54f8fc54ee6c050aade259" -->
 ## TigerAiCore inherited rules
 
 <!-- Managed content. Author these rules in AGENTS.core.md in the TigerAiCore repository, never in a project copy. -->
@@ -557,9 +557,44 @@ complete form of each rule is in the role instructions (`AI-CODER.md`,
   the repository has such a suite.** Cost never decides applicability: a gate
   the change can affect runs however expensive it is, and cheap local gates need
   no applicability argument. A documentation or workflow-only change that a gate
-  neither builds, ships, installs, renders, nor asserts does not trigger it. A
-  gate left out as not applicable is named with its reason and does not stop
-  green; an applicable gate that did not run does.
+  neither builds, ships, installs, renders, nor asserts does not trigger it.
+  **Deliberate non-execution is reported, not silent**: each required gate or
+  normally expected suite left out as not applicable is named in `Verification`,
+  one line each, as `<suite> — not applicable; <brief reason>`, and does not
+  stop green; checks nobody would expect are not listed. An applicable gate that
+  did not run does stop green.
+- **Incremental verification** — **Crash test — do not re-prove what the
+  change could not have invalidated**: you don't repeat a car's crash tests
+  just because the paint colour changed or the headlight supplier changed. Ask
+  what changed, what the expensive test proves, and whether the change can
+  invalidate that evidence; the triggers below decide, and an explicit boundary
+  still asks for fresh evidence. **Verification should be incremental just as
+  development is incremental.** **Verification evidence does not automatically
+  expire because there is a new commit**: trustworthy earlier evidence stands
+  for what it proved while its assumptions hold. Expensive revalidation is
+  triggered by change impact, by an explicit acceptance, release, or milestone
+  boundary that requires fresh evidence, or by an invalidated assumption behind
+  the earlier evidence — a changed Lab baseline, platform, toolchain,
+  dependency, external service, or harness, or evidence found untrustworthy —
+  not by a new commit, time, or habit alone. **Tests are evidence, not
+  inventory**: test count is not confidence, and one important missing scenario
+  may matter more than thousands of passing tests. **A test earns its place and
+  cadence by providing distinct, trustworthy evidence at a justified recurring
+  cost.** **Test-suite economics are dominated by actual cost, not test count**:
+  ten thousand deterministic tests taking a minute are not the problem, ten Lab
+  scenarios holding scarce VMs for hours are, so **optimize the expensive
+  tail** — elapsed time, Lab occupancy, contention with other projects, setup
+  and teardown, diagnostic cost — and add no ceremony to cheap tests. **Recurring
+  expensive verification must continue to earn its recurring cost**: value
+  earned while a subsystem was immature does not keep the same cadence after it
+  stabilizes; move evidence from Lab and E2E layers into cheaper deterministic
+  tests as failure modes become understood; keep Labs for evidence that
+  genuinely requires the real environment; and review expensive portfolios
+  periodically for unique evidence, missing important scenarios, duplication,
+  runtime and resource cost, diagnostic cost, and cadence. Changing a required
+  gate or its cadence is the Architect's decision, proposed rather than done
+  silently. Full or broad acceptance still runs where change, risk, policy, or
+  changed assumptions justify it.
 - **Background work ownership** — background work the task starts belongs to
   the task. Before reporting completion, every process, job, monitor, waiter,
   worker, or agent it started must be completed, explicitly terminated, or
@@ -618,6 +653,8 @@ workflow, and the documentation site deployment run from `main` only.
   artifact identity, and failure semantics.
 - `docs/maintainers/winget-tiger-sqlcmd.md` — WinGet manifests and the TigerWinLab
   WinGet scenario.
+- `ItTiger.TigerSqlCmd.Installer/TigerSetup.toml` — the installer's package definition: what
+  it installs, the 0.8.8 Inno Setup migration, and the WinGet metadata.
 - `LESSONS_LEARNED.md` — read it before retrying a verification approach that failed.
 
 ### Verification gates
@@ -637,18 +674,20 @@ once, against the prepared candidate; see the release runbook.
 | DocFX | `docs/api-docfx/**`, public API or XML documentation comments, or DocFX configuration changed; release | `dotnet docfx docs/api-docfx/docfx.json` (see *Quiet commands*) |
 | Release tooling tests | `eng/release-automation/**` or `eng/winget/**` changed; release | `pwsh -File eng/release-automation/tests/Publish-GitHubDraftRelease.Tests.ps1` and `pwsh -File eng/winget/tests/TigerSqlCmdWinGet.Tests.ps1` |
 | Package and tool | packaging metadata, package READMEs, dependencies, or the tool payload changed; release | pack the four packable projects with `--output` outside the repository, run the package `Assert-*.ps1` scripts, and install the tool with `--tool-path` and `--source` (never `--add-source`) |
-| Installer build and metadata | installer inputs or the published CLI payload changed; release | `BuildInstaller.ps1 -OutputDirectory <outside the repository>`, then `Assert-TigerSqlCmdInstaller.ps1` without `-ValidateBehavior` |
+| Installer build and metadata | installer inputs, the TigerSetup pin, or the published CLI payload changed; release | `ItTiger.TigerSqlCmd.Installer\BuildInstaller.ps1 -OutputDirectory <outside the repository>`, then `eng\release-automation\Assert-TigerSqlCmdInstaller.ps1` |
+| TigerWinLab installer acceptance | `ItTiger.TigerSqlCmd.Installer/**`, the TigerSetup pin, the legacy migration, or the installed shape changed; release | `eng\lab\Test-TigerSqlCmdInstaller.ps1` (fresh install, the 0.8.8 Inno Setup migration, uninstall) |
 | WinGet manifests | `eng/winget/**`, the installer identity, or the installed shape changed; release | `eng\winget\Prepare-TigerSqlCmdWinGet.ps1 -Validate` |
-| TigerWinLab WinGet scenario | validation of a published release, or a change to `eng/winget/tiger-sqlcmd.labspec.template.json` | `eng\winget\Test-TigerSqlCmdWinGet.ps1 -Version <version>` |
+| TigerWinLab WinGet scenario | a change to `eng/winget/tiger-sqlcmd.labspec.template.json` or the installer, against the candidate; validation of a published release | `eng\winget\Test-TigerSqlCmdWinGet.ps1 -Version <version>`, with `-CandidateInstallerPath <installer>` before publication |
 | Whitespace | always | `git diff --check` |
 
 The NuGet audit reports vulnerable packages only while restoring: a `--no-restore` build
 prints no audit warning, so a clean build does not prove a clean dependency graph.
 
-`Assert-TigerSqlCmdInstaller.ps1 -ValidateBehavior` installs machine-wide, changes the
-system PATH, and replaces an installed TigerSqlCmd. It runs on the release action's
-disposable runner, never on a developer's live desktop; Windows system acceptance belongs
-in TigerWinLab.
+The installer is built with the TigerSetup release `ItTiger.TigerSqlCmd.Installer\tigersetup.json`
+pins, which must be on `PATH` as `tiger-setup.exe` or passed with `-TigerSetupPath`.
+`Assert-TigerSqlCmdInstaller.ps1` only reads the installer. Installing it changes the system
+PATH and replaces an installed TigerSqlCmd, so it never runs on a developer's live desktop:
+Windows installer acceptance belongs in TigerWinLab.
 
 ### Quiet commands
 

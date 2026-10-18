@@ -294,7 +294,9 @@ winget install ItTiger.TigerSqlCmd
 ```
 
 WinGet resolves the `Microsoft.DotNet.Runtime.10` package dependency and installs
-TigerSqlCmd from the published versioned installer.
+TigerSqlCmd from the published versioned installer. `winget upgrade ItTiger.TigerSqlCmd`
+moves a 0.8.8 or earlier installation to the current installer and keeps your saved
+connections.
 
 Alternatively, install the `tiger-sqlcmd` .NET tool globally:
 
@@ -324,20 +326,26 @@ dotnet tool uninstall --global ItTiger.TigerSqlCmd
 ```
 
 For a local manifest, replace `--global` with `--local`. The standalone machine-wide
-Windows installer is also distributed through
+Windows installer, `TigerSqlCmd-<version>-Setup.exe`, is also distributed through
 [GitHub releases](https://github.com/rkozlowski/TigerQuery/releases). It requires
-administrator elevation, installs under Program Files, and adds TigerSqlCmd to the system
-PATH. See [TigerSqlCmd concepts and usage](docs/api-docfx/tiger-sqlcmd.md) for all
-installation options and the command reference.
+administrator elevation, installs under `%ProgramFiles%\TigerSqlCmd`, adds TigerSqlCmd to
+the system PATH, and installs the .NET 10 runtime when it is missing. See
+[TigerSqlCmd concepts and usage](docs/api-docfx/tiger-sqlcmd.md) for all installation
+options and the command reference.
 
 Uninstalling — through WinGet, Apps & Features, or `dotnet tool uninstall` — removes the
 program and, for the installer, its PATH entry. It leaves your data in place: the shared
 connection store (`%APPDATA%\ItTiger.net\sqlserver-connections.json` on Windows,
 `~/.config/ItTiger.net/sqlserver-connections.json` elsewhere), which other Tiger tools may
-also use, and any SQL scripts, result files, and log files you created. Upgrades and
-reinstalls keep saved connections and their protected passwords. Delete the store file
-yourself when you no longer want those connections; no uninstaller touches SQL Server
-databases.
+also use, and any SQL scripts, result files, and log files you created. It also leaves the
+.NET runtime, which other applications may use. Upgrades and reinstalls keep saved
+connections and their protected passwords. Delete the store file yourself when you no
+longer want those connections; no uninstaller touches SQL Server databases.
+
+What TigerSqlCmd stores, sends, and removes is described in its privacy statement,
+[`PRIVACY.md`](PRIVACY.md); each release attaches the statement that applies to it. The
+third-party components the installer and the .NET tool include are listed, with their
+licences, in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 ---
 

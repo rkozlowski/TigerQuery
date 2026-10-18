@@ -19,28 +19,27 @@ test classes. Nothing fails: the run just reports fewer tests.
 before trusting a `--no-build` result, and confirm with `--list-tests` that new test classes
 appear.
 
-## An installer upgrade test between two builds of the same version upgrades nothing
+## An installer exit code does not prove which binaries are installed
 
-**Area:** installer lifecycle acceptance (TigerWinLab), any candidate built without a version bump
+**Area:** installer lifecycle acceptance (TigerWinLab)
 
 **Status:** Active
 
 **Symptom:** a TigerWinLab run installed the published 0.8.8, "upgraded" it with a 0.8.8
 candidate built from `dev`, and every candidate behavior check failed: the upgraded install
-still ran the published binaries.
+still ran the published binaries, although setup exited 0.
 
-**Cause:** Inno Setup replaces a versioned file only when the new file's version is higher.
-`BuildInstaller.ps1` stamps every assembly with `Version.props`, so two builds of one version
-carry identical file versions, and the setup log says `Same version. Skipping.` for each one.
-Non-versioned files are replaced, so the install looks updated.
+**Cause:** the Inno Setup installers of 0.8.8 and earlier replaced a versioned file only when
+the new file's version was higher, and two builds of one version carry identical file
+versions. Any installer can leave different bytes in place than the test assumes — a skipped
+file, a rolled-back step, a file kept because it was modified.
 
-**Do not:** use a published release with the candidate's own version as the upgrade
-baseline, or infer from a successful setup exit code that the candidate's binaries are
-installed.
+**Do not:** infer from a successful setup exit code that the candidate's binaries are
+installed, or use a release with the candidate's own version as the upgrade baseline.
 
-**Use instead:** upgrade from a release with a lower version than the candidate, and assert
-that an installed binary's hash equals the candidate build's before testing behavior.
-
+**Use instead:** assert that an installed binary's hash equals the candidate's
+(`eng/lab/installer/accept.ps1` compares `tiger-sqlcmd.dll` with the one inside the candidate
+installer) before testing behavior.
 ## A clean build does not prove a clean dependency graph
 
 **Area:** dependency updates and release preparation

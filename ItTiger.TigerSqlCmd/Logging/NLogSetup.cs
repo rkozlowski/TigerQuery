@@ -9,6 +9,15 @@ namespace ItTiger.TigerSqlCmd.Logging;
 
 public static class NLogSetup
 {
+    /// <summary>
+    /// How a logged exception is written: the type and message of the exception and of each
+    /// exception that caused it, which is what says what failed and why. The exception is never
+    /// serialized raw: <see cref="Exception.ToString"/> adds stack traces, and a type's own
+    /// override can add whatever state that type chooses to show.
+    /// </summary>
+    internal const string ExceptionLayout =
+        "${exception:format=Type,Message:separator=\\: :innerFormat=Type,Message:maxInnerExceptionLevel=10:innerExceptionSeparator= ---> }";
+
     public static ILoggerFactory CreateLoggerFactory(string? logFilePath, Microsoft.Extensions.Logging.LogLevel minLevel)
     {
         var config = new LoggingConfiguration();
@@ -18,7 +27,7 @@ public static class NLogSetup
             var fileTarget = new FileTarget("logfile")
             {
                 FileName = logFilePath,
-                Layout = "${longdate} ${uppercase:${level}} ${message} ${exception:format=ToString}"
+                Layout = "${longdate} ${uppercase:${level}} ${message} " + ExceptionLayout
             };
             config.AddTarget(fileTarget);
             config.AddRule(minLevel.ToNLogLevel(), NLog.LogLevel.Fatal, fileTarget);

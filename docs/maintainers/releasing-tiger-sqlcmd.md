@@ -23,12 +23,20 @@ TigerQuery uses the permanent development branch workflow (see `AGENTS.md`):
 ## 1. Prepare (on `dev`)
 
 1. Set the version in `Version.props` and update the other intentional version reference:
-   the `version` input default in `.github/workflows/publish-packages.yml`. Update the
+   the `version` input default in `.github/workflows/publish-packages.yml`. Write the
+   checked-in release notes, `.github/release-notes/<version>.md`, whose first heading is
+   `# TigerQuery <version>`; the release action refuses a version without them. Update the
    documentation the release changes. Do not manufacture release artifacts.
-2. Run the cheap gates first: Debug build and the full unconfigured suite, Release build,
+2. Settle the release-bound terms. `LICENSE` and `PRIVACY.md` at the release commit are frozen
+   into the release as its `License` and `PrivacyStatement`, and the WinGet manifests point at
+   exactly those copies. Check `PRIVACY.md` against what this release actually does; a change
+   to storage, network activity, logging, the installer, or dependencies changes it.
+   `THIRD-PARTY-NOTICES.md` lists every third-party package the installer and the tool ship;
+   `BuildInstaller.ps1` refuses a payload with a package the notices do not list.
+3. Run the cheap gates first: Debug build and the full unconfigured suite, Release build,
    dependency audit, release tooling tests, and `git diff --check` (`AGENTS.md`,
    *Verification gates*).
-3. Then run the release acceptance against a local candidate built from the prepared tree.
+4. Then run the release acceptance against a local candidate built from the prepared tree.
    These are the checks whose failure can still change the release commit:
    - live SQL/E2E in default-store mode, under normal host access;
    - DocFX;
@@ -37,18 +45,22 @@ TigerQuery uses the permanent development branch workflow (see `AGENTS.md`):
      `Assert-ReleaseSymbolPackages.ps1`, install the tool into an isolated `--tool-path`
      from `--source`, and smoke `--version`, `--help`, `exec --help`, and
      `--completion pwsh`;
-   - installer build and metadata (`BuildInstaller.ps1`, then
-     `Assert-TigerSqlCmdInstaller.ps1` without `-ValidateBehavior`);
+   - installer build and contract: `ItTiger.TigerSqlCmd.Installer\BuildInstaller.ps1`, then
+     `eng\release-automation\Assert-TigerSqlCmdInstaller.ps1`; both need the TigerSetup
+     release `ItTiger.TigerSqlCmd.Installer\tigersetup.json` pins;
+   - installer acceptance in TigerWinLab: `eng\lab\Test-TigerSqlCmdInstaller.ps1` — a fresh
+     install that acquires the .NET runtime, the migration from the published 0.8.8 Inno Setup
+     installation with a DPAPI-protected saved password, and uninstall;
    - WinGet manifests: `eng\winget\Prepare-TigerSqlCmdWinGet.ps1 -Validate` against the
-     candidate installer;
-   - documentation claims checked against the behavior being released.
-4. Leave the evidence and the proposed release commit message; under the `dev` workflow the
+     candidate installer, then the TigerWinLab WinGet scenario on it:
+     `eng\winget\Test-TigerSqlCmdWinGet.ps1 -Version <version> -CandidateInstallerPath <installer>`;
+   - documentation claims, `PRIVACY.md` included, checked against the behavior being released.
+5. Leave the evidence and the proposed release commit message; under the `dev` workflow the
    prepared changes may be committed and pushed to `dev`.
 
 Acceptance a candidate already passed is not repeated for a later change that cannot affect
 it; a later change reopens exactly the acceptance it can affect. A local candidate is never a
 release artifact.
-
 ## 2. Promote (Architect)
 
 Promote `dev` to `main` as described under *Branches* and push `main`. Nothing runs on the
@@ -60,7 +72,12 @@ In GitHub Actions, run **Release TigerQuery** from `main` with the exact version
 `Version.props`. The workflow builds once, validates and records the closed artifact set,
 publishes those exact NuGet bytes, creates the annotated tag `v<version>` at the workflow
 commit with a message naming the SHA-256 of `release-artifacts.json` and the run, and
-creates a draft GitHub Release carrying the verified assets. The `release` environment and
+creates a draft GitHub Release carrying the verified assets: the packages and their symbols,
+`TigerSqlCmd-<version>-Setup.exe`, its WinGet manifest set as `TigerSqlCmd-<version>-WinGet.zip`,
+`LICENSE`, `PRIVACY.md`, and the release record. Its notes are the checked-in
+`.github/release-notes/<version>.md`. The installer is built on the runner with the pinned
+TigerSetup release, which the workflow downloads and refuses unless its SHA-256 matches; the
+runner installs nothing machine-wide and needs no WinGet client. The `release` environment and
 the NuGet Trusted Publishing policy remain in force.
 
 NuGet publication is irreversible and happens inside the release action, before anyone
@@ -73,12 +90,18 @@ Prove the draft, not a local rebuild:
 1. Download every draft asset into a new empty directory outside the repository with an
    authenticated `gh release download v<version>`, which also finds draft releases.
 2. Run `eng\release-automation\Assert-ReleaseArtifactManifest.ps1` over that directory with
-   the release commit as `-ExpectedCommit`: the set is closed and every payload has the
-   recorded name, length, and SHA-256.
+   the release commit as `-ExpectedCommit` and a checkout of it as `-SourceRepository`: the set
+   is closed, every payload has the recorded name, kind, length, and SHA-256, and `LICENSE` and
+   `PRIVACY.md` are the release commit's files.
 3. Fetch the tag and confirm that it is annotated (`git cat-file -t v<version>` is `tag`),
    points at the release commit, and names the SHA-256 of the downloaded
    `release-artifacts.json` (`git tag -l --format='%(contents)' v<version>`).
 4. Confirm the release commit is the promoted commit whose candidate step 1 accepted.
+5. Prove the installer usable: extract `TigerSqlCmd-<version>-WinGet.zip` and run
+   `eng\winget\Test-TigerSqlCmdWinGet.ps1 -Version <version> -ManifestDirectory <extracted>
+   -CandidateInstallerPath <draft installer>`, which installs those bytes through WinGet in
+   TigerWinLab, runs the command, and uninstalls. The migration and the rest of the installer
+   acceptance are not repeated; preparation proved them.
 
 Report READY TO PUBLISH, or the failure. A failure here that the release commit already
 carried means the check belongs in preparation; the draft is abandoned and the fix ships as
@@ -86,9 +109,9 @@ the next patch version.
 
 ## 5. Publish (Architect)
 
-Review the draft. Edit the generated notes for accuracy, compatibility, and useful
-user-facing detail, confirm it is still a draft and that the tag resolves to the release
-commit, then publish it. Nothing publishes it automatically.
+Review the draft. Its notes are the checked-in release notes; a correction to them ships in
+the repository, not only in the release page. Confirm it is still a draft and that the tag
+resolves to the release commit, then publish it. Nothing publishes it automatically.
 
 ## 6. WinGet
 
@@ -98,9 +121,10 @@ commands and ends in a `PASS` or a `FAIL`. Only after `PASS`, submit the validat
 unchanged to `winget-pkgs` and follow its validation and review. The TigerQuery workflow
 never submits that pull request.
 
-The workflow artifact named `TigerSqlCmd-WinGet-<version>-<commit>` contains the
-pre-publication manifests. They use the expected final URL and exact installer hash; the
-live URL is what the post-publication validation proves.
+The release's `TigerSqlCmd-<version>-WinGet.zip`, the same manifests as the workflow artifact
+`TigerSqlCmd-WinGet-<version>-<commit>`, is the submission set. It names the final URL, the
+exact installer hash, and this version's frozen `LICENSE` and `PRIVACY.md`; the live URLs are
+what the post-publication validation proves.
 
 ## Partial failure
 

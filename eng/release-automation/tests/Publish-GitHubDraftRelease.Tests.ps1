@@ -63,7 +63,7 @@ $title = 'TigerQuery 0.8.8'
 $commit = '1111111111111111111111111111111111111111'
 $otherCommit = '2222222222222222222222222222222222222222'
 $expectedAsset = [pscustomobject]@{
-    Name = 'TigerSqlCmdSetup_0_8_8.exe'
+    Name = 'TigerSqlCmd-0.8.8-Setup.exe'
     Length = 12345L
     Digest = 'sha256:' + ('a' * 64)
 }
@@ -166,6 +166,90 @@ Invoke-Test 'tag naming another release record is rejected' {
     Assert-Throws -MessagePattern '*does not name release record*' -Body {
         Assert-ReleaseTagNamesRecord -Tag $tag -Message $title -RecordSha256 ('c' * 64)
     }
+}
+
+$automation = Split-Path -Parent $PSScriptRoot
+$repositoryRoot = Split-Path -Parent (Split-Path -Parent $automation)
+. (Join-Path $automation 'ReleaseArtifactSet.ps1')
+$sandbox = Join-Path ([IO.Path]::GetTempPath()) ('TigerQuery-release-tests-' + [Guid]::NewGuid().ToString('N'))
+
+function New-FixtureReleaseSet {
+    <# A closed 1.2.3 release set, recorded by New-ReleaseArtifactManifest.ps1 over stand-in payloads. #>
+    param([Parameter(Mandatory)] [string] $Name)
+
+    $directory = Join-Path $sandbox "$Name\release"
+    $manifests = Join-Path $sandbox "$Name\winget"
+    $null = New-Item -ItemType Directory -Path $directory, $manifests -Force
+    foreach ($artifact in Get-TigerQueryReleaseArtifactSet -Version '1.2.3') {
+        if ($artifact.kind -in 'NuGetPackage', 'NuGetSymbols', 'WindowsInstaller') {
+            Set-Content -LiteralPath (Join-Path $directory $artifact.name) -Value "stand-in $($artifact.name)" -Encoding utf8NoBOM
+        }
+    }
+    foreach ($manifest in $TigerSqlCmdWinGetManifestNames) {
+        Set-Content -LiteralPath (Join-Path $manifests $manifest) -Value "ManifestType: $manifest" -Encoding utf8NoBOM
+    }
+    & (Join-Path $automation 'New-ReleaseArtifactManifest.ps1') -ArtifactDirectory $directory -Version '1.2.3' `
+        -CommitSha $commit -WinGetManifestDirectory $manifests | Out-Null
+    $directory
+}
+
+function Assert-FixtureReleaseSet {
+    param([Parameter(Mandatory)] [string] $Directory, [string] $SourceRepository)
+
+    & (Join-Path $automation 'Assert-ReleaseArtifactManifest.ps1') -ArtifactDirectory $Directory `
+        -ManifestPath (Join-Path $Directory 'release-artifacts.json') -ExpectedVersion '1.2.3' -ExpectedCommit $commit `
+        -SourceRepository $SourceRepository | Out-Null
+}
+
+try {
+    Invoke-Test 'the release record lists every artifact of the set, with its kind, terms included' {
+        $directory = New-FixtureReleaseSet -Name 'record'
+        $record = Get-Content -LiteralPath (Join-Path $directory 'release-artifacts.json') -Raw | ConvertFrom-Json
+        $kinds = @($record.artifacts | ForEach-Object { "$($_.name)=$($_.kind)" })
+        Assert-True ($kinds.Count -eq 12) "The record lists $($kinds.Count) artifacts."
+        foreach ($expected in 'TigerSqlCmd-1.2.3-Setup.exe=WindowsInstaller', 'TigerSqlCmd-1.2.3-WinGet.zip=WinGetManifests',
+            'LICENSE=License', 'PRIVACY.md=PrivacyStatement') {
+            Assert-True ($kinds -ccontains $expected) "The record has no $expected."
+        }
+        Assert-FixtureReleaseSet -Directory $directory -SourceRepository $repositoryRoot
+    }
+
+    Invoke-Test 'frozen terms that are not the release commit''s files are refused' {
+        $directory = New-FixtureReleaseSet -Name 'terms'
+        $source = Join-Path $sandbox 'terms\source'
+        $null = New-Item -ItemType Directory -Path $source -Force
+        Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination $source
+        Set-Content -LiteralPath (Join-Path $source 'PRIVACY.md') -Value 'a different statement' -Encoding utf8NoBOM
+        Assert-Throws -MessagePattern "*release's PRIVACY.md*is not the release commit's PRIVACY.md*" -Body {
+            Assert-FixtureReleaseSet -Directory $directory -SourceRepository $source
+        }
+    }
+
+    Invoke-Test 'a changed artifact and an extra file are refused' {
+        $directory = New-FixtureReleaseSet -Name 'tampered'
+        Add-Content -LiteralPath (Join-Path $directory 'PRIVACY.md') -Value 'appended later'
+        Assert-Throws -MessagePattern "*Artifact 'PRIVACY.md' does not match*" -Body { Assert-FixtureReleaseSet -Directory $directory }
+
+        $directory = New-FixtureReleaseSet -Name 'extra'
+        Set-Content -LiteralPath (Join-Path $directory 'notes.txt') -Value 'stray' -Encoding utf8NoBOM
+        Assert-Throws -MessagePattern '*Release directory mismatch*unexpected: notes.txt*' -Body { Assert-FixtureReleaseSet -Directory $directory }
+    }
+
+    Invoke-Test 'release notes need the product heading and real content' {
+        & (Join-Path $automation 'Assert-ReleaseNotes.ps1') -Version ([xml] (Get-Content -LiteralPath (Join-Path $repositoryRoot 'Version.props') -Raw)).Project.PropertyGroup.Version | Out-Null
+        $notes = Join-Path $sandbox 'notes.md'
+        Set-Content -LiteralPath $notes -Value @('# TigerQuery 1.2.4', '', 'One line.', 'Two.', 'Three.') -Encoding utf8NoBOM
+        Assert-Throws -MessagePattern "*must be '# TigerQuery 1.2.3'*" -Body {
+            & (Join-Path $automation 'Assert-ReleaseNotes.ps1') -Version '1.2.3' -NotesFile $notes
+        }
+        Set-Content -LiteralPath $notes -Value @('# TigerQuery 1.2.3', '', 'TODO') -Encoding utf8NoBOM
+        Assert-Throws -MessagePattern '*no real release notes*' -Body {
+            & (Join-Path $automation 'Assert-ReleaseNotes.ps1') -Version '1.2.3' -NotesFile $notes
+        }
+    }
+}
+finally {
+    Remove-Item -LiteralPath $sandbox -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "All $passed release-state tests passed."

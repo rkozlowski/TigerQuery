@@ -2,6 +2,8 @@ using ItTiger.TigerCli.Commands;
 using ItTiger.TigerQuery.CliCore;
 using ItTiger.TigerQuery.Core;
 using ItTiger.TigerSqlCmd;
+using ItTiger.TigerSqlCmd.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace ItTiger.TigerQuery.Tests.Cli;
 
@@ -69,6 +71,9 @@ public sealed class TigerSqlCmdSensitiveDiagnosticsTests : IDisposable
         Assert.Contains("Could not connect to SQL Server using saved connection 'refused':", result.StdErr);
         Assert.Matches(@"\(SQL error -?\d+, state \d+, class \d+\)", result.StdErr);
         Assert.Contains("for saved connection refused: SQL error", log);
+        // The exception is recorded by its type and message, not serialized raw.
+        Assert.Contains("Microsoft.Data.SqlClient.SqlException: ", log);
+        Assert.DoesNotContain("   at ", log);
 
         foreach (var output in new[] { console, log })
         {
@@ -80,6 +85,33 @@ public sealed class TigerSqlCmdSensitiveDiagnosticsTests : IDisposable
         // output does, because the user asked for it.
         Assert.DoesNotContain(SyntheticVariableValue, log);
         Assert.DoesNotContain("SELECT N'", log);
+    }
+
+    [Fact]
+    public void LogFile_RecordsTheExceptionChainByTypeAndMessageOnly()
+    {
+        using var loggerFactory = NLogSetup.CreateLoggerFactory(_logPath, LogLevel.Trace);
+        var logger = loggerFactory.CreateLogger("TigerSqlCmd");
+        try
+        {
+            throw new InvalidOperationException(
+                "The output file could not be replaced.",
+                new SelfDescribingException("Access to the path is denied."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError(ex, "Writing {Path} failed.", "out.csv");
+        }
+
+        var log = ReadLog();
+
+        Assert.Contains("Writing out.csv failed.", log);
+        Assert.Contains(
+            "System.InvalidOperationException: The output file could not be replaced. ---> "
+                + $"{typeof(SelfDescribingException).FullName}: Access to the path is denied.",
+            log);
+        Assert.DoesNotContain(SelfDescribingException.OwnState, log);
+        Assert.DoesNotContain("   at ", log);
     }
 
     [Fact]
@@ -218,6 +250,14 @@ public sealed class TigerSqlCmdSensitiveDiagnosticsTests : IDisposable
               }
             ]
             """);
+    }
+
+    /// <summary>An exception whose own <see cref="ToString"/> shows state its message does not.</summary>
+    private sealed class SelfDescribingException(string message) : Exception(message)
+    {
+        public const string OwnState = "self-described-state-0c4e";
+
+        public override string ToString() => $"{base.ToString()} {OwnState}";
     }
 
     /// <summary>A temp store with the protector the non-Windows platforms default to.</summary>

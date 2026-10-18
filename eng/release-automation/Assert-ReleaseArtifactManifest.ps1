@@ -11,11 +11,17 @@ param(
 
     [Parameter(Mandatory)]
     [ValidatePattern('^[0-9a-fA-F]{40}$')]
-    [string] $ExpectedCommit
+    [string] $ExpectedCommit,
+
+    # A checkout of the release commit. When given, the frozen LICENSE and PRIVACY.md must be its
+    # files byte for byte.
+    [string] $SourceRepository
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+. (Join-Path $PSScriptRoot 'ReleaseArtifactSet.ps1')
 
 $ArtifactDirectory = [IO.Path]::GetFullPath($ArtifactDirectory)
 $ManifestPath = [IO.Path]::GetFullPath($ManifestPath)
@@ -34,25 +40,19 @@ if ($manifest.sourceCommit -cne $ExpectedCommit.ToLowerInvariant()) {
     throw "Manifest commit '$($manifest.sourceCommit)' does not match '$ExpectedCommit'."
 }
 
-$installerVersion = $ExpectedVersion -replace '\.', '_'
-$expectedNames = @(
-    "ItTiger.TigerQuery.$ExpectedVersion.nupkg"
-    "ItTiger.TigerQuery.$ExpectedVersion.snupkg"
-    "ItTiger.TigerQuery.Core.$ExpectedVersion.nupkg"
-    "ItTiger.TigerQuery.Core.$ExpectedVersion.snupkg"
-    "ItTiger.TigerQuery.CliCore.$ExpectedVersion.nupkg"
-    "ItTiger.TigerQuery.CliCore.$ExpectedVersion.snupkg"
-    "ItTiger.TigerSqlCmd.$ExpectedVersion.nupkg"
-    "ItTiger.TigerSqlCmd.$ExpectedVersion.snupkg"
-    "TigerSqlCmdSetup_$installerVersion.exe"
-)
-
+$set = @(Get-TigerQueryReleaseArtifactSet -Version $ExpectedVersion)
+$expectedNames = @($set | ForEach-Object name)
 $entries = @($manifest.artifacts)
 $entryNames = @($entries | ForEach-Object name)
-$missing = @($expectedNames | Where-Object { $_ -cnotin $entryNames })
-$unexpected = @($entryNames | Where-Object { $_ -cnotin $expectedNames })
-if ($entries.Count -ne $expectedNames.Count -or $missing.Count -ne 0 -or $unexpected.Count -ne 0) {
-    throw "Manifest payload mismatch. Missing: $($missing -join ', '); unexpected: $($unexpected -join ', ')."
+if (($entryNames -join '|') -cne ($expectedNames -join '|')) {
+    $missing = @($expectedNames | Where-Object { $_ -cnotin $entryNames })
+    $unexpected = @($entryNames | Where-Object { $_ -cnotin $expectedNames })
+    throw "Manifest payload mismatch. Missing: $($missing -join ', '); unexpected: $($unexpected -join ', '); the record lists every artifact once, in the release set's order."
+}
+for ($index = 0; $index -lt $set.Count; $index++) {
+    if ([string] $entries[$index].kind -cne $set[$index].kind) {
+        throw "Manifest entry '$($entries[$index].name)' has kind '$($entries[$index].kind)'; expected '$($set[$index].kind)'."
+    }
 }
 
 $allowedDirectoryNames = @($expectedNames + @('release-artifacts.json', 'SHA256SUMS.txt'))
@@ -85,5 +85,27 @@ if ($actualText -cne $expectedText) {
     throw 'SHA256SUMS.txt does not exactly match release-artifacts.json.'
 }
 
-Write-Host "Verified $($entries.Count) artifacts for TigerQuery $ExpectedVersion at $ExpectedCommit."
+# The WinGet archive holds exactly the three submission manifests, at its root.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $ArtifactDirectory "TigerSqlCmd-$ExpectedVersion-WinGet.zip"))
+try {
+    $archived = @($archive.Entries | ForEach-Object FullName | Sort-Object)
+}
+finally {
+    $archive.Dispose()
+}
+if (($archived -join ',') -cne (($TigerSqlCmdWinGetManifestNames | Sort-Object) -join ',')) {
+    throw "TigerSqlCmd-$ExpectedVersion-WinGet.zip must hold exactly $($TigerSqlCmdWinGetManifestNames -join ', '); it holds $($archived -join ', ')."
+}
 
+if (-not [string]::IsNullOrWhiteSpace($SourceRepository)) {
+    foreach ($name in 'LICENSE', 'PRIVACY.md') {
+        $source = (Get-FileHash -LiteralPath (Join-Path $SourceRepository $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+        $frozen = (Get-FileHash -LiteralPath (Join-Path $ArtifactDirectory $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($frozen -cne $source) {
+            throw "The release's $name ($frozen) is not the release commit's $name ($source)."
+        }
+    }
+}
+
+Write-Host "Verified $($entries.Count) artifacts for TigerQuery $ExpectedVersion at $ExpectedCommit."

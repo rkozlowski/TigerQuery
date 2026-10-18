@@ -1,0 +1,94 @@
+# TigerSqlCmd installer (TigerSetup)
+#
+# Build it with ItTiger.TigerSqlCmd.Installer\BuildInstaller.ps1: that publishes tiger-sqlcmd and
+# stages it, with the licence, the third-party notices and the privacy statement, into
+# WorkingDir\payload\, then runs tiger-setup build on this file. tigersetup.json pins the builder.
+# Paths below are relative to this file.
+#
+# Nothing here states the version, the description or the copyright: [metadata] evaluates them
+# from Version.props through the CLI project, and the builder refuses a published tiger-sqlcmd.exe
+# that disagrees. eng\release-automation\Assert-TigerSqlCmdInstaller.ps1 checks the built
+# installer against the contract declared here.
+
+[package]
+id = "ItTiger.TigerSqlCmd"               # the Add/Remove Programs key and the WinGet identifier; never change it
+name = "TigerSqlCmd"
+publisher = "IT Tiger"
+license = "MIT"
+license_file = "WorkingDir/payload/LICENSE.txt"
+icon = "../ItTiger.TigerSqlCmd/TigerQuery.ico"
+website = "https://www.ittiger.net/projects/tigerquery/"
+support = "https://github.com/rkozlowski/TigerQuery/issues"
+help = "https://github.com/rkozlowski/TigerQuery#readme"
+
+[metadata]
+source = "msbuild"
+project = "../ItTiger.TigerSqlCmd/ItTiger.TigerSqlCmd.csproj"
+executable = "WorkingDir/payload/tiger-sqlcmd.exe"
+
+[install]
+# Machine-wide only, as every earlier TigerSqlCmd installer: %ProgramFiles%\TigerSqlCmd, the
+# system PATH, and an administrator's approval.
+scopes = ["machine"]
+architecture = "x64"
+
+# The framework-dependent publish output, the licence, the third-party notices and the privacy
+# statement, without debug symbols or XML documentation. No installer resource refers to the
+# connection store or any other user data: uninstalling keeps them.
+[[files]]
+source = "WorkingDir/payload/**"
+exclude = ["*.pdb", "*.xml"]
+
+[[options]]
+name = "path"                            # the install root holds tiger-sqlcmd.exe
+kind = "path"
+default = true
+
+[[path]]
+entry = "."
+option = "path"
+
+# Start Menu > TigerSqlCmd: a command prompt that shows tiger-sqlcmd --help and keeps this
+# installation's tiger-sqlcmd first on its PATH, with or without the PATH option.
+[[shortcuts]]
+location = "start-menu"
+name = "TigerSqlCmd"
+target = "shell/tiger-sqlcmd-shell.cmd"
+icon = "tiger-sqlcmd.exe"
+description = "A command prompt with tiger-sqlcmd ready to use"
+
+[registration]
+display_icon = "tiger-sqlcmd.exe"
+
+# The Inno Setup installation of 0.8.8 and earlier (AppId ItTiger.TigerSqlCmd). The first
+# TigerSetup install on a machine that holds it runs its own quiet uninstaller first; that removes
+# only what Inno Setup installed, so the connection store and the user's files survive it.
+[legacy]
+installer_type = "inno"
+registration_key = "ItTiger.TigerSqlCmd_is1"
+
+# tiger-sqlcmd is framework-dependent on the base .NET runtime; BuildInstaller.ps1 refuses a
+# publish whose runtimeconfig.json asks for anything else.
+[[dependencies]]
+id = "Microsoft.DotNet.Runtime.10"
+name = ".NET Runtime 10"
+minimum = "10.0"
+detect = { kind = "directory-version", path = "%PROGRAMFILES%\\dotnet\\shared\\Microsoft.NETCore.App", pattern = "10.*" }
+
+[winget]
+moniker = "tiger-sqlcmd"
+commands = ["tiger-sqlcmd"]
+tags = ["cli", "database", "dotnet", "sql", "sqlcmd", "sql-server"]
+package_url = "https://www.ittiger.net/projects/tigerquery/"
+publisher_url = "https://www.ittiger.net/"
+publisher_support_url = "https://github.com/rkozlowski/TigerQuery/issues"
+# The licence at this version's tag, the privacy statement frozen with this version's release
+# (its PRIVACY.md asset), and this version's release page; {version} is the package version.
+license_url = "https://github.com/rkozlowski/TigerQuery/blob/v{version}/LICENSE"
+privacy_url = "https://github.com/rkozlowski/TigerQuery/releases/download/v{version}/PRIVACY.md"
+release_notes_url = "https://github.com/rkozlowski/TigerQuery/releases/tag/v{version}"
+short_description = "SQL Server script and query runner built on the TigerQuery engine."
+description = """
+TigerSqlCmd is a SQL Server command-line client built on TigerQuery. It runs inline queries and SQL files, supports sqlcmd-compatible scripting and protected SqlCmdEx variables, and manages reusable connection profiles for interactive and unattended use.
+Connection profiles are saved in a per-user file; saved SQL passwords are encrypted for the current Windows user with DPAPI. The exec command starts another program and passes it the connection string of a saved connection.
+The machine-wide installer requires administrator rights and adds its folder to the system PATH. It installs the Microsoft .NET 10 Runtime when it is missing, downloaded from Microsoft at the address the WinGet catalog lists and checked against the hash the catalog publishes; uninstalling keeps the runtime, the saved connections and your files. TigerSqlCmd sends no telemetry."""

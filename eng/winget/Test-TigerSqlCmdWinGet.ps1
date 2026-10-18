@@ -30,6 +30,11 @@
     from its registration in the TigerAiCore machine configuration named by
     TigerAiCoreConfig.
 
+    .PARAMETER CandidateInstallerPath
+    Validates a release candidate before publication: the lab installs this local installer, which
+    must hash to the manifests' InstallerSha256, instead of the published asset. Release
+    preparation uses it; the post-publication run omits it.
+
     .PARAMETER SkipLab
     Runs the manifest and published-asset checks only. Useful for a quick re-check of a
     manifest edit; it cannot produce a submission-ready PASS on its own.
@@ -48,6 +53,8 @@ param(
     [string] $TigerWinLabRoot,
 
     [string] $ManifestDirectory,
+
+    [string] $CandidateInstallerPath,
 
     [string] $OutputRoot,
 
@@ -84,11 +91,32 @@ foreach ($check in @(Test-TigerSqlCmdWinGetManifestSet -ManifestSet $manifestSet
     $checks.Add($check)
 }
 
-Write-Host "Verifying the published release asset for TigerSqlCmd $Version..."
-$asset = Test-TigerSqlCmdWinGetReleaseAsset `
-    -ManifestSet $manifestSet `
-    -DownloadDirectory (Join-Path $OutputRoot 'published') `
-    -ReleaseInputDirectory $releaseInputDirectory
+if (-not [string]::IsNullOrWhiteSpace($CandidateInstallerPath)) {
+    # Before publication there is no asset to download: the lab serves the candidate over
+    # loopback, and WinGet still verifies it against the manifest's InstallerSha256.
+    $CandidateInstallerPath = [System.IO.Path]::GetFullPath($CandidateInstallerPath)
+    $candidateSha256 = (Get-FileHash -LiteralPath $CandidateInstallerPath -Algorithm SHA256).Hash.ToUpperInvariant()
+    $asset = [pscustomobject]@{
+        checks = @(
+            (New-TigerSqlCmdWinGetAssertion -Name 'release/candidate-sha256' `
+                -Condition ($candidateSha256 -ceq [string] $manifestSet.installer.installerSha256) `
+                -Message "The candidate installer hashes to the manifest's InstallerSha256 ($candidateSha256)." `
+                -FailureMessage "The candidate installer hashes to '$candidateSha256'; the manifest declares '$($manifestSet.installer.installerSha256)'."),
+            (New-TigerSqlCmdWinGetCheck -Name 'release/asset-download' -Status 'WARN' `
+                -Message 'A pre-publication candidate was validated; the published asset is proven after publication without -CandidateInstallerPath.')
+        )
+        installerPath = $CandidateInstallerPath
+        sha256 = $candidateSha256
+        length = [long] (Get-Item -LiteralPath $CandidateInstallerPath).Length
+    }
+}
+else {
+    Write-Host "Verifying the published release asset for TigerSqlCmd $Version..."
+    $asset = Test-TigerSqlCmdWinGetReleaseAsset `
+        -ManifestSet $manifestSet `
+        -DownloadDirectory (Join-Path $OutputRoot 'published') `
+        -ReleaseInputDirectory $releaseInputDirectory
+}
 foreach ($check in @($asset.checks)) {
     $checks.Add($check)
 }

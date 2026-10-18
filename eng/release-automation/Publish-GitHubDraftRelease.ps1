@@ -13,8 +13,9 @@ param(
     [Parameter(Mandatory)]
     [string] $ManifestPath,
 
+    # The checked-in release notes for this version, .github/release-notes/<version>.md.
     [Parameter(Mandatory)]
-    [string] $ReleaseNotesHeaderPath,
+    [string] $NotesFile,
 
     [string] $Repository = 'rkozlowski/TigerQuery',
     [switch] $PlanOnly,
@@ -32,16 +33,15 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
 $CommitSha = $CommitSha.ToLowerInvariant()
 $ArtifactDirectory = [IO.Path]::GetFullPath($ArtifactDirectory)
 $ManifestPath = [IO.Path]::GetFullPath($ManifestPath)
-$ReleaseNotesHeaderPath = [IO.Path]::GetFullPath($ReleaseNotesHeaderPath)
-if (-not (Test-Path -LiteralPath $ReleaseNotesHeaderPath -PathType Leaf)) {
-    throw "Release notes header not found: $ReleaseNotesHeaderPath"
-}
+$NotesFile = [IO.Path]::GetFullPath($NotesFile)
+& (Join-Path $PSScriptRoot 'Assert-ReleaseNotes.ps1') -Version $Version -NotesFile $NotesFile
 
 & (Join-Path $PSScriptRoot 'Assert-ReleaseArtifactManifest.ps1') `
     -ArtifactDirectory $ArtifactDirectory `
     -ManifestPath $ManifestPath `
     -ExpectedVersion $Version `
-    -ExpectedCommit $CommitSha
+    -ExpectedCommit $CommitSha `
+    -SourceRepository (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 $assetNames = @($manifest.artifacts | ForEach-Object name) + @(
@@ -156,14 +156,12 @@ else {
 
 $release = Resolve-CompatibleGitHubRelease -Releases @(Get-GitHubReleases) -Tag $tag -Title $title
 if ($null -eq $release) {
-    $header = (Get-Content -LiteralPath $ReleaseNotesHeaderPath -Raw).Trim()
     & gh release create $tag `
         --repo $Repository `
         --verify-tag `
         --draft `
         --title $title `
-        --generate-notes `
-        --notes $header
+        --notes-file $NotesFile
     if ($LASTEXITCODE -ne 0) { throw "Could not create draft GitHub Release for $tag." }
     Write-Host "Created draft GitHub Release $tag."
     $release = Resolve-CompatibleGitHubRelease -Releases @(Get-GitHubReleases) -Tag $tag -Title $title
